@@ -30,6 +30,33 @@ struct Catalog: Sendable {
         try await db.writer.read { db in try LibraryRecord.filter(Column("id") == id).fetchOne(db) }
     }
 
+    /// Update a library's editable fields (only non-nil arguments are applied).
+    func updateLibrary(id: String, title: String?, kind: String?) async throws -> LibraryRecord {
+        let updated: LibraryRecord? = try await db.writer.write { db in
+            guard var lib = try LibraryRecord.filter(Column("id") == id).fetchOne(db) else { return nil }
+            if let title, !title.isEmpty { lib.title = title }
+            if let kind { lib.kind = kind }
+            try lib.update(db)
+            return lib
+        }
+        guard let updated else { throw SphynxError.notFound("No library '\(id)'") }
+        return updated
+    }
+
+    /// Delete a library and **cascade**: every item it holds (the whole tree) and
+    /// every source that feeds it. (Items carry their `libraryId`, so one delete
+    /// removes the full hierarchy.)
+    func deleteLibrary(id: String) async throws {
+        let existed: Bool = try await db.writer.write { db in
+            guard try LibraryRecord.filter(Column("id") == id).fetchCount(db) > 0 else { return false }
+            try ItemRecord.filter(Column("libraryId") == id).deleteAll(db)
+            try SourceRecord.filter(Column("libraryId") == id).deleteAll(db)
+            _ = try LibraryRecord.deleteOne(db, key: id)
+            return true
+        }
+        guard existed else { throw SphynxError.notFound("No library '\(id)'") }
+    }
+
     // MARK: Sources
 
     func createSource(
@@ -70,6 +97,49 @@ struct Catalog: Sendable {
 
     func sources() async throws -> [SourceRecord] {
         try await db.writer.read { db in try SourceRecord.order(Column("createdAt")).fetchAll(db) }
+    }
+
+    /// Update a source's editable fields (only non-nil arguments are applied).
+    /// `config`/`secrets`/`headers` replace the stored maps wholesale when given.
+    func updateSource(
+        id: String,
+        label: String?,
+        baseURL: String?,
+        headers: [String: String]?,
+        manifestURL: String?,
+        libraryId: String?,
+        config: [String: String]?,
+        secrets: [String: String]?
+    ) async throws -> SourceRecord {
+        let updated: SourceRecord? = try await db.writer.write { db in
+            guard var s = try SourceRecord.filter(Column("id") == id).fetchOne(db) else { return nil }
+            if let label, !label.isEmpty { s.label = label }
+            if let baseURL { s.baseURL = baseURL }
+            if let headers { s.headersJSON = Self.encodeStringMap(headers) }
+            if let manifestURL { s.manifestURL = manifestURL }
+            if let libraryId { s.libraryId = libraryId }
+            if let config { s.configJSON = Self.encodeStringMap(config) }
+            if let secrets { s.secretsJSON = Self.encodeStringMap(secrets) }
+            try s.update(db)
+            return s
+        }
+        guard let updated else { throw SphynxError.notFound("No source '\(id)'") }
+        return updated
+    }
+
+    /// Delete a source and **cascade**: the items it produced, then any series/
+    /// season containers those items leave empty, then the source row.
+    func deleteSource(id: String) async throws {
+        let items = try await itemsBySource(sourceId: id)
+        let parentIds = Set(items.compactMap(\.parentId))
+        let existed: Bool = try await db.writer.write { db in
+            guard try SourceRecord.filter(Column("id") == id).fetchCount(db) > 0 else { return false }
+            try ItemRecord.filter(Column("sourceId") == id).deleteAll(db)
+            _ = try SourceRecord.deleteOne(db, key: id)
+            return true
+        }
+        guard existed else { throw SphynxError.notFound("No source '\(id)'") }
+        try await pruneEmptyContainers(seeds: parentIds)
     }
 
     // MARK: Items
@@ -226,5 +296,52 @@ struct Catalog: Sendable {
 
     func deleteItem(id: String) async throws {
         try await db.writer.write { db in _ = try ItemRecord.deleteOne(db, key: id) }
+    }
+
+    /// Delete an item and **cascade**: its whole subtree (a series takes its
+    /// seasons + episodes), then prune any container the deletion leaves empty
+    /// up the parent chain. Throws `notFound` if the item doesn't exist.
+    func deleteItemTree(id: String) async throws {
+        guard let item = try await item(id: id) else {
+            throw SphynxError.notFound("No item '\(id)'")
+        }
+        // Collect the subtree (self + descendants) by walking parentId levels.
+        var toDelete: [String] = []
+        var frontier: [String] = [id]
+        while !frontier.isEmpty {
+            toDelete.append(contentsOf: frontier)
+            let level = frontier
+            let children = try await db.writer.read { db in
+                try ItemRecord.filter(level.contains(Column("parentId"))).fetchAll(db)
+            }
+            frontier = children.map(\.id)
+        }
+        let ids = toDelete
+        try await db.writer.write { db in
+            _ = try ItemRecord.filter(ids.contains(Column("id"))).deleteAll(db)
+        }
+        if let parentId = item.parentId {
+            try await pruneEmptyContainers(seeds: [parentId])
+        }
+    }
+
+    /// Remove series/season containers left with no children, bubbling up the
+    /// parent chain (deleting a season may empty its series). Containers carry an
+    /// empty `sourceKey`, so they're never playable on their own.
+    func pruneEmptyContainers(seeds: Set<String>) async throws {
+        var frontier = seeds
+        while !frontier.isEmpty {
+            var next: Set<String> = []
+            for containerId in frontier {
+                guard let container = try await item(id: containerId),
+                      container.type == "series" || container.type == "season"
+                else { continue }
+                if try await countChildren(parentId: containerId) == 0 {
+                    if let parentId = container.parentId { next.insert(parentId) }
+                    try await deleteItem(id: containerId)
+                }
+            }
+            frontier = next
+        }
     }
 }

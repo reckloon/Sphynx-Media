@@ -15,11 +15,18 @@ struct AdminController: Sendable {
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let admin = group.group("admin")
         admin.post("libraries", use: createLibrary)
+        admin.get("libraries", use: listLibraries)
+        admin.patch("libraries/:libraryId", use: updateLibrary)
+        admin.delete("libraries/:libraryId", use: deleteLibrary)
         admin.post("sources", use: createSource)
+        admin.get("sources", use: listSources)
+        admin.patch("sources/:sourceId", use: updateSource)
+        admin.delete("sources/:sourceId", use: deleteSource)
         admin.post("sources/:sourceId/scan", use: scanSource)
         admin.post("scan", use: scanAll)
         admin.post("items", use: createItem)
         admin.patch("items/:itemId", use: editItem)
+        admin.delete("items/:itemId", use: deleteItem)
         admin.post("items/:itemId/identity", use: setIdentity)
         admin.post("items/:itemId/enrich", use: enrichItem)
         admin.post("enrich", use: enrichAll)
@@ -83,6 +90,89 @@ struct AdminController: Sendable {
         guard !body.title.isEmpty else { throw SphynxError.badRequest("title is required") }
         let record = try await catalog.createLibrary(title: body.title, kind: body.kind ?? "other")
         return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
+    }
+
+    @Sendable
+    func listLibraries(_ request: Request, context: SphynxRequestContext) async throws -> AdminLibrariesResponse {
+        try requireAdmin(context)
+        let records = try await catalog.libraries()
+        return AdminLibrariesResponse(libraries: records.map {
+            LibraryResponse(id: $0.id, title: $0.title, kind: $0.kind)
+        })
+    }
+
+    @Sendable
+    func updateLibrary(_ request: Request, context: SphynxRequestContext) async throws -> LibraryResponse {
+        try requireAdmin(context)
+        guard let libraryId = context.parameters.get("libraryId") else {
+            throw SphynxError.badRequest("Missing library id")
+        }
+        let body = try await request.decode(as: UpdateLibraryRequest.self, context: context)
+        let record = try await catalog.updateLibrary(id: libraryId, title: body.title, kind: body.kind)
+        return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
+    }
+
+    /// Delete a library, cascading to its items + the sources that feed it.
+    @Sendable
+    func deleteLibrary(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        guard let libraryId = context.parameters.get("libraryId") else {
+            throw SphynxError.badRequest("Missing library id")
+        }
+        try await catalog.deleteLibrary(id: libraryId)
+        return Response(status: .noContent)
+    }
+
+    @Sendable
+    func listSources(_ request: Request, context: SphynxRequestContext) async throws -> SourcesResponse {
+        try requireAdmin(context)
+        let records = try await catalog.sources()
+        return SourcesResponse(sources: records.map(SourceResponse.init(from:)))
+    }
+
+    @Sendable
+    func updateSource(_ request: Request, context: SphynxRequestContext) async throws -> SourceResponse {
+        try requireAdmin(context)
+        guard let sourceId = context.parameters.get("sourceId") else {
+            throw SphynxError.badRequest("Missing source id")
+        }
+        let body = try await request.decode(as: UpdateSourceRequest.self, context: context)
+        if let libraryId = body.libraryId, try await catalog.library(id: libraryId) == nil {
+            throw SphynxError.badRequest("No library '\(libraryId)'")
+        }
+        let record = try await catalog.updateSource(
+            id: sourceId,
+            label: body.label,
+            baseURL: body.baseURL,
+            headers: body.headers,
+            manifestURL: body.manifestURL,
+            libraryId: body.libraryId,
+            config: body.config,
+            secrets: body.secrets
+        )
+        return SourceResponse(from: record)
+    }
+
+    /// Delete a source, cascading to its items + now-empty containers.
+    @Sendable
+    func deleteSource(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        guard let sourceId = context.parameters.get("sourceId") else {
+            throw SphynxError.badRequest("Missing source id")
+        }
+        try await catalog.deleteSource(id: sourceId)
+        return Response(status: .noContent)
+    }
+
+    /// Delete an item, cascading to its subtree + pruning emptied containers.
+    @Sendable
+    func deleteItem(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        guard let itemId = context.parameters.get("itemId") else {
+            throw SphynxError.badRequest("Missing item id")
+        }
+        try await catalog.deleteItemTree(id: itemId)
+        return Response(status: .noContent)
     }
 
     @Sendable
@@ -284,6 +374,29 @@ struct LibraryResponse: Codable, Sendable, ResponseEncodable {
     var id: String
     var title: String
     var kind: String
+}
+
+struct UpdateLibraryRequest: Codable, Sendable {
+    var title: String?
+    var kind: String?
+}
+
+struct AdminLibrariesResponse: Codable, Sendable, ResponseEncodable {
+    var libraries: [LibraryResponse]
+}
+
+struct UpdateSourceRequest: Codable, Sendable {
+    var label: String?
+    var baseURL: String?
+    var headers: [String: String]?
+    var manifestURL: String?
+    var libraryId: String?
+    var config: [String: String]?
+    var secrets: [String: String]?
+}
+
+struct SourcesResponse: Codable, Sendable, ResponseEncodable {
+    var sources: [SourceResponse]
 }
 
 struct CreateSourceRequest: Codable, Sendable {
