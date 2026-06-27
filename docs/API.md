@@ -365,9 +365,17 @@ has. A *skeleton* item omits enrichment (overview, genres, ratings, cast).
   "genres": ["Sci-Fi"], "communityRating": 8.0, "officialRating": "R",
   "cast": [ { "id": "pe_…", "name": "Ryan Gosling", "role": "K", "imageURL": "…", "placeholder": { "blurHash": "…" } } ],
   "resumePosition": 1342.5,
+  "updatedAt": "2026-06-27T12:00:00Z",
   "extra": { "tagline": "…", "imdbId": "tt…", "anything": [1, 2, 3] }
 }
 ```
+
+`updatedAt` (RFC 3339) is the last change to **client-rendered** data for the item
+(title, images, enrichment, markers, …) — the max of the server's per-field change
+times. A client can diff this one value to decide "changed since I cached it?"
+without comparing every field. It **excludes** per-user playstate
+(`resumePosition`), so progress reports don't invalidate the cache. Present at both
+`detail=skeleton` and `detail=full`, in list and single-item responses.
 
 `placeholder` is a self-describing one-of: `{ "blurHash": "…" }` **or**
 `{ "url": "…" }`. Clients use the first form they understand and fall back to a

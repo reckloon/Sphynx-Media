@@ -75,6 +75,16 @@ public struct Item: Codable, Hashable, Sendable {
     /// means "from start".
     public var resumePosition: Double?
 
+    /// Wall-clock RFC 3339 timestamp of the last change to **client-rendered**
+    /// data for this item (title, images, enrichment, markers, …) — the max of
+    /// the server's per-field change times. A client can diff this single value
+    /// to decide "changed since I cached it?" without comparing every field.
+    ///
+    /// Deliberately **excludes** per-user playstate (`resumePosition`), which
+    /// changes far more often and would otherwise invalidate the cache on every
+    /// progress report. Absent ⇒ unknown.
+    public var updatedAt: String?
+
     /// Open, server-defined metadata not covered by the canonical fields above.
     /// A server (or server extension) may attach any additional metadata here; a
     /// client reads the keys it understands and ignores the rest. Omitted when
@@ -102,6 +112,7 @@ public struct Item: Codable, Hashable, Sendable {
         officialRating: String? = nil,
         cast: [CastMember]? = nil,
         resumePosition: Double? = nil,
+        updatedAt: String? = nil,
         extra: [String: JSONValue]? = nil
     ) {
         self.id = id
@@ -123,6 +134,7 @@ public struct Item: Codable, Hashable, Sendable {
         self.officialRating = officialRating
         self.cast = cast
         self.resumePosition = resumePosition
+        self.updatedAt = updatedAt
         self.extra = extra
     }
 }

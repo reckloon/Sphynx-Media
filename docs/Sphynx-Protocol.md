@@ -172,6 +172,10 @@ All fields except `id`, `title`, and `type` are optional. A server sends what it
   // Per-user state, folded in when known (also available via §7)
   "resumePosition": 1342.5,            // seconds; absent or 0 means "from start"
 
+  // Last change to client-rendered data (RFC 3339); max of the server's
+  // per-field change times. Excludes per-user playstate. For cache diffing.
+  "updatedAt": "2026-06-27T12:00:00Z",
+
   // Open, server-defined metadata beyond the canonical fields (see §5.6)
   "extra": { "tagline": "…", "imdbId": "tt…" }
 }

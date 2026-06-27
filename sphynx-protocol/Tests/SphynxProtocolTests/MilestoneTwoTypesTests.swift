@@ -52,6 +52,11 @@ struct ItemTypesTests {
         try assertRoundTrips(item)
     }
 
+    @Test("Item.updatedAt round-trips")
+    func itemUpdatedAt() throws {
+        try assertRoundTrips(Item(id: "it_3", type: .episode, title: "Pilot", updatedAt: "2026-06-27T12:00:00Z"))
+    }
+
     @Test("Skeleton item omits enrichment fields on the wire")
     func skeletonItem() throws {
         let item = Item(id: "it_2", type: .episode, title: "Pilot")

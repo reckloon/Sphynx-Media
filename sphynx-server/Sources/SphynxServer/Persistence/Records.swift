@@ -180,6 +180,12 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             placeholder: placeholderURL.map { .url($0) },
             extra: decodedExtra()
         )
+        // Last change to client-rendered data: the max of the per-field change
+        // times we track. Playstate lives in its own table and is intentionally
+        // excluded, so progress reports don't invalidate client caches.
+        if let latest = [updatedAt, enrichedAt, markersUpdatedAt].compactMap({ $0 }).max() {
+            item.updatedAt = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: latest))
+        }
         if full {
             item.overview = overview
             item.runtime = runtime
