@@ -394,28 +394,37 @@ swift run SphynxServer
 </div>
 
 <h3 id="config">Configuration</h3>
-<p>Everything is configured through environment variables — no config file to edit. Set them inline or export them before <code>swift run</code>:</p>
+<p>Configuration is split in two. A handful of <strong>startup / secret</strong> values stay environment variables (they're needed before the database exists, or are secrets). Everything else is a <strong>persisted runtime setting</strong>: the server seeds it from the environment (or a built-in default) on first run, then stores it in the database — so from then on you change it through the <a href="#api-admin">admin settings API</a> (and any GUI built on it), not env vars.</p>
 <pre><code>SPHYNX_PORT=9000 SPHYNX_ADMIN_PASSWORD='a-strong-secret' swift run SphynxServer</code></pre>
 
+<h4>Startup &amp; secrets — environment only</h4>
 <table>
   <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
   <tr><td><code>SPHYNX_HOST</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
   <tr><td><code>SPHYNX_PORT</code></td><td><code>8080</code></td><td>Bind port</td></tr>
-  <tr><td><code>SPHYNX_SERVER_NAME</code></td><td><code>Sphynx Reference Server</code></td><td>Name reported by <code>/v1/info</code></td></tr>
-  <tr><td><code>SPHYNX_SERVER_ID</code></td><td><code>srv_reference</code></td><td>Stable id reported by <code>/v1/info</code></td></tr>
-  <tr><td><code>SPHYNX_VERSION</code></td><td><code>1.0</code></td><td>Version reported by <code>/v1/info</code></td></tr>
   <tr><td><code>SPHYNX_DB_PATH</code></td><td><code>data/sphynx.sqlite</code></td><td>SQLite path (<code>:memory:</code> = ephemeral, lost on restart)</td></tr>
   <tr><td><code>SPHYNX_ADMIN_USERNAME</code></td><td><code>admin</code></td><td>Bootstrap admin (first run only)</td></tr>
   <tr><td><code>SPHYNX_ADMIN_PASSWORD</code></td><td><code>changeme</code></td><td>Bootstrap admin password — <strong>change this</strong></td></tr>
-  <tr><td><code>SPHYNX_ACCESS_TTL</code></td><td><code>3600</code></td><td>Access-token lifetime (seconds)</td></tr>
-  <tr><td><code>SPHYNX_REFRESH_TTL</code></td><td><code>2592000</code></td><td>Refresh-token lifetime (seconds, 30d)</td></tr>
   <tr><td><code>SPHYNX_TMDB_API_KEY</code></td><td><em>(empty)</em></td><td>TMDB v3 key; empty disables identification/enrichment</td></tr>
-  <tr><td><code>SPHYNX_ENRICH_TTL</code></td><td><code>7776000</code> (90d)</td><td>Server-owned enrichment freshness; re-fetched by maintenance</td></tr>
-  <tr><td><code>SPHYNX_MARKERS_ACCESS</code></td><td><code>readwrite</code></td><td>Marker access: <code>none</code> | <code>read</code> | <code>readwrite</code> (writes still granted per-user)</td></tr>
-  <tr><td><code>SPHYNX_MARKERS_STALE_AFTER</code></td><td><code>604800</code> (7d)</td><td>Age after which markers are reported <code>stale</code> for client refresh</td></tr>
-  <tr><td><code>SPHYNX_PLAYSTATE_RETENTION</code></td><td><code>31536000</code> (365d)</td><td>Playstate retention; older entries purged by maintenance</td></tr>
-  <tr><td><code>SPHYNX_MAINTENANCE_INTERVAL</code></td><td><code>86400</code> (1d)</td><td>Background maintenance interval; <code>0</code> disables it</td></tr>
 </table>
+
+<h4>Runtime settings — seeded from env on first run, then edited via the API</h4>
+<p>These are read/written at <code>GET</code>/<code>PATCH /v1/admin/settings</code>. The env var (shown for the first-run seed) and the JSON field name are listed; changes apply on the next restart. Durations are in seconds.</p>
+<table>
+  <tr><th>Setting (JSON)</th><th>First-run env seed</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code>serverName</code></td><td><code>SPHYNX_SERVER_NAME</code></td><td><code>Sphynx Reference Server</code></td><td>Name reported by <code>/v1/info</code></td></tr>
+  <tr><td><code>serverID</code></td><td><code>SPHYNX_SERVER_ID</code></td><td><code>srv_reference</code></td><td>Stable id reported by <code>/v1/info</code></td></tr>
+  <tr><td><code>accessTokenTTL</code></td><td><code>SPHYNX_ACCESS_TTL</code></td><td><code>3600</code></td><td>Access-token lifetime</td></tr>
+  <tr><td><code>refreshTokenTTL</code></td><td><code>SPHYNX_REFRESH_TTL</code></td><td><code>2592000</code> (30d)</td><td>Refresh-token lifetime</td></tr>
+  <tr><td><code>enrichmentTTL</code></td><td><code>SPHYNX_ENRICH_TTL</code></td><td><code>7776000</code> (90d)</td><td>Server-owned enrichment freshness</td></tr>
+  <tr><td><code>markersAccess</code></td><td><code>SPHYNX_MARKERS_ACCESS</code></td><td><code>readwrite</code></td><td><code>none</code> | <code>read</code> | <code>readwrite</code> (writes still granted per-user)</td></tr>
+  <tr><td><code>markersStaleAfter</code></td><td><code>SPHYNX_MARKERS_STALE_AFTER</code></td><td><code>604800</code> (7d)</td><td>Age after which markers are reported <code>stale</code></td></tr>
+  <tr><td><code>playstateRetention</code></td><td><code>SPHYNX_PLAYSTATE_RETENTION</code></td><td><code>31536000</code> (365d)</td><td>Playstate retention before purge</td></tr>
+  <tr><td><code>maintenanceInterval</code></td><td><code>SPHYNX_MAINTENANCE_INTERVAL</code></td><td><code>86400</code> (1d)</td><td>Background maintenance interval; <code>0</code> disables it</td></tr>
+</table>
+<div class="callout note">
+  <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
+</div>
 
 <div class="callout tip">
   <p>For a throwaway test server that leaves nothing behind, set <code>SPHYNX_DB_PATH=:memory:</code>. The database (and your admin account, libraries, items) vanish on restart.</p>
@@ -674,7 +683,14 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>The server only stores and exposes the data (per-user position + <code>updatedAt</code>, ordered by recency) — <strong>the client owns presentation and policy</strong>: it has each item's runtime, so it decides what counts as "finished", whether to hide it, how to sort.</p>
 
 <h3 id="api-admin">Admin <span class="badge auth">server-specific, not part of the wire protocol</span></h3>
-<p>Catalog setup, indexing, and manual entry. <strong>Auth required</strong>, and the <strong>admin role</strong> unless noted — the item-edit <code>PATCH</code> is gated by the <code>metadata.edit</code> permission instead, so it can be granted to a non-admin. <code>403 forbidden</code> otherwise.</p>
+<p>Catalog setup, indexing, manual entry, and server settings. <strong>Auth required</strong>, and the <strong>admin role</strong> unless noted — the item-edit <code>PATCH</code> is gated by the <code>metadata.edit</code> permission instead, so it can be granted to a non-admin. <code>403 forbidden</code> otherwise.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/settings</span></div>
+<p>The current persisted <a href="#config">runtime settings</a>. <strong>200</strong> →
+<code>{ "serverName":"…", "serverID":"…", "accessTokenTTL":3600, "refreshTokenTTL":2592000, "enrichmentTTL":7776000, "markersAccess":"readwrite", "markersStaleAfter":604800, "playstateRetention":31536000, "maintenanceInterval":86400 }</code>.</p>
+
+<div class="ep"><span class="method badge put">PATCH</span><span class="path">/v1/admin/settings</span></div>
+<p>Update runtime settings — any subset of the fields above. <strong>Body</strong> e.g. <code>{ "serverName":"My Library", "markersAccess":"read" }</code> → <strong>200</strong> with the full updated settings. Changes are persisted and apply on the next restart. <code>400</code> if <code>markersAccess</code> isn't <code>none</code>/<code>read</code>/<code>readwrite</code>.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/libraries</span></div>
 <p><strong>Body</strong> <code>{ "title":"Movies", "kind":"movies" }</code> (<code>kind</code> defaults to <code>other</code>). <strong>200</strong> → <code>{ "id":"lib_…", "title":"Movies", "kind":"movies" }</code>.</p>

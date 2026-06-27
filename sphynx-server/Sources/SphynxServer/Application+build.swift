@@ -15,7 +15,8 @@ func buildRouter(
     indexer: Indexer,
     enrichment: EnrichmentService?,
     playstate: PlaystateService,
-    policy: AccessPolicy
+    policy: AccessPolicy,
+    settings: SettingsStore
 ) -> Router<SphynxRequestContext> {
     let router = Router(context: SphynxRequestContext.self)
 
@@ -36,7 +37,8 @@ func buildRouter(
     ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
     PlaystateController(playstate: playstate).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter).addRoutes(to: securedV1)
-    AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment).addRoutes(to: securedV1)
+    AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
+                    settings: settings, configuration: configuration).addRoutes(to: securedV1)
 
     return router
 }
@@ -46,16 +48,21 @@ func buildRouter(
 ///
 /// `httpFetcher` is injectable so tests can supply a manifest without network.
 func buildApplication(
-    configuration: ServerConfiguration,
+    configuration envConfiguration: ServerConfiguration,
     httpFetcher: (any HTTPFetching)? = nil,
     tmdbClient: (any TMDBClient)? = nil
 ) async throws -> some ApplicationProtocol {
     var logger = Logger(label: "sphynx")
     logger.logLevel = .info
 
-    let database = try (configuration.databasePath == ":memory:")
+    let database = try (envConfiguration.databasePath == ":memory:")
         ? AppDatabase.makeInMemory()
-        : AppDatabase.makeOnDisk(path: configuration.databasePath)
+        : AppDatabase.makeOnDisk(path: envConfiguration.databasePath)
+
+    // Persisted settings are the source of truth for runtime-tunable config
+    // (server name, TTLs, marker access, …). Env vars only seed them on first run.
+    let settingsStore = SettingsStore(db: database)
+    let configuration = try await envConfiguration.resolvingSettings(store: settingsStore)
 
     let auth = AuthService(
         db: database,
@@ -108,7 +115,8 @@ func buildApplication(
         indexer: indexer,
         enrichment: enrichment,
         playstate: playstate,
-        policy: policy
+        policy: policy,
+        settings: settingsStore
     )
 
     // Background maintenance: TTL-refresh stale enrichment + purge old playstate.

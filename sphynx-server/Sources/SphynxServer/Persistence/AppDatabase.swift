@@ -241,6 +241,16 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m13_settings") { db in
+            // Persisted runtime configuration (server name, TTLs, marker access, …)
+            // so the server is configured via the admin API / GUI rather than env
+            // vars. Key/value; seeded from env + defaults on first run.
+            try db.create(table: "setting") { t in
+                t.primaryKey("key", .text)
+                t.column("value", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

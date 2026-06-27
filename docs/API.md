@@ -274,9 +274,27 @@ via `GET /v1/playstate?items=…` (each entry carries `updatedAt`).
 
 ## Admin (server-specific, not part of the wire protocol)
 
-Catalog setup, indexing, and manual entry. **Auth required**, and the **admin
-role** unless noted — the item-edit `PATCH` is gated by the `metadata.edit`
-permission instead. `403 forbidden` otherwise.
+Catalog setup, indexing, manual entry, and server settings. **Auth required**, and
+the **admin role** unless noted — the item-edit `PATCH` is gated by the
+`metadata.edit` permission instead. `403 forbidden` otherwise.
+
+### `GET /v1/admin/settings`
+
+The current persisted runtime settings (configured here rather than via env vars;
+env vars only seed them on first run). **200** →
+```json
+{ "serverName": "…", "serverID": "…", "accessTokenTTL": 3600,
+  "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "markersAccess": "readwrite",
+  "markersStaleAfter": 604800, "playstateRetention": 31536000, "maintenanceInterval": 86400 }
+```
+
+### `PATCH /v1/admin/settings`
+
+Update any subset of the runtime settings. **Body** e.g.
+`{ "serverName": "My Library", "markersAccess": "read", "enrichmentTTL": 1209600 }`
+→ **200** with the full updated settings. Persisted; applies on the next restart.
+**400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
+(host, port, DB path, admin bootstrap, TMDB key) remain environment variables.
 
 ### `POST /v1/admin/libraries`
 

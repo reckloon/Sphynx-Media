@@ -11,9 +11,15 @@ struct AdminController: Sendable {
     let auth: AuthService
     /// Present only when TMDB is configured.
     let enrichment: EnrichmentService?
+    /// Persisted runtime settings (server name, TTLs, marker access, …).
+    let settings: SettingsStore
+    /// The effective configuration this process booted with (for GET fallback).
+    let configuration: ServerConfiguration
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let admin = group.group("admin")
+        admin.get("settings", use: getSettings)
+        admin.patch("settings", use: updateSettings)
         admin.post("libraries", use: createLibrary)
         admin.get("libraries", use: listLibraries)
         admin.patch("libraries/:libraryId", use: updateLibrary)
@@ -90,6 +96,41 @@ struct AdminController: Sendable {
         guard !body.title.isEmpty else { throw SphynxError.badRequest("title is required") }
         let record = try await catalog.createLibrary(title: body.title, kind: body.kind ?? "other")
         return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
+    }
+
+    /// Current persisted runtime settings (stored values, falling back to what the
+    /// server booted with for any not-yet-stored key).
+    @Sendable
+    func getSettings(_ request: Request, context: SphynxRequestContext) async throws -> SettingsResponse {
+        try requireAdmin(context)
+        let effective = configuration.applying(try await settings.all())
+        return SettingsResponse(from: effective)
+    }
+
+    /// Update runtime settings. Only the provided keys change; values are
+    /// persisted and take effect on the next restart.
+    @Sendable
+    func updateSettings(_ request: Request, context: SphynxRequestContext) async throws -> SettingsResponse {
+        try requireAdmin(context)
+        let body = try await request.decode(as: UpdateSettingsRequest.self, context: context)
+        var updates: [String: String] = [:]
+        if let v = body.serverName { updates[SettingKey.serverName.rawValue] = v }
+        if let v = body.serverID { updates[SettingKey.serverID.rawValue] = v }
+        if let v = body.accessTokenTTL { updates[SettingKey.accessTokenTTL.rawValue] = String(v) }
+        if let v = body.refreshTokenTTL { updates[SettingKey.refreshTokenTTL.rawValue] = String(v) }
+        if let v = body.enrichmentTTL { updates[SettingKey.enrichmentTTL.rawValue] = String(v) }
+        if let v = body.markersAccess {
+            guard ["none", "read", "readwrite"].contains(v) else {
+                throw SphynxError.badRequest("markersAccess must be none | read | readwrite")
+            }
+            updates[SettingKey.markersAccess.rawValue] = v
+        }
+        if let v = body.markersStaleAfter { updates[SettingKey.markersStaleAfter.rawValue] = String(v) }
+        if let v = body.playstateRetention { updates[SettingKey.playstateRetention.rawValue] = String(v) }
+        if let v = body.maintenanceInterval { updates[SettingKey.maintenanceInterval.rawValue] = String(v) }
+        try await settings.set(updates)
+        let effective = configuration.applying(try await settings.all())
+        return SettingsResponse(from: effective)
     }
 
     @Sendable
@@ -374,6 +415,45 @@ struct LibraryResponse: Codable, Sendable, ResponseEncodable {
     var id: String
     var title: String
     var kind: String
+}
+
+/// The runtime-tunable settings (the ones configured via the API/GUI rather than
+/// an environment variable). Durations are in **seconds**.
+struct SettingsResponse: Codable, Sendable, ResponseEncodable {
+    var serverName: String
+    var serverID: String
+    var accessTokenTTL: Double
+    var refreshTokenTTL: Double
+    var enrichmentTTL: Double
+    var markersAccess: String
+    var markersStaleAfter: Double
+    var playstateRetention: Double
+    var maintenanceInterval: Double
+
+    init(from c: ServerConfiguration) {
+        self.serverName = c.serverName
+        self.serverID = c.serverID
+        self.accessTokenTTL = c.accessTokenTTL
+        self.refreshTokenTTL = c.refreshTokenTTL
+        self.enrichmentTTL = c.enrichmentTTL
+        self.markersAccess = c.markersAccess
+        self.markersStaleAfter = c.markersStaleAfter
+        self.playstateRetention = c.playstateRetention
+        self.maintenanceInterval = c.maintenanceInterval
+    }
+}
+
+/// Partial update of the runtime settings — only the keys present are changed.
+struct UpdateSettingsRequest: Codable, Sendable {
+    var serverName: String?
+    var serverID: String?
+    var accessTokenTTL: Double?
+    var refreshTokenTTL: Double?
+    var enrichmentTTL: Double?
+    var markersAccess: String?
+    var markersStaleAfter: Double?
+    var playstateRetention: Double?
+    var maintenanceInterval: Double?
 }
 
 struct UpdateLibraryRequest: Codable, Sendable {

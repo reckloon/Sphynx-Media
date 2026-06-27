@@ -52,6 +52,13 @@ curl http://localhost:8080/v1/info
 | `SPHYNX_PLAYSTATE_RETENTION` | `31536000` (365d)     | Playstate retention; older entries purged by maintenance |
 | `SPHYNX_MAINTENANCE_INTERVAL`| `86400` (1d)          | Background maintenance interval; `0` disables it |
 
+Only the **startup/secret** vars (`SPHYNX_HOST`, `SPHYNX_PORT`, `SPHYNX_DB_PATH`,
+`SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. The rest are
+**runtime settings**: the env var seeds them on first run, after which they're
+stored in the database and edited via `GET`/`PATCH /v1/admin/settings` (env
+changes for those keys no longer take effect). See the
+[guide → Configuration](https://reckloon.github.io/Sphynx-Media/#config).
+
 ### Quick API tour (login → manual entry → resolve)
 
 ```sh

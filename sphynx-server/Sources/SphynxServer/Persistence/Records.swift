@@ -109,6 +109,14 @@ struct SourceRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     }
 }
 
+/// A persisted runtime configuration value (`setting` table), key → string value.
+struct SettingRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "setting"
+
+    var key: String
+    var value: String
+}
+
 /// Per-user resume position, row-scoped to `(userId, itemId)`.
 struct PlaystateRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "playstate"
