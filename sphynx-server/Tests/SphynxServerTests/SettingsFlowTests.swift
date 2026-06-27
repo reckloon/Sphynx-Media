@@ -47,6 +47,20 @@ struct SettingsFlowTests {
         }
     }
 
+    @Test("the web settings page is served at /admin")
+    func webPageServed() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/admin", method: .get) { response in
+                #expect(response.status == .ok)
+                let body = String(buffer: response.body)
+                #expect(body.contains("<!DOCTYPE html>"))
+                #expect(body.contains("Runtime settings"))
+                #expect(body.contains("/v1/admin/settings"))  // wired to the API
+            }
+        }
+    }
+
     @Test("invalid markersAccess is rejected; non-admins can't read settings")
     func validationAndAccess() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

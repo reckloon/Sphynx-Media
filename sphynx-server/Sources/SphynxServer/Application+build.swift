@@ -24,11 +24,12 @@ func buildRouter(
     router.add(middleware: ErrorMiddleware())
     router.add(middleware: LogRequestsMiddleware(.info))
 
-    // Public surface: discovery + auth.
+    // Public surface: discovery + auth + the static web admin page.
     let authController = AuthController(auth: auth, policy: policy)
     let publicV1 = router.group("v1")
     InfoController(configuration: configuration, policy: policy).addRoutes(to: publicV1)
     authController.addRoutes(to: publicV1)
+    AdminWebController.addRoutes(to: router)
 
     // Secured surface: everything else requires a valid bearer token.
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
