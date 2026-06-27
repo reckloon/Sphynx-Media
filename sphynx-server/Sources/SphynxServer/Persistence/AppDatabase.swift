@@ -172,6 +172,17 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m8_item_tv") { db in
+            // TV positioning (series → season → episode), denormalised for clients.
+            try db.alter(table: "item") { t in
+                t.add(column: "seriesId", .text)
+                t.add(column: "seriesTitle", .text)
+                t.add(column: "seasonIndex", .integer)
+                t.add(column: "episodeIndex", .integer)
+                t.add(column: "childCount", .integer)
+            }
+        }
+
         return migrator
     }
 }

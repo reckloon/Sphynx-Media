@@ -268,11 +268,21 @@ Catalog setup, indexing, and manual entry. **Auth required + admin role**
 
 The manifest is a simple JSON document the indexer reads (metadata, not media):
 ```json
-{ "items": [ { "key": "BigBuckBunny_320x180.mp4", "title": "Big Buck Bunny",
-              "type": "movie", "container": "mp4", "year": 2008 } ] }
+{ "items": [
+    { "key": "BigBuckBunny_320x180.mp4", "title": "Big Buck Bunny", "type": "movie", "year": 2008 },
+    { "key": "Breaking.Bad.S01E01.mkv", "container": "mkv" }
+] }
 ```
 `key` is resolved into a direct URL (relative to the source `baseURL`, or
 absolute). `file://` manifest URLs are read from disk (useful for local setups).
+
+**TV** is detected from the filename (`S01E02`, `1x05`, …): the indexer builds a
+**series → season → episode** tree, deduping shared series/seasons, and (when TMDB
+is configured) identifies the series and enriches series posters, season posters,
+and episode stills/titles/overviews. Entries may instead carry explicit
+`seriesTitle` / `season` / `episode` hints. Browse the tree via `parent=` —
+library → series → seasons → episodes — with `seriesId`, `seasonIndex`,
+`episodeIndex`, and `childCount` on each item.
 
 ### `POST /v1/admin/sources/{sourceId}/scan`
 
@@ -401,6 +411,5 @@ clients keep working. `extra` is omitted entirely when empty.
 Defined in the protocol or roadmap but not yet implemented:
 
 - Per-user watched/favorite state; browse sort & filter.
-- TV identification (series/season/episode) — identification currently covers **movies**.
 - `GET /v1/search`.
 - Ranked `candidates` in the `/resolve` descriptor.

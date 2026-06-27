@@ -77,6 +77,10 @@ struct Catalog: Sendable {
         libraryId: String? = nil,
         parentId: String? = nil,
         year: Int? = nil,
+        seriesId: String? = nil,
+        seriesTitle: String? = nil,
+        seasonIndex: Int? = nil,
+        episodeIndex: Int? = nil,
         extra: [String: JSONValue]? = nil
     ) async throws -> ItemRecord {
         if let sourceId, try await source(id: sourceId) == nil {
@@ -99,11 +103,49 @@ struct Catalog: Sendable {
             year: year,
             createdAt: now,
             updatedAt: now,
+            seriesId: seriesId,
+            seriesTitle: seriesTitle,
+            seasonIndex: seasonIndex,
+            episodeIndex: episodeIndex,
             identityPinned: false,
             extraJSON: extraJSON
         )
         try await db.writer.write { db in try record.insert(db) }
         return record
+    }
+
+    /// Find a series container in a library by exact title (for indexer dedup).
+    func seriesItem(libraryId: String, title: String) async throws -> ItemRecord? {
+        try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("libraryId") == libraryId && Column("type") == "series" && Column("title") == title)
+                .fetchOne(db)
+        }
+    }
+
+    /// Find a season container under a series by its season number.
+    func seasonItem(seriesItemId: String, seasonNumber: Int) async throws -> ItemRecord? {
+        try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("parentId") == seriesItemId && Column("type") == "season" && Column("seasonIndex") == seasonNumber)
+                .fetchOne(db)
+        }
+    }
+
+    /// Count an item's direct children (seasons of a series, episodes of a season).
+    func countChildren(parentId: String) async throws -> Int {
+        try await db.writer.read { db in
+            try ItemRecord.filter(Column("parentId") == parentId).fetchCount(db)
+        }
+    }
+
+    /// Persist a container's child count.
+    func setChildCount(itemId: String, count: Int) async throws {
+        try await db.writer.write { db in
+            _ = try ItemRecord
+                .filter(Column("id") == itemId)
+                .updateAll(db, Column("childCount").set(to: count))
+        }
     }
 
     func item(id: String) async throws -> ItemRecord? {
@@ -122,12 +164,13 @@ struct Catalog: Sendable {
         }
     }
 
-    /// Children of a parent item (season → episodes, etc.).
+    /// Children of a parent item, ordered for display: seasons by season number,
+    /// episodes by episode number, falling back to insertion order.
     func childItems(parentId: String, limit: Int, offset: Int) async throws -> [ItemRecord] {
         try await db.writer.read { db in
             try ItemRecord
                 .filter(Column("parentId") == parentId)
-                .order(Column("createdAt"), Column("id"))
+                .order(Column("seasonIndex"), Column("episodeIndex"), Column("createdAt"), Column("id"))
                 .limit(limit + 1, offset: offset)
                 .fetchAll(db)
         }

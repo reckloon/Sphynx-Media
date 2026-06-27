@@ -127,6 +127,14 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var createdAt: Double
     var updatedAt: Double
 
+    // TV positioning (denormalised for the client; nil for movies).
+    var seriesId: String?
+    var seriesTitle: String?
+    var seasonIndex: Int?
+    var episodeIndex: Int?
+    /// Number of direct children (seasons of a series, episodes of a season).
+    var childCount: Int?
+
     // Enrichment (TMDB). Tile-level fields (images/placeholder) appear in both
     // skeleton and full; the rest are full-only.
     var overview: String?
@@ -178,6 +186,11 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             year: year,
             images: images,
             placeholder: placeholderURL.map { .url($0) },
+            seriesId: seriesId,
+            seriesTitle: seriesTitle,
+            seasonIndex: seasonIndex,
+            episodeIndex: episodeIndex,
+            childCount: childCount,
             extra: decodedExtra()
         )
         // Last change to client-rendered data: the max of the per-field change

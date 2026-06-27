@@ -71,6 +71,10 @@ struct StubFetcher: HTTPFetching {
 struct StubTMDBClient: TMDBClient {
     var searchResults: [String: [TMDBSearchResult]] = [:]
     var details: [Int: TMDBMovieDetails] = [:]
+    // TV stubs
+    var tvSearchResults: [String: [TMDBTVSearchResult]] = [:]
+    var tvDetailsByID: [Int: TMDBTVDetails] = [:]
+    var seasonDetailsByID: [Int: [Int: TMDBSeasonDetails]] = [:]  // tvId → season → details
 
     func searchMovie(title: String, year: Int?) async throws -> [TMDBSearchResult] {
         searchResults[title.lowercased()] ?? []
@@ -79,6 +83,24 @@ struct StubTMDBClient: TMDBClient {
     func movieDetails(id: Int) async throws -> TMDBMovieDetails {
         guard let details = details[id] else {
             throw SphynxError.notFound("No stubbed TMDB details for \(id)")
+        }
+        return details
+    }
+
+    func searchTV(title: String) async throws -> [TMDBTVSearchResult] {
+        tvSearchResults[title.lowercased()] ?? []
+    }
+
+    func tvDetails(id: Int) async throws -> TMDBTVDetails {
+        guard let details = tvDetailsByID[id] else {
+            throw SphynxError.notFound("No stubbed TMDB TV details for \(id)")
+        }
+        return details
+    }
+
+    func seasonDetails(tvId: Int, season: Int) async throws -> TMDBSeasonDetails {
+        guard let details = seasonDetailsByID[tvId]?[season] else {
+            throw SphynxError.notFound("No stubbed TMDB season \(tvId)/\(season)")
         }
         return details
     }

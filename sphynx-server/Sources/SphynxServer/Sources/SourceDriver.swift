@@ -10,6 +10,10 @@ struct SourceEntry: Sendable {
     var container: String?
     var year: Int?
     var size: Int?
+    // Optional TV hints (episodes are otherwise detected from the filename).
+    var seriesTitle: String?
+    var season: Int?
+    var episode: Int?
 }
 
 /// A request to turn a source-relative key into a direct location.

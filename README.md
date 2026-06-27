@@ -95,8 +95,9 @@ Built spine-first. Working today:
   rotating refresh tokens; device-scoped sessions.
 - **Browse** — libraries and items (skeleton/full), cursor pagination, single-item
   detail.
-- **Identity & enrichment** — items identified against TMDB with posters,
-  overview, genres, rating, runtime, and cast (movies).
+- **Identity & enrichment** — movies and **TV** identified against TMDB. TV builds
+  a series → season → episode tree (posters, season art, episode stills/titles).
+- **Browse hierarchy** — libraries → series → seasons → episodes via `parent=`.
 - **Resolve** — direct, time-bounded playback location + headers (never proxied).
 - **Playstate** — resume tracking (start/progress/stop) with failed-stop
   protection, `resumePosition` folded into browse, and a continue-watching feed.
@@ -104,8 +105,8 @@ Built spine-first. Working today:
   contributable intro/credit markers; an open `extra` bag for arbitrary
   server-defined metadata. See the [extension guide](docs/EXTENDING.md).
 
-Roadmap: watched/favorites + sort/filter, TV (series/season/episode), search,
-ranked resolve fallbacks, and more source drivers.
+Roadmap: watched/favorites + sort/filter, search, ranked resolve fallbacks, and
+more source drivers.
 
 ## Building / testing
 

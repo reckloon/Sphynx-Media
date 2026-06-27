@@ -31,7 +31,11 @@ struct HTTPDriver: SourceDriver {
             throw SphynxError.badRequest("Malformed source manifest: \(error)")
         }
         return manifest.items.map {
-            SourceEntry(key: $0.key, title: $0.title, type: $0.type, container: $0.container, year: $0.year, size: $0.size)
+            SourceEntry(
+                key: $0.key, title: $0.title, type: $0.type, container: $0.container,
+                year: $0.year, size: $0.size,
+                seriesTitle: $0.seriesTitle, season: $0.season, episode: $0.episode
+            )
         }
     }
 
@@ -73,6 +77,10 @@ struct ManifestEntry: Codable, Sendable {
     var container: String?
     var year: Int?
     var size: Int?
+    // Optional TV hints; episodes are otherwise detected from the key (S01E02…).
+    var seriesTitle: String?
+    var season: Int?
+    var episode: Int?
 }
 
 /// Builds a concrete driver for a source record. The one place that knows the

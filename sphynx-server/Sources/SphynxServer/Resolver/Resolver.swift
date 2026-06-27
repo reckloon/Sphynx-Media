@@ -14,6 +14,11 @@ struct Resolver: Sendable {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
 
+        // Containers (series/season) aren't playable — resolve an episode/movie.
+        guard !item.sourceKey.isEmpty, item.type != "series", item.type != "season" else {
+            throw SphynxError.noMediaSource("'\(item.type)' items are containers, not playable")
+        }
+
         let driver: any SourceDriver
         if let sourceId = item.sourceId {
             guard let source = try await catalog.source(id: sourceId) else {

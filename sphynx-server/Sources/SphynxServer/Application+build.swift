@@ -90,7 +90,12 @@ func buildApplication(
     if enrichment == nil {
         logger.warning("TMDB not configured — items will not be identified/enriched (set SPHYNX_TMDB_API_KEY).")
     }
-    let indexer = Indexer(catalog: catalog, drivers: drivers, enrichment: enrichment)
+    let indexer = Indexer(
+        catalog: catalog,
+        drivers: drivers,
+        enrichment: enrichment,
+        tv: tmdb.map { TVEnricher(tmdb: $0) }
+    )
     let playstate = PlaystateService(db: database)
     let policy = AccessPolicy.fromConfiguration(configuration)
 
