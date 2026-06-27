@@ -233,6 +233,14 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m12_item_extended_metadata") { db in
+            // Extended TMDB metadata (tagline, studios, directors, externalIds, …),
+            // stored uniformly as one JSON blob and projected onto the Item.
+            try db.alter(table: "item") { t in
+                t.add(column: "extendedJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -84,6 +84,21 @@ struct EnrichmentService: Sendable {
         }
         if !locked.contains(LockableField.placeholder) { item.placeholderURL = fields.placeholderURL }
         if !locked.contains(LockableField.cast) { item.castJSON = Self.encode(fields.cast) }
+
+        // Extended metadata (server-owned; projected onto the canonical Item).
+        let extended = StoredExtended(
+            originalTitle: fields.originalTitle,
+            tagline: fields.tagline,
+            status: fields.status,
+            premiereDate: fields.premiereDate,
+            endDate: nil,
+            studios: fields.studios.isEmpty ? nil : fields.studios,
+            directors: fields.directors.isEmpty ? nil : fields.directors,
+            writers: fields.writers.isEmpty ? nil : fields.writers,
+            countries: fields.countries.isEmpty ? nil : fields.countries,
+            externalIds: fields.externalIds.isEmpty ? nil : fields.externalIds
+        )
+        item.extendedJSON = extended.isEmpty ? nil : Self.encode(extended)
     }
 
     private static func encode(_ value: some Encodable) -> String? {

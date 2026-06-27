@@ -12,6 +12,16 @@ struct EnrichedFields: Sendable {
     var thumbImage: String?
     var placeholderURL: String?
     var cast: [StoredCast]
+    // Extended metadata (optional; defaulted so the TV path needn't set them).
+    var originalTitle: String? = nil
+    var tagline: String? = nil
+    var status: String? = nil
+    var premiereDate: String? = nil
+    var studios: [String] = []
+    var directors: [String] = []
+    var writers: [String] = []
+    var countries: [String] = []
+    var externalIds: [String: String] = [:]
 }
 
 /// Given a TMDB id, fetch metadata and map it to the protocol's enrichment
@@ -43,7 +53,16 @@ struct Enricher: Sendable {
                     imageURL: TMDBImage.url(member.profilePath, size: "w185"),
                     placeholderURL: TMDBImage.url(member.profilePath, size: "w92")
                 )
-            }
+            },
+            originalTitle: (details.originalTitle == details.title) ? nil : details.originalTitle,
+            tagline: details.tagline,
+            status: details.status,
+            premiereDate: details.releaseDate,
+            studios: details.studios,
+            directors: details.directors,
+            writers: details.writers,
+            countries: details.countries,
+            externalIds: details.imdbId.map { ["imdb": $0] } ?? [:]
         )
     }
 }

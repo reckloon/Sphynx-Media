@@ -30,6 +30,17 @@ struct TMDBMovieDetails: Sendable {
     var posterPath: String?
     var backdropPath: String?
     var cast: [TMDBCastMember]
+    // Extended metadata (optional; defaulted so stubs/TV need not set them).
+    var originalTitle: String? = nil
+    var tagline: String? = nil
+    var imdbId: String? = nil
+    var status: String? = nil
+    /// Release date, full "YYYY-MM-DD".
+    var releaseDate: String? = nil
+    var studios: [String] = []
+    var directors: [String] = []
+    var writers: [String] = []
+    var countries: [String] = []
 }
 
 struct TMDBCastMember: Sendable {
@@ -123,6 +134,7 @@ struct TMDBHTTPClient: TMDBClient {
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawMovieDetails.self, from: data)
+        let crew = raw.credits?.crew ?? []
         return TMDBMovieDetails(
             id: raw.id,
             title: raw.title ?? "",
@@ -135,7 +147,16 @@ struct TMDBHTTPClient: TMDBClient {
             backdropPath: raw.backdrop_path,
             cast: (raw.credits?.cast ?? []).map {
                 TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
-            }
+            },
+            originalTitle: raw.original_title,
+            tagline: (raw.tagline?.isEmpty ?? true) ? nil : raw.tagline,
+            imdbId: (raw.imdb_id?.isEmpty ?? true) ? nil : raw.imdb_id,
+            status: raw.status,
+            releaseDate: raw.release_date,
+            studios: raw.production_companies?.map(\.name) ?? [],
+            directors: crew.filter { $0.job == "Director" }.map(\.name),
+            writers: crew.filter { $0.department == "Writing" }.map(\.name),
+            countries: raw.production_countries?.map(\.name) ?? []
         )
     }
 
@@ -215,13 +236,19 @@ private struct RawMovie: Decodable {
 private struct RawMovieDetails: Decodable {
     var id: Int
     var title: String?
+    var original_title: String?
     var overview: String?
+    var tagline: String?
+    var imdb_id: String?
+    var status: String?
     var release_date: String?
     var runtime: Int?
     var genres: [RawGenre]?
     var vote_average: Double?
     var poster_path: String?
     var backdrop_path: String?
+    var production_companies: [RawNamed]?
+    var production_countries: [RawNamed]?
     var credits: RawCredits?
 }
 
@@ -229,8 +256,20 @@ private struct RawGenre: Decodable {
     var name: String
 }
 
+/// A TMDB object reduced to its `name` (production companies, countries, …).
+private struct RawNamed: Decodable {
+    var name: String
+}
+
 private struct RawCredits: Decodable {
     var cast: [RawCast]
+    var crew: [RawCrew]?
+}
+
+private struct RawCrew: Decodable {
+    var name: String
+    var job: String?
+    var department: String?
 }
 
 private struct RawCast: Decodable {

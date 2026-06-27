@@ -128,6 +128,30 @@ struct StoredCast: Codable, Sendable {
     var placeholderURL: String?
 }
 
+/// Extended TMDB metadata persisted uniformly as one JSON blob (`item.extendedJSON`)
+/// and projected onto the canonical `Item` fields. Open by design — new keys can
+/// be added without a migration; older rows simply lack them.
+struct StoredExtended: Codable, Sendable {
+    var originalTitle: String?
+    var tagline: String?
+    var status: String?
+    var premiereDate: String?
+    var endDate: String?
+    var studios: [String]?
+    var directors: [String]?
+    var writers: [String]?
+    var countries: [String]?
+    var externalIds: [String: String]?
+
+    /// Nil when nothing is set (so an empty blob isn't persisted).
+    var isEmpty: Bool {
+        originalTitle == nil && tagline == nil && status == nil && premiereDate == nil
+            && endDate == nil && (studios?.isEmpty ?? true) && (directors?.isEmpty ?? true)
+            && (writers?.isEmpty ?? true) && (countries?.isEmpty ?? true)
+            && (externalIds?.isEmpty ?? true)
+    }
+}
+
 /// A catalog item: identity, structure, and TMDB enrichment.
 struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "item"
@@ -195,6 +219,16 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// uniformly as JSON text. Enrichment + re-scan skip any field in this set.
     var lockedFieldsJSON: String?
 
+    /// Extended TMDB metadata (tagline, studios, directors, externalIds, …),
+    /// stored uniformly as one JSON blob and projected onto the `Item`.
+    var extendedJSON: String?
+
+    /// Decoded extended metadata (nil if none / malformed).
+    func extended() -> StoredExtended? {
+        guard let extendedJSON, let data = extendedJSON.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(StoredExtended.self, from: data)
+    }
+
     /// The set of locked field keys (empty if none / malformed).
     func lockedFields() -> Set<String> {
         guard let lockedFieldsJSON, let data = lockedFieldsJSON.data(using: .utf8),
@@ -234,6 +268,8 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
         if let latest = [updatedAt, enrichedAt, markersUpdatedAt].compactMap({ $0 }).max() {
             item.updatedAt = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: latest))
         }
+        // When the item entered the library (tile-level, for "Recently Added").
+        item.dateAdded = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: createdAt))
         if full {
             item.overview = overview
             item.runtime = runtime
@@ -241,6 +277,19 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             item.communityRating = communityRating
             item.officialRating = officialRating
             item.cast = decodedCast()
+            // Extended TMDB metadata (omitted fields stay nil — nothing breaks).
+            if let ext = extended() {
+                item.originalTitle = ext.originalTitle
+                item.tagline = ext.tagline
+                item.status = ext.status
+                item.premiereDate = ext.premiereDate
+                item.endDate = ext.endDate
+                item.studios = ext.studios?.isEmpty == false ? ext.studios : nil
+                item.directors = ext.directors?.isEmpty == false ? ext.directors : nil
+                item.writers = ext.writers?.isEmpty == false ? ext.writers : nil
+                item.countries = ext.countries?.isEmpty == false ? ext.countries : nil
+                item.externalIds = ext.externalIds?.isEmpty == false ? ext.externalIds : nil
+            }
         }
         return item
     }
