@@ -1,0 +1,22 @@
+# Runs the Sphynx reference server in a Linux container.
+#
+# The build context is the PARENT directory so the sibling sphynx-protocol
+# package is reachable (see Dockerfile header). Run from the sphynx-server
+# folder with:
+#
+#   docker compose up --build
+#
+# then:  curl http://localhost:8080/v1/info
+services:
+  sphynx:
+    build:
+      context: ..
+      dockerfile: sphynx-server/Dockerfile
+    image: sphynx-server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      SPHYNX_HOST: "0.0.0.0"
+      SPHYNX_PORT: "8080"
+      SPHYNX_SERVER_NAME: "Sphynx (Docker)"
+    restart: unless-stopped

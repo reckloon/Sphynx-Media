@@ -1,0 +1,12 @@
+.build
+.build/
+.swiftpm/
+.DS_Store
+*.xcodeproj
+xcuserdata/
+
+# Local runtime artifacts (catalog/user DB land here in later milestones)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+/data/
