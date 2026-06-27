@@ -33,7 +33,7 @@ func buildRouter(
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
     authController.addSecuredRoutes(to: securedV1)
     BrowseController(catalog: catalog, playstate: playstate).addRoutes(to: securedV1)
-    ResolveController(resolver: resolver).addRoutes(to: securedV1)
+    ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
     PlaystateController(playstate: playstate).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment).addRoutes(to: securedV1)

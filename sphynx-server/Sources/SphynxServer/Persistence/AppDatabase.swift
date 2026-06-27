@@ -195,6 +195,36 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m10_user_permissions") { db in
+            // Generalize the narrow per-user `writeGrantsJSON` into an open
+            // permission set (`permissionsJSON`), stored uniformly as JSON text.
+            // The old column is left in place (unused) for simplicity.
+            try db.alter(table: "user") { t in
+                t.add(column: "permissionsJSON", .text)
+            }
+            // Backfill existing non-admin users: carry their old write grants
+            // forward (markers → metadata.markers.write, images →
+            // metadata.images.write) and grant `library.read` so they keep
+            // browsing. Admins hold everything implicitly, so they need nothing.
+            let rows = try Row.fetchAll(db, sql: "SELECT id, isAdmin, writeGrantsJSON FROM user")
+            for row in rows {
+                let isAdmin: Bool = row["isAdmin"] ?? false
+                if isAdmin { continue }
+                var keys: Set<String> = [Permissions.libraryRead]
+                if let grantsJSON: String = row["writeGrantsJSON"],
+                   let data = grantsJSON.data(using: .utf8),
+                   let grants = try? JSONDecoder().decode([String].self, from: data) {
+                    for grant in grants {
+                        keys.insert(Permissions.writeKeyForField[grant] ?? grant)
+                    }
+                }
+                let json = String(data: try JSONEncoder().encode(keys.sorted()), encoding: .utf8)
+                let id: String = row["id"] ?? ""
+                try db.execute(sql: "UPDATE user SET permissionsJSON = ? WHERE id = ?",
+                               arguments: [json, id])
+            }
+        }
+
         return migrator
     }
 }

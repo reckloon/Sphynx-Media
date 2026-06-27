@@ -21,10 +21,22 @@ struct AdminController: Sendable {
         admin.post("items/:itemId/identity", use: setIdentity)
         admin.post("items/:itemId/enrich", use: enrichItem)
         admin.post("enrich", use: enrichAll)
+        admin.get("users", use: listUsers)
         admin.post("users", use: createUser)
-        admin.post("users/:userId/grants", use: setGrants)
+        admin.delete("users/:userId", use: deleteUser)
+        admin.put("users/:userId/permissions", use: setPermissions)
     }
 
+    @Sendable
+    func listUsers(_ request: Request, context: SphynxRequestContext) async throws -> AdminUsersResponse {
+        try requireAdmin(context)
+        let users = try await auth.listUsers()
+        return AdminUsersResponse(users: users.map(AdminUserResponse.init(from:)))
+    }
+
+    /// Create a non-admin user. There is exactly one admin (the bootstrap
+    /// account), so any `isAdmin` in the body is ignored. New users default to
+    /// `library.read` (browse + play) when no permissions are supplied.
     @Sendable
     func createUser(_ request: Request, context: SphynxRequestContext) async throws -> AdminUserResponse {
         try requireAdmin(context)
@@ -36,21 +48,30 @@ struct AdminController: Sendable {
             username: body.username,
             password: body.password,
             displayName: body.displayName,
-            isAdmin: body.isAdmin ?? false,
-            writeGrants: body.writeGrants ?? []
+            permissions: body.permissions ?? Permissions.newUserDefault
         )
         return AdminUserResponse(from: user)
     }
 
     @Sendable
-    func setGrants(_ request: Request, context: SphynxRequestContext) async throws -> AdminUserResponse {
+    func setPermissions(_ request: Request, context: SphynxRequestContext) async throws -> AdminUserResponse {
         try requireAdmin(context)
         guard let userId = context.parameters.get("userId") else {
             throw SphynxError.badRequest("Missing user id")
         }
-        let body = try await request.decode(as: SetGrantsRequest.self, context: context)
-        let user = try await auth.setWriteGrants(userId: userId, grants: body.writeGrants)
+        let body = try await request.decode(as: SetPermissionsRequest.self, context: context)
+        let user = try await auth.setPermissions(userId: userId, permissions: body.permissions)
         return AdminUserResponse(from: user)
+    }
+
+    @Sendable
+    func deleteUser(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        guard let userId = context.parameters.get("userId") else {
+            throw SphynxError.badRequest("Missing user id")
+        }
+        try await auth.deleteUser(userId: userId)
+        return Response(status: .noContent)
     }
 
     @Sendable
@@ -250,12 +271,15 @@ struct CreateUserRequest: Codable, Sendable {
     var username: String
     var password: String
     var displayName: String?
+    /// Ignored — there is exactly one admin (the bootstrap account). Kept for
+    /// forward/backward compatibility of the request shape.
     var isAdmin: Bool?
-    var writeGrants: [String]?
+    /// Initial permission keys. Defaults to `library.read` when omitted.
+    var permissions: [String]?
 }
 
-struct SetGrantsRequest: Codable, Sendable {
-    var writeGrants: [String]
+struct SetPermissionsRequest: Codable, Sendable {
+    var permissions: [String]
 }
 
 struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
@@ -263,15 +287,21 @@ struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
     var username: String
     var displayName: String
     var isAdmin: Bool
-    var writeGrants: [String]
+    var permissions: [String]
 
     init(from user: UserRecord) {
         self.id = user.id
         self.username = user.username
         self.displayName = user.displayName
         self.isAdmin = user.isAdmin
-        self.writeGrants = Array(user.writeGrants()).sorted()
+        // The admin holds everything implicitly; reflect that rather than its
+        // (empty) stored set.
+        self.permissions = user.isAdmin ? Permissions.wellKnown.sorted() : Array(user.permissions()).sorted()
     }
+}
+
+struct AdminUsersResponse: Codable, Sendable, ResponseEncodable {
+    var users: [AdminUserResponse]
 }
 
 struct SetIdentityRequest: Codable, Sendable {

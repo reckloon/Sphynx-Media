@@ -159,6 +159,22 @@ struct Catalog: Sendable {
         try await db.writer.read { db in try ItemRecord.filter(Column("id") == id).fetchOne(db) }
     }
 
+    /// The library an item belongs to. Seasons/episodes inherit their series'
+    /// library, so walk up the parent chain when the item carries no `libraryId`
+    /// of its own. Returns nil for an orphaned/self-contained item.
+    func owningLibraryId(of item: ItemRecord) async throws -> String? {
+        if let libraryId = item.libraryId { return libraryId }
+        var current = item
+        var hops = 0
+        while let parentId = current.parentId, hops < 8 {
+            guard let parent = try await self.item(id: parentId) else { return nil }
+            if let libraryId = parent.libraryId { return libraryId }
+            current = parent
+            hops += 1
+        }
+        return nil
+    }
+
     /// Top-level items of a library (no parent), ordered stably. Fetches
     /// `limit + 1` so the caller can tell whether another page exists.
     func topLevelItems(libraryId: String, limit: Int, offset: Int) async throws -> [ItemRecord] {

@@ -8,29 +8,47 @@ struct AuthIdentity: Sendable {
     let displayName: String
     let avatarURL: String?
     let sessionId: String
-    /// Metadata fields this user may contribute (admins may write anything).
-    let writeGrants: Set<String>
+    /// The permission keys this user holds. The admin holds everything
+    /// implicitly, so this set is ignored for admins.
+    let permissions: Set<String>
 
-    /// Effective write permission for a field given the server's policy:
-    /// the server must allow the field as `readwrite` AND the user must be
-    /// granted it (admins are always granted).
-    func canWrite(_ field: String, policy: AccessPolicy) -> Bool {
-        guard policy.access(field) == .readWrite else { return false }
-        return isAdmin || writeGrants.contains(field)
+    /// Whether this user holds a permission. The admin holds all permissions.
+    /// When `libraryId` is given, a library-scoped grant (`key:<libraryId>`)
+    /// also satisfies the check.
+    func has(_ key: String, inLibrary libraryId: String? = nil) -> Bool {
+        if isAdmin { return true }
+        if permissions.contains(key) { return true }
+        if let libraryId, permissions.contains(Permissions.scoped(key, to: libraryId)) { return true }
+        return false
     }
 
-    /// This user's effective access map, given the server policy (for /auth/me).
+    /// Effective write permission for a metadata field given the server's policy:
+    /// the server must advertise the field as `readwrite` AND the user must hold
+    /// the field's write permission (admins always do).
+    func canWrite(_ field: String, policy: AccessPolicy) -> Bool {
+        guard policy.access(field) == .readWrite else { return false }
+        guard let key = Permissions.writeKeyForField[field] else { return isAdmin }
+        return has(key)
+    }
+
+    /// This user's effective per-field metadata access (for /auth/me): the server
+    /// policy narrowed to what this user may actually do.
     func effectiveAccess(policy: AccessPolicy) -> [String: MetadataAccess] {
         var result: [String: MetadataAccess] = [:]
         for (field, level) in policy.advertised {
-            switch level {
-            case .readWrite:
-                result[field] = (isAdmin || writeGrants.contains(field)) ? .readWrite : .read
-            default:
+            if level == .readWrite, let key = Permissions.writeKeyForField[field] {
+                result[field] = has(key) ? .readWrite : .read
+            } else {
                 result[field] = level
             }
         }
         return result
+    }
+
+    /// This user's effective permission keys (for /auth/me). The admin holds the
+    /// full well-known set; everyone else holds exactly what was granted.
+    func effectivePermissions() -> [String] {
+        (isAdmin ? Set(Permissions.wellKnown) : permissions).sorted()
     }
 }
 
@@ -50,5 +68,13 @@ struct SphynxRequestContext: AuthenticatedRequestContext {
     init(source: Source) {
         self.coreContext = .init(source: source)
         self.identity = nil
+    }
+}
+
+extension AuthenticatedRequestContext {
+    /// The authenticated subject, or a 401 if the request slipped past the gate.
+    func requireIdentity() throws -> AuthIdentity {
+        guard let identity else { throw SphynxError.unauthorized("Not authenticated") }
+        return identity
     }
 }

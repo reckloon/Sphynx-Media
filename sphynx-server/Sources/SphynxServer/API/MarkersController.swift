@@ -28,7 +28,9 @@ struct MarkersController: Sendable {
         guard policy.access("markers").allowsRead else {
             throw SphynxError.notFound("Markers are not offered by this server")
         }
+        let identity = try context.requireIdentity()
         let item = try await requireItem(context)
+        try await requireLibraryRead(item, identity)
         guard let info = item.markersInfo(staleAfter: staleAfter) else {
             throw SphynxError.notFound("No markers for this item")
         }
@@ -37,18 +39,17 @@ struct MarkersController: Sendable {
 
     @Sendable
     func contribute(_ request: Request, context: SphynxRequestContext) async throws -> MarkersInfo {
-        guard let identity = context.identity else {
-            throw SphynxError.unauthorized("Not authenticated")
-        }
+        let identity = try context.requireIdentity()
         // Server must allow marker writes at all…
         guard policy.access("markers").allowsWrite else {
             throw SphynxError.forbidden("Markers are read-only on this server")
         }
-        // …and this user must be granted the write (admins always are).
-        guard identity.isAdmin || identity.writeGrants.contains("markers") else {
+        // …and this user must hold the markers-write permission (admins always do).
+        guard identity.has(Permissions.markersWrite) else {
             throw SphynxError.forbidden("You don't have permission to contribute markers")
         }
         var item = try await requireItem(context)
+        try await requireLibraryRead(item, identity)
         let body = try await request.decode(as: MarkerContribution.self, context: context)
 
         // A client contribution must not overwrite authoritative markers.
@@ -82,5 +83,15 @@ struct MarkersController: Sendable {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
         return item
+    }
+
+    /// Markers belong to an item, so reading or contributing them requires read
+    /// access to that item's library (per-library scoping honored).
+    private func requireLibraryRead(_ item: ItemRecord, _ identity: AuthIdentity) async throws {
+        if identity.isAdmin { return }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.libraryRead, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to view this item")
+        }
     }
 }

@@ -24,7 +24,7 @@ struct FreshnessTests {
             // A normal user with the markers grant (so contributions are NON-authoritative).
             let bob: AdminUserResponse = try await client.execute(
                 uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: nil, isAdmin: false, writeGrants: ["markers"]))
+                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: nil, isAdmin: nil, permissions: ["library.read", "metadata.markers.write"]))
             ) { try $0.decoded() }
             _ = bob
             let bobToken = try await login(client, "bob", "pw")
@@ -79,7 +79,7 @@ struct FreshnessTests {
             let admin = try await login(client, "admin", "test-password")
             let bob: AdminUserResponse = try await client.execute(
                 uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: nil, isAdmin: false, writeGrants: ["markers"]))
+                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: nil, isAdmin: nil, permissions: ["library.read", "metadata.markers.write"]))
             ) { try $0.decoded() }
             _ = bob
             let bobToken = try await login(client, "bob", "pw")

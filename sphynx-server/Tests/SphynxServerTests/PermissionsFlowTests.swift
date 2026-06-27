@@ -5,7 +5,7 @@ import SphynxProtocol
 import Testing
 @testable import SphynxServer
 
-@Suite("Per-user permissions + open metadata storage")
+@Suite("Authorization: single admin + per-user permissions")
 struct PermissionsFlowTests {
 
     private func login(_ client: any TestClientProtocol, _ user: String, _ pass: String) async throws -> String {
@@ -15,61 +15,167 @@ struct PermissionsFlowTests {
         ) { try $0.decoded(TokenResponse.self).accessToken }
     }
 
-    @Test("marker writes are per-user: admin grants, then the user may contribute")
-    func perUserGrants() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(markersAccess: "readwrite"))
+    private func createUser(
+        _ client: any TestClientProtocol, admin: String,
+        username: String, password: String, permissions: [String]?
+    ) async throws -> AdminUserResponse {
+        try await client.execute(
+            uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
+            body: try jsonBody(CreateUserRequest(username: username, password: password,
+                                                 displayName: nil, isAdmin: nil, permissions: permissions))
+        ) { #expect($0.status == .ok); return try $0.decoded() }
+    }
+
+    private func createItem(_ client: any TestClientProtocol, admin: String, title: String) async throws -> Item {
+        try await client.execute(
+            uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
+            body: try jsonBody(CreateItemRequest(type: "movie", title: title, sourceId: nil,
+                sourceKey: "https://cdn/\(title).mkv", container: "mkv", tmdbId: nil,
+                libraryId: nil, parentId: nil, year: nil, extra: nil))
+        ) { try $0.decoded() }
+    }
+
+    @Test("created users are never admin and default to library.read")
+    func newUsersAreNonAdminWithBrowse() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
         try await app.test(.router) { client in
             let admin = try await login(client, "admin", "test-password")
 
-            // Admin creates a normal user with NO write grants.
-            let bob: AdminUserResponse = try await client.execute(
-                uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: "Bob", isAdmin: false, writeGrants: nil))
-            ) { #expect($0.status == .ok); return try $0.decoded() }
-            #expect(bob.writeGrants.isEmpty)
+            // Even asking for admin yields a non-admin account.
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: nil)
+            #expect(bob.isAdmin == false)
+            #expect(bob.permissions == ["library.read"])  // sensible default
 
+            // /auth/me reflects the effective permissions.
+            let bobToken = try await login(client, "bob", "pw")
+            let me: MeResponse = try await client.execute(
+                uri: "/v1/auth/me", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { try $0.decoded() }
+            #expect(me.permissions.contains("library.read"))
+            #expect(me.permissions.contains("metadata.markers.write") == false)
+        }
+    }
+
+    @Test("the admin cannot be deleted; other users can")
+    func adminProtected() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let users: AdminUsersResponse = try await client.execute(
+                uri: "/v1/admin/users", method: .get, headers: jsonHeaders(bearer: admin)
+            ) { try $0.decoded() }
+            let adminId = users.users.first(where: { $0.isAdmin })!.id
+
+            // Deleting the admin is forbidden.
+            try await client.execute(
+                uri: "/v1/admin/users/\(adminId)", method: .delete, headers: jsonHeaders(bearer: admin)
+            ) { #expect($0.status == .forbidden) }
+
+            // A normal user can be created and deleted; their token then dies.
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: nil)
+            let bobToken = try await login(client, "bob", "pw")
+            try await client.execute(
+                uri: "/v1/admin/users/\(bob.id)", method: .delete, headers: jsonHeaders(bearer: admin)
+            ) { #expect($0.status == .noContent) }
+            try await client.execute(
+                uri: "/v1/auth/me", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { #expect($0.status == .unauthorized) }
+        }
+    }
+
+    @Test("library.read gates browse + resolve; admin grants it")
+    func libraryReadGatesBrowse() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let item = try await createItem(client, admin: admin, title: "Gattaca")
+
+            // A user with NO permissions cannot browse or resolve.
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: [])
+            let bobToken = try await login(client, "bob", "pw")
+            try await client.execute(
+                uri: "/v1/items/\(item.id)", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { #expect($0.status == .forbidden) }
+            try await client.execute(
+                uri: "/v1/resolve/\(item.id)", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { #expect($0.status == .forbidden) }
+
+            // Admin grants library.read → browse + resolve now work.
+            try await client.execute(
+                uri: "/v1/admin/users/\(bob.id)/permissions", method: .put, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(SetPermissionsRequest(permissions: ["library.read"]))
+            ) { #expect($0.status == .ok) }
+            try await client.execute(
+                uri: "/v1/items/\(item.id)", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { #expect($0.status == .ok) }
+            try await client.execute(
+                uri: "/v1/resolve/\(item.id)", method: .get, headers: jsonHeaders(bearer: bobToken)
+            ) { #expect($0.status == .ok) }
+        }
+    }
+
+    @Test("marker writes require the metadata.markers.write permission")
+    func perUserMarkerWrite() async throws {
+        let app = try await buildApplication(configuration: testConfiguration(markersAccess: "readwrite"))
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let item = try await createItem(client, admin: admin, title: "X")
+
+            // Bob can browse but not contribute markers yet.
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: nil)
             let bobToken = try await login(client, "bob", "pw")
 
-            // An item to contribute markers to.
-            let item: Item = try await client.execute(
-                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateItemRequest(type: "movie", title: "X", sourceId: nil, sourceKey: "https://cdn/x.mkv", container: "mkv", tmdbId: nil, libraryId: nil, parentId: nil, year: nil, extra: nil))
-            ) { try $0.decoded() }
-
-            // Server supports markers (info), but Bob's effective access is read-only.
-            try await client.execute(uri: "/v1/info", method: .get) { response in
-                let info: ServerInfo = try response.decoded()
-                #expect(info.capabilities.access("markers") == .readWrite)  // server capability
-            }
             let beforeMe: MeResponse = try await client.execute(
                 uri: "/v1/auth/me", method: .get, headers: jsonHeaders(bearer: bobToken)
             ) { try $0.decoded() }
-            #expect(beforeMe.metadata["markers"] == .read)  // Bob can't write yet
+            #expect(beforeMe.metadata["markers"] == .read)
 
-            // Bob's contribution is rejected.
             try await client.execute(
                 uri: "/v1/items/\(item.id)/markers", method: .put, headers: jsonHeaders(bearer: bobToken),
                 body: try jsonBody(MarkerContribution(markers: Markers(intro: Marker(start: 1, end: 2))))
             ) { #expect($0.status == .forbidden) }
 
-            // Admin grants Bob the markers write.
-            let granted: AdminUserResponse = try await client.execute(
-                uri: "/v1/admin/users/\(bob.id)/grants", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(SetGrantsRequest(writeGrants: ["markers"]))
-            ) { try $0.decoded() }
-            #expect(granted.writeGrants == ["markers"])
+            // Admin grants the markers-write permission (keeping browse).
+            try await client.execute(
+                uri: "/v1/admin/users/\(bob.id)/permissions", method: .put, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(SetPermissionsRequest(permissions: ["library.read", "metadata.markers.write"]))
+            ) { #expect($0.status == .ok) }
 
-            // Now /auth/me reflects readwrite and the contribution succeeds.
             let afterMe: MeResponse = try await client.execute(
                 uri: "/v1/auth/me", method: .get, headers: jsonHeaders(bearer: bobToken)
             ) { try $0.decoded() }
             #expect(afterMe.metadata["markers"] == .readWrite)
+            #expect(afterMe.permissions.contains("metadata.markers.write"))
 
             let written: MarkersInfo = try await client.execute(
                 uri: "/v1/items/\(item.id)/markers", method: .put, headers: jsonHeaders(bearer: bobToken),
                 body: try jsonBody(MarkerContribution(markers: Markers(intro: Marker(start: 10, end: 20)), source: "theintrodb"))
             ) { #expect($0.status == .ok); return try $0.decoded() }
-            #expect(written.authoritative == false)  // non-admin → best-effort
+            #expect(written.authoritative == false)
+        }
+    }
+
+    @Test("a user can change their own password")
+    func selfPasswordChange() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: nil)
+            _ = bob
+            let bobToken = try await login(client, "bob", "pw")
+
+            // Wrong current password is rejected.
+            try await client.execute(
+                uri: "/v1/auth/password", method: .post, headers: jsonHeaders(bearer: bobToken),
+                body: try jsonBody(PasswordChangeRequest(currentPassword: "nope", newPassword: "newpw"))
+            ) { #expect($0.status == .unauthorized) }
+
+            // Correct current password succeeds; the new password then logs in.
+            try await client.execute(
+                uri: "/v1/auth/password", method: .post, headers: jsonHeaders(bearer: bobToken),
+                body: try jsonBody(PasswordChangeRequest(currentPassword: "pw", newPassword: "newpw"))
+            ) { #expect($0.status == .noContent) }
+            _ = try await login(client, "bob", "newpw")
         }
     }
 
@@ -78,17 +184,11 @@ struct PermissionsFlowTests {
         let app = try await buildApplication(configuration: testConfiguration(markersAccess: "readwrite"))
         try await app.test(.router) { client in
             let admin = try await login(client, "admin", "test-password")
-            let bob: AdminUserResponse = try await client.execute(
-                uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateUserRequest(username: "bob", password: "pw", displayName: nil, isAdmin: false, writeGrants: ["markers"]))
-            ) { try $0.decoded() }
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw",
+                                           permissions: ["library.read", "metadata.markers.write"])
             _ = bob
             let bobToken = try await login(client, "bob", "pw")
-
-            let item: Item = try await client.execute(
-                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateItemRequest(type: "movie", title: "Y", sourceId: nil, sourceKey: "https://cdn/y.mkv", container: nil, tmdbId: nil, libraryId: nil, parentId: nil, year: nil, extra: nil))
-            ) { try $0.decoded() }
+            let item = try await createItem(client, admin: admin, title: "Y")
 
             // Admin writes authoritative markers.
             try await client.execute(
@@ -119,7 +219,6 @@ struct PermissionsFlowTests {
             ) { try $0.decoded() }
             #expect(created.extra?["imdbId"] == .string("tt0111161"))
 
-            // Persisted + projected on a fresh read.
             let fetched: Item = try await client.execute(
                 uri: "/v1/items/\(created.id)?detail=full", method: .get, headers: jsonHeaders(bearer: admin)
             ) { try $0.decoded() }
@@ -133,10 +232,9 @@ struct PermissionsFlowTests {
         let app = try await buildApplication(configuration: testConfiguration())
         try await app.test(.router) { client in
             let admin = try await login(client, "admin", "test-password")
-            // "admin" already exists from bootstrap.
             try await client.execute(
                 uri: "/v1/admin/users", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateUserRequest(username: "admin", password: "x", displayName: nil, isAdmin: false, writeGrants: nil))
+                body: try jsonBody(CreateUserRequest(username: "admin", password: "x", displayName: nil, isAdmin: nil, permissions: nil))
             ) { #expect($0.status == .conflict) }
         }
     }

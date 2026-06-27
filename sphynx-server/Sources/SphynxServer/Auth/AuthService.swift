@@ -125,20 +125,21 @@ struct AuthService: Sendable {
                 displayName: user.displayName,
                 avatarURL: user.avatarURL,
                 sessionId: session.id,
-                writeGrants: user.writeGrants()
+                permissions: user.permissions()
             )
         }
     }
 
     // MARK: User management (admin)
 
-    /// Create a user. Throws `conflict` if the username is taken.
+    /// Create a **non-admin** user. There is exactly one admin (the bootstrap
+    /// account), so this never creates another — any caller-supplied admin flag
+    /// is ignored by design. Throws `conflict` if the username is taken.
     func createUser(
         username: String,
         password: String,
         displayName: String?,
-        isAdmin: Bool,
-        writeGrants: [String]
+        permissions: [String]
     ) async throws -> UserRecord {
         let existing = try await db.writer.read { db in
             try UserRecord.filter(Column("username") == username).fetchOne(db)
@@ -146,32 +147,79 @@ struct AuthService: Sendable {
         guard existing == nil else { throw SphynxError.conflict("Username '\(username)' is taken") }
 
         let hash = try await hasher.hash(password)
-        let grantsJSON = String(data: try JSONEncoder().encode(writeGrants), encoding: .utf8)
+        let permissionsJSON = String(data: try JSONEncoder().encode(permissions), encoding: .utf8)
         let user = UserRecord(
             id: Tokens.newID("u_"),
             username: username,
             displayName: displayName ?? username,
             avatarURL: nil,
             passwordHash: hash,
-            isAdmin: isAdmin,
+            isAdmin: false,
             createdAt: Date().timeIntervalSince1970,
-            writeGrantsJSON: grantsJSON
+            permissionsJSON: permissionsJSON
         )
         try await db.writer.write { db in try user.insert(db) }
         return user
     }
 
-    /// Replace a user's metadata write grants. Returns the updated record.
-    func setWriteGrants(userId: String, grants: [String]) async throws -> UserRecord {
-        let grantsJSON = String(data: try JSONEncoder().encode(grants), encoding: .utf8)
-        let updated: UserRecord? = try await db.writer.write { db in
-            guard var user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else { return nil }
-            user.writeGrantsJSON = grantsJSON
-            try user.update(db)
-            return user
+    /// List all accounts (admin first, then by creation time).
+    func listUsers() async throws -> [UserRecord] {
+        try await db.writer.read { db in
+            try UserRecord.order(Column("isAdmin").desc, Column("createdAt"), Column("id")).fetchAll(db)
         }
-        guard let updated else { throw SphynxError.notFound("No user '\(userId)'") }
-        return updated
+    }
+
+    /// Replace a user's permission set. Returns the updated record. The admin
+    /// holds everything implicitly, so its permissions cannot be set.
+    func setPermissions(userId: String, permissions: [String]) async throws -> UserRecord {
+        let permissionsJSON = String(data: try JSONEncoder().encode(permissions), encoding: .utf8)
+        let result: Result<UserRecord, SphynxError>? = try await db.writer.write { db in
+            guard var user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else { return nil }
+            if user.isAdmin {
+                return .failure(SphynxError.badRequest("The admin holds all permissions implicitly"))
+            }
+            user.permissionsJSON = permissionsJSON
+            try user.update(db)
+            return .success(user)
+        }
+        guard let result else { throw SphynxError.notFound("No user '\(userId)'") }
+        return try result.get()
+    }
+
+    /// Delete a user and revoke all their sessions + per-user state. The admin
+    /// cannot be deleted.
+    func deleteUser(userId: String) async throws {
+        let outcome: SphynxError? = try await db.writer.write { db in
+            guard let user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else {
+                return SphynxError.notFound("No user '\(userId)'")
+            }
+            if user.isAdmin {
+                return SphynxError.forbidden("The admin account cannot be deleted")
+            }
+            try SessionRecord.filter(Column("userId") == userId).deleteAll(db)
+            try PlaystateRecord.filter(Column("userId") == userId).deleteAll(db)
+            try UserRecord.deleteOne(db, key: userId)
+            return nil
+        }
+        if let outcome { throw outcome }
+    }
+
+    /// Change a user's own password after verifying the current one. Revokes
+    /// other sessions is left to the caller; the presenting session stays valid.
+    func changePassword(userId: String, currentPassword: String, newPassword: String) async throws {
+        guard !newPassword.isEmpty else { throw SphynxError.badRequest("newPassword is required") }
+        let user = try await db.writer.read { db in
+            try UserRecord.filter(Column("id") == userId).fetchOne(db)
+        }
+        guard let user else { throw SphynxError.notFound("No user '\(userId)'") }
+        guard await hasher.verify(password: currentPassword, encodedHash: user.passwordHash) else {
+            throw SphynxError.unauthorized("Current password is incorrect")
+        }
+        let hash = try await hasher.hash(newPassword)
+        try await db.writer.write { db in
+            _ = try UserRecord.filter(Column("id") == userId)
+                .updateAll(db, Column("passwordHash").set(to: hash))
+        }
     }
 
     // MARK: Helpers

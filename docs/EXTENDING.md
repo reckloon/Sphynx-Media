@@ -35,22 +35,25 @@ contribution endpoint advertised. Each server decides its own policy (one server
 allows marker contributions, another is read-only, etc.). The reference server
 sets it from config (`SPHYNX_MARKERS_ACCESS`).
 
-`capabilities.metadata` advertises what the **server** supports. Write access is
-then granted **per user by an admin** (`POST /v1/admin/users/{id}/grants`), so two
-users on the same server can have different write permissions. A client learns its
-**own effective access** from `GET /v1/auth/me`:
+`capabilities.metadata` advertises what the **server** supports. The write itself
+is gated by a **per-user permission** the admin grants (e.g.
+`metadata.markers.write`), set via `PUT /v1/admin/users/{id}/permissions`, so two
+users on the same server can have different write access. A client learns its
+**own effective permissions + access** from `GET /v1/auth/me`:
 
 ```jsonc
 // GET /v1/auth/me
 { "user": { "id": "u_…", "displayName": "Bob" },
+  "permissions": ["library.read", "metadata.markers.write"],
   "metadata": { "markers": "readwrite", "images": "read" } }
 ```
 
 A client should **check `/v1/auth/me` before offering a "fix this"/"contribute"
 affordance** (not `/v1/info`, which is the server-wide capability), and gracefully
 degrade when its effective access is `read`/`none`. Effective write =
-server advertises the field `readwrite` **and** the user is granted it (admins are
-always granted).
+server advertises the field `readwrite` **and** the user holds the field's write
+permission (the admin always does). See **Authorization** in `Sphynx-Server.md`
+for the full permission model.
 
 ---
 

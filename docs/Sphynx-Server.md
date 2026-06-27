@@ -144,12 +144,26 @@ The late-bound handoff. Given an item, ask its Source's driver for a **direct, f
 
 The "basic but strong, proven" tier. Nothing bespoke.
 
-- **Accounts:** username + password (argon2id/bcrypt), optional roles (admin vs. user).
+- **Accounts:** username + password (argon2id/bcrypt). **Exactly one admin** — the
+  bootstrap account, created on first run. It holds every permission implicitly and
+  is the only admin: `createUser` always makes a non-admin, no account can be
+  promoted, and the admin can't be demoted or deleted.
 - **Sessions:** short-lived access token + rotating, revocable refresh token; **device-scoped** so one device can be revoked alone.
-- **Authorization:** per-user data (playstate, contributions) is row-scoped to the token subject — a user can only ever read/write their own rows. That row scoping *is* the "stop unauthorized access" guarantee.
+- **Authorization:** two layers.
+  - *Per-user data* (playstate, contributions) is row-scoped to the token subject —
+    a user can only ever read/write their own rows.
+  - *Capabilities* are an **open per-user permission set** the admin grants: string
+    keys, stored uniformly, forward-compatible (unknown keys tolerated). Well-known
+    keys: `library.read` (browse + resolve/play), `metadata.markers.write`,
+    `metadata.images.write`, `metadata.edit` (edit + lock fields). A key may be
+    scoped to one library with a `:<libraryId>` suffix. Each gated action checks the
+    caller's effective permission; the admin always passes. `GET /v1/auth/me`
+    returns the user's effective permissions; `GET /v1/info` is the server-wide
+    capability.
+- **Self-service:** a user may change their own password (`POST /v1/auth/password`).
 - **Transport:** TLS only; secrets encrypted at rest; rate limiting on auth and write endpoints; no secrets in logs.
 
-> Open: whether to add OAuth/OIDC for SSO, invite vs. open registration, admin bootstrap flow.
+> Open: whether to add OAuth/OIDC for SSO, invite vs. open registration.
 
 ---
 

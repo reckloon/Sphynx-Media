@@ -46,19 +46,40 @@ public struct LogoutRequest: Codable, Hashable, Sendable {
 }
 
 /// Response for `GET /v1/auth/me`: the authenticated user plus **that user's
-/// effective** per-field metadata access.
+/// effective** permissions.
 ///
-/// `/v1/info.capabilities.metadata` advertises what the *server* supports;
-/// `metadata` here is what *this user* may actually do (writes are granted
-/// per-user by an admin). A client uses this to decide whether to show a
-/// "contribute / fix this" affordance.
+/// `/v1/info.capabilities` advertises what the *server* supports; the fields
+/// here describe what *this user* may actually do (permissions are granted
+/// per-user by the admin). A client uses this to decide which affordances to
+/// show (browse, contribute markers, edit metadata, …).
+///
+/// - `permissions`: the user's effective permission keys (e.g. `library.read`,
+///   `metadata.markers.write`, `metadata.edit`). The admin holds all of them
+///   implicitly. Open-ended and forward-compatible: a client should treat
+///   unknown keys as opaque and ignore them.
+/// - `metadata`: a per-field metadata-access view (server policy ∩ this user's
+///   write permissions), retained for the "contribute / fix this" affordance.
 public struct MeResponse: Codable, Hashable, Sendable {
     public var user: User
+    public var permissions: [String]
     public var metadata: [String: MetadataAccess]
 
-    public init(user: User, metadata: [String: MetadataAccess]) {
+    public init(user: User, permissions: [String] = [], metadata: [String: MetadataAccess]) {
         self.user = user
+        self.permissions = permissions
         self.metadata = metadata
+    }
+}
+
+/// `POST /v1/auth/password` request body: change the authenticated user's own
+/// password. The caller must present its current password.
+public struct PasswordChangeRequest: Codable, Hashable, Sendable {
+    public var currentPassword: String
+    public var newPassword: String
+
+    public init(currentPassword: String, newPassword: String) {
+        self.currentPassword = currentPassword
+        self.newPassword = newPassword
     }
 }
 

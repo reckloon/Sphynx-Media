@@ -88,18 +88,31 @@ session on the same device id. **204 No Content** on success (idempotent).
 
 ### `GET /v1/auth/me` — auth required
 
-The authenticated user plus **that user's effective** per-field metadata access.
-Where `/v1/info` advertises what the *server* supports, this reflects what *this
-user* may actually do (writes are granted per-user by an admin).
+The authenticated user plus **that user's effective** permissions. Where
+`/v1/info` advertises what the *server* supports, this reflects what *this user*
+may actually do (permissions are granted per-user by the admin).
 
 **200**
 ```json
 { "user": { "id": "u_…", "displayName": "Bob" },
+  "permissions": ["library.read", "metadata.markers.write"],
   "metadata": { "markers": "readwrite", "images": "read" } }
 ```
 
-A client should use this (not `/v1/info`) to decide whether to show a
-"contribute / fix this" affordance.
+- **`permissions`** — the user's effective permission keys (see
+  [Permissions](#permissions)). The admin holds all of them implicitly. Treat
+  unknown keys as opaque and ignore them (forward-compatible).
+- **`metadata`** — a per-field metadata-access view (server policy narrowed to
+  this user's write permissions), kept for the contribute affordance.
+
+A client should use this (not `/v1/info`) to decide which affordances to show
+(browse, contribute markers, edit metadata, …).
+
+### `POST /v1/auth/password` — auth required
+
+Change the authenticated user's **own** password. **Body**
+`{ "currentPassword": "…", "newPassword": "…" }`. **204** on success; **401** if
+the current password is wrong. The presenting session stays valid.
 
 ---
 
@@ -314,18 +327,49 @@ adds/updates/removes. **200** →
 
 Scan every source. **200** → `{ "sources": [ <scan summary>, … ] }`.
 
+### Permissions
+
+Authorization is a **single admin** (the bootstrap account, which holds every
+permission implicitly and is the only admin) plus an **open per-user permission
+set** the admin grants. Permissions are string keys, stored uniformly and
+forward-compatible — unknown keys are tolerated. Well-known keys:
+
+| Key | Grants |
+|---|---|
+| `library.read` | Browse libraries + resolve/play their items |
+| `metadata.markers.write` | Contribute intro/credit markers |
+| `metadata.images.write` | Contribute artwork |
+| `metadata.edit` | Edit item metadata and lock fields against auto-refresh |
+
+A key may be **scoped to one library** with a `:<libraryId>` suffix, e.g.
+`library.read:lib_abc` grants read for that library only. Each gated action
+checks the caller's effective permission; the admin always passes.
+
+### `GET /v1/admin/users`
+
+List all accounts. **200** → `{ "users": [ { "id": "u_…", "username": "bob",
+"displayName": "Bob", "isAdmin": false, "permissions": ["library.read"] }, … ] }`.
+The admin's `permissions` reflects the full implicit set.
+
 ### `POST /v1/admin/users`
 
-Create a user. **Body**
-`{ "username": "bob", "password": "…", "displayName": "Bob", "isAdmin": false, "writeGrants": ["markers"] }`.
-**200** → `{ "id": "u_…", "username": "bob", "displayName": "Bob", "isAdmin": false, "writeGrants": ["markers"] }`.
-**409** if the username is taken.
+Create a **non-admin** user (there is exactly one admin — any `isAdmin` in the
+body is ignored). **Body**
+`{ "username": "bob", "password": "…", "displayName": "Bob", "permissions": ["library.read"] }`.
+`permissions` defaults to `["library.read"]` when omitted, so a new user can
+browse and play immediately. **200** → the created user. **409** if the username
+is taken.
 
-### `POST /v1/admin/users/{userId}/grants`
+### `PUT /v1/admin/users/{userId}/permissions`
 
-Set a user's metadata write grants (the fields they may contribute).
-**Body** `{ "writeGrants": ["markers"] }` → **200** with the updated user.
-This is how an admin controls **per-user read/write permission**.
+Replace a user's permission set. **Body** `{ "permissions": ["library.read", "metadata.markers.write"] }`
+→ **200** with the updated user. This is how the admin controls **per-user
+access**. Setting the admin's permissions is rejected (it holds all implicitly).
+
+### `DELETE /v1/admin/users/{userId}`
+
+Delete a user and revoke all their sessions + per-user state. **204** on success.
+The admin account cannot be deleted (**403**).
 
 The scan summary includes an `enriched` count — items identified against TMDB and
 enriched during the scan (0 when TMDB isn't configured).

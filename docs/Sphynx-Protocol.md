@@ -37,6 +37,8 @@ A boring, proven shape. No custom crypto.
 - `POST /v1/auth/login` — body `{ username, password }` → `{ accessToken, refreshToken, expiresIn, user }`.
 - `POST /v1/auth/refresh` — body `{ refreshToken }` → a new token pair. Refresh tokens rotate on use; the old one is invalidated.
 - `POST /v1/auth/logout` — revokes the presented refresh token (and optionally the whole device).
+- `POST /v1/auth/password` — body `{ currentPassword, newPassword }` → **204**; change your own password.
+- `GET /v1/auth/me` — `{ user, permissions, metadata }`: the caller's effective permission keys (e.g. `library.read`, `metadata.markers.write`) and per-field metadata access. The server advertises its capability in `/v1/info`; this is what *this user* may do. Treat unknown permission keys as opaque.
 - All other endpoints require `Authorization: Bearer <accessToken>`.
 
 Conventions (malleable, but recommended):

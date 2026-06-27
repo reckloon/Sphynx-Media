@@ -23,25 +23,26 @@ struct BrowseController: Sendable {
     /// "finished" (it has each item's runtime). Cursor-paginated.
     @Sendable
     func continueWatching(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
-        guard let userId = context.identity?.userId else {
-            throw SphynxError.unauthorized("Not authenticated")
-        }
+        let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
         let full = query.detail == "full"
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
 
-        let recent = try await playstate.recentlyPlayed(userId: userId, limit: limit + 1, offset: offset)
+        let recent = try await playstate.recentlyPlayed(userId: identity.userId, limit: limit + 1, offset: offset)
         let hasMore = recent.count > limit
         let page = hasMore ? Array(recent.prefix(limit)) : recent
 
-        // Resolve to items, preserving the recency order; skip any since deleted.
+        // Resolve to items, preserving recency order; skip any since deleted or
+        // the user may no longer read (per-library scoping).
         let byId = try await catalog.items(ids: page.map(\.itemId))
-        let items: [Item] = page.compactMap { state in
-            guard let record = byId[state.itemId] else { return nil }
+        var items: [Item] = []
+        for state in page {
+            guard let record = byId[state.itemId],
+                  try await canRead(record, identity) else { continue }
             var item = record.toProtocol(full: full)
             item.resumePosition = state.position
-            return item
+            items.append(item)
         }
 
         return ItemsResponse(
@@ -52,12 +53,17 @@ struct BrowseController: Sendable {
 
     @Sendable
     func libraries(_ request: Request, context: SphynxRequestContext) async throws -> LibrariesResponse {
+        let identity = try context.requireIdentity()
+        // Only libraries this user may read (admins and globally-granted users
+        // see all; library-scoped users see only their libraries).
         let records = try await catalog.libraries()
+            .filter { identity.has(Permissions.libraryRead, inLibrary: $0.id) }
         return LibrariesResponse(libraries: records.map { $0.toProtocol() })
     }
 
     @Sendable
     func items(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
+        let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: ItemsQuery.self, context: context)
         guard let parent = query.parent, !parent.isEmpty else {
             throw SphynxError.badRequest("query parameter 'parent' is required")
@@ -66,12 +72,22 @@ struct BrowseController: Sendable {
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
 
-        // `parent` is either a library (top-level items) or an item (its children).
+        // `parent` is either a library (top-level items) or an item (its
+        // children). Resolve the owning library and gate read access on it.
         let records: [ItemRecord]
+        let libraryId: String?
         if try await catalog.library(id: parent) != nil {
+            libraryId = parent
             records = try await catalog.topLevelItems(libraryId: parent, limit: limit, offset: offset)
-        } else {
+        } else if let parentItem = try await catalog.item(id: parent) {
+            libraryId = try await catalog.owningLibraryId(of: parentItem)
             records = try await catalog.childItems(parentId: parent, limit: limit, offset: offset)
+        } else {
+            libraryId = nil
+            records = []
+        }
+        guard identity.has(Permissions.libraryRead, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to browse this library")
         }
 
         let hasMore = records.count > limit
@@ -79,13 +95,11 @@ struct BrowseController: Sendable {
 
         // Fold the authenticated user's resume positions into the tiles.
         var items = page.map { $0.toProtocol(full: full) }
-        if let userId = context.identity?.userId {
-            let positions = try await playstate.positions(userId: userId, itemIds: items.map(\.id))
-            items = items.map { item in
-                var item = item
-                if let position = positions[item.id], position > 0 { item.resumePosition = position }
-                return item
-            }
+        let positions = try await playstate.positions(userId: identity.userId, itemIds: items.map(\.id))
+        items = items.map { item in
+            var item = item
+            if let position = positions[item.id], position > 0 { item.resumePosition = position }
+            return item
         }
 
         return ItemsResponse(
@@ -96,20 +110,30 @@ struct BrowseController: Sendable {
 
     @Sendable
     func item(_ request: Request, context: SphynxRequestContext) async throws -> Item {
+        let identity = try context.requireIdentity()
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
         }
         guard let record = try await catalog.item(id: itemId) else {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
+        guard try await canRead(record, identity) else {
+            throw SphynxError.forbidden("You don't have permission to view this item")
+        }
         let query = try request.uri.decodeQuery(as: DetailQuery.self, context: context)
         var item = record.toProtocol(full: query.detail == "full")
-        if let userId = context.identity?.userId,
-           let position = try await playstate.get(userId: userId, itemId: itemId)?.position,
+        if let position = try await playstate.get(userId: identity.userId, itemId: itemId)?.position,
            position > 0 {
             item.resumePosition = position
         }
         return item
+    }
+
+    /// Whether the user may read an item, honoring per-library scoping.
+    private func canRead(_ record: ItemRecord, _ identity: AuthIdentity) async throws -> Bool {
+        if identity.isAdmin { return true }
+        let libraryId = try await catalog.owningLibraryId(of: record)
+        return identity.has(Permissions.libraryRead, inLibrary: libraryId)
     }
 }
 

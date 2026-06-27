@@ -13,18 +13,19 @@ struct UserRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var passwordHash: String
     var isAdmin: Bool
     var createdAt: Double
-    /// JSON array of metadata fields this user may contribute (admin-granted).
-    /// Admins implicitly hold all grants regardless of this value.
-    var writeGrantsJSON: String?
+    /// JSON array of permission keys this user holds (admin-granted). Admins
+    /// implicitly hold every permission regardless of this value. Open-ended:
+    /// unknown keys are tolerated. See `Permissions`.
+    var permissionsJSON: String?
 
     /// Projection into the protocol's `User` (never exposes the hash).
     func toProtocol() -> User {
         User(id: id, displayName: displayName, avatarURL: avatarURL)
     }
 
-    /// The set of metadata fields this user may contribute.
-    func writeGrants() -> Set<String> {
-        guard let writeGrantsJSON, let data = writeGrantsJSON.data(using: .utf8),
+    /// The set of permission keys this user holds.
+    func permissions() -> Set<String> {
+        guard let permissionsJSON, let data = permissionsJSON.data(using: .utf8),
               let list = try? JSONDecoder().decode([String].self, from: data)
         else { return [] }
         return Set(list)
