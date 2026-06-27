@@ -19,7 +19,7 @@ struct MaintenanceService: Service {
 
     func run() async throws {
         logger.info("Maintenance pass scheduled every \(Int(interval))s")
-        while true {
+        while !Task.isCancelled {
             do {
                 try await Task.sleep(for: .seconds(interval))
             } catch {
@@ -30,7 +30,12 @@ struct MaintenanceService: Service {
     }
 
     /// One maintenance pass (also callable directly in tests).
+    ///
+    /// Checks for cancellation before each database step, so a shutdown that
+    /// arrives mid-pass stops cleanly instead of issuing work against a database
+    /// that's being torn down.
     func runOnce() async {
+        guard !Task.isCancelled else { return }
         if let enrichment {
             do {
                 let count = try await enrichment.enrichAll(force: false)  // TTL-gated
@@ -39,6 +44,8 @@ struct MaintenanceService: Service {
                 logger.warning("Maintenance enrichment failed: \(error)")
             }
         }
+
+        guard !Task.isCancelled else { return }
         do {
             let cutoff = Date().timeIntervalSince1970 - playstateRetention
             let purged = try await playstate.purge(before: cutoff)
