@@ -159,8 +159,14 @@ public struct ResolveDescriptor: Codable, Hashable, Sendable {
     public var container: String?
     /// Seconds this descriptor is valid; absent = no expiry.
     public var ttl: Double?
-    /// If true, the client skips its own redirect resolution.
-    public var preResolved: Bool?
+    /// `true` when `url` is the driver's **terminal** location — fetch it
+    /// directly, with no further Sphynx-level resolve step. This is the driver's
+    /// own assertion about what it produced, **not the result of probing the
+    /// origin**: it says nothing about ordinary HTTP redirects (the client's HTTP
+    /// stack follows those normally) and nothing about timing (resolution is
+    /// always fresh at play time). Absent/`false` would mean the client must
+    /// itself resolve `url` further before fetching.
+    public var terminal: Bool?
 
     public var tracks: Tracks?
     public var markers: Markers?
@@ -173,7 +179,7 @@ public struct ResolveDescriptor: Codable, Hashable, Sendable {
         headers: [String: String] = [:],
         container: String? = nil,
         ttl: Double? = nil,
-        preResolved: Bool? = nil,
+        terminal: Bool? = nil,
         tracks: Tracks? = nil,
         markers: Markers? = nil,
         candidates: [Candidate]? = nil
@@ -182,7 +188,7 @@ public struct ResolveDescriptor: Codable, Hashable, Sendable {
         self.headers = headers
         self.container = container
         self.ttl = ttl
-        self.preResolved = preResolved
+        self.terminal = terminal
         self.tracks = tracks
         self.markers = markers
         self.candidates = candidates

@@ -39,7 +39,7 @@ struct Resolver: Sendable {
             headers: location.headers,
             container: location.container,
             ttl: location.ttl,
-            preResolved: location.preResolved,
+            terminal: location.terminal,
             // Convenience: fold in any stored intro/credit markers (§6).
             markers: item.storedMarkers(),
             candidates: location.candidates

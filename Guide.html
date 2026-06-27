@@ -425,6 +425,9 @@ swift run SphynxServer
 <div class="callout note">
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
 </div>
+<div class="callout tip">
+  <p><strong>Web settings page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and edit the runtime settings above in your browser, no env vars or <code>curl</code> needed. It's a static page that drives the same API; changes apply on the next restart.</p>
+</div>
 
 <div class="callout tip">
   <p>For a throwaway test server that leaves nothing behind, set <code>SPHYNX_DB_PATH=:memory:</code>. The database (and your admin account, libraries, items) vanish on restart.</p>
@@ -528,7 +531,7 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>Finally, the heart of Sphynx — <strong>resolve</strong> an item to a direct, playable location at play time. The client streams this URL itself; the server moved no bytes.</p>
 <pre><code>curl -s localhost:8080/v1/resolve/it_… -H <span class="str">"$AUTH"</span>
 <span class="cmt"># → { "url":"https://…/BigBuckBunny_320x180.mp4", "container":"mp4",
-#       "preResolved":true }</span></code></pre>
+#       "terminal":true }</span></code></pre>
 
 <div class="callout tip">
   <p>That's the entire spine: <strong>login → browse → resolve → play</strong>. Everything else (playstate, markers, enrichment, multiple users) layers on top of these calls.</p>
@@ -646,11 +649,11 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>The late-bound handoff: turns an item into a direct, playable location. Called at play time, never cached from browse.</p>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "url":"https://cdn.example/movie.mkv", "headers":{}, "container":"mkv",
-  "preResolved":true }</span></code></pre>
+  "terminal":true }</span></code></pre>
 <ul>
   <li><code>url</code> — DIRECT location; the client streams this itself. Resolved fresh on every call and <strong>never stored</strong> — Sphynx keeps only the item's source reference.</li>
   <li><code>headers</code> — headers the client must send when fetching <code>url</code>.</li>
-  <li><code>preResolved</code> — if true, the client skips its own redirect resolution.</li>
+  <li><code>terminal</code> — if true, <code>url</code> is the driver's <strong>final</strong> location: fetch it directly, with no further Sphynx resolve step. This is the driver's own assertion about what it produced, <strong>not the result of probing the origin</strong> — it says nothing about ordinary HTTP redirects (your HTTP client follows those normally) or timing (resolution is always fresh at play time). Absent/false means you must resolve <code>url</code> yourself before fetching. Every built-in driver emits <code>true</code>.</li>
   <li><code>ttl</code> — <em>optional.</em> When the source hands back a time-bounded link (e.g. a signed CDN URL), how many seconds it stays valid; the server passes the driver's value straight through and never persists it. The built-in <code>http</code>/<code>local</code> drivers return plain, non-expiring URLs, so <code>ttl</code> is absent. Absent = no expiry.</li>
   <li><code>tracks</code>, <code>markers</code>, <code>candidates</code> — optional; <code>tracks</code>/<code>candidates</code> absent in the current build.</li>
 </ul>
@@ -846,13 +849,13 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
   <li><strong>Discover</strong> — <code>GET /v1/info</code> (no auth). Confirm <code>product == "Sphynx"</code> and that <code>protocol</code> includes a version you speak before showing a login screen. Read <code>capabilities</code> to decide which features to surface.</li>
   <li><strong>Authenticate</strong> — <code>POST /v1/auth/login</code> with a stable <code>X-Sphynx-Device</code> header. Store both tokens. When a call returns <strong>401</strong> with <code>code: "unauthorized"</code>, call <code>POST /v1/auth/refresh</code> once, then retry; if refresh also fails, send the user back to login.</li>
   <li><strong>Browse</strong> — <code>GET /v1/libraries</code>, then <code>GET /v1/items?parent=…</code>. Render tiles from <code>detail=skeleton</code>; fetch <code>detail=full</code> (or <code>GET /v1/items/{id}</code>) when the user opens an item. Page with <code>nextCursor</code>.</li>
-  <li><strong>Resolve at play time</strong> — <code>GET /v1/resolve/{id}</code> the moment the user hits play, <strong>never earlier</strong>. Stream <code>url</code> yourself, sending any <code>headers</code>. Respect <code>ttl</code>: if playback drops after it expires, re-resolve. If <code>preResolved</code> is true, skip your own redirect-following.</li>
+  <li><strong>Resolve at play time</strong> — <code>GET /v1/resolve/{id}</code> the moment the user hits play, <strong>never earlier</strong>. Stream <code>url</code> yourself, sending any <code>headers</code>. Respect <code>ttl</code>: if playback drops after it expires, re-resolve. If <code>terminal</code> is true, <code>url</code> is the final location — fetch it directly, no further resolve step needed.</li>
   <li><strong>Report playstate</strong> — POST <code>start</code> / periodic <code>progress</code> / <code>stop</code>. On a failed/aborted start, send <code>stop</code> with <code>failed:true</code> so you don't clobber a good resume point.</li>
   <li><strong>Contribute (optional)</strong> — check <code>GET /v1/auth/me</code> (not <code>/v1/info</code>) for your <em>effective</em> write access before showing a "fix this" affordance; <code>PUT</code> markers when granted.</li>
 </ol>
 
 <div class="callout tip">
-  <p><strong>Adapter pattern.</strong> A client that already models media internally needs only a thin translation layer — it never exposes its internal types. Map <code>resolve.url + headers</code> to a pre-resolved playback request; position fields to your internal time unit; <code>placeholder.{blurHash,url}</code> to a self-describing low-res type; <code>playstate/*</code> to your start/progress/stop hooks; <code>markers.intro</code> to a "Skip Intro" affordance. Ocelot speaks Sphynx through exactly one such adapter, implementing the wire directly from this documentation rather than importing a package.</p>
+  <p><strong>Adapter pattern.</strong> A client that already models media internally needs only a thin translation layer — it never exposes its internal types. Map <code>resolve.url + headers</code> to a ready-to-stream playback request; position fields to your internal time unit; <code>placeholder.{blurHash,url}</code> to a self-describing low-res type; <code>playstate/*</code> to your start/progress/stop hooks; <code>markers.intro</code> to a "Skip Intro" affordance. Ocelot speaks Sphynx through exactly one such adapter, implementing the wire directly from this documentation rather than importing a package.</p>
 </div>
 
 <h4>Optionally sharing the protocol types (Swift clients)</h4>

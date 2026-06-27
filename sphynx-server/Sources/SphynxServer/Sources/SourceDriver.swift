@@ -29,7 +29,10 @@ struct ResolvedLocation: Sendable {
     var headers: [String: String]
     var container: String?
     var ttl: Double?
-    var preResolved: Bool
+    /// `true` when the driver produced a terminal location (fetch `url` directly,
+    /// no further resolve step). A driver's own assertion, not a probe of the
+    /// origin — see `ResolveDescriptor.terminal`.
+    var terminal: Bool
     var candidates: [Candidate]?
 }
 

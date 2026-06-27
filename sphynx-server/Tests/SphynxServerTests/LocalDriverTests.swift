@@ -66,7 +66,7 @@ struct LocalDriverTests {
             let driver = LocalDriver(id: "s", root: root)
             let location = try await driver.resolve(ResolveRequest(key: "Show/Season 1/ep.mkv.strm", container: "mkv"))
             #expect(location.url == "https://cdn.example/stream.mkv")
-            #expect(location.preResolved == true)
+            #expect(location.terminal == true)
             #expect(location.container == "mkv")
         }
     }

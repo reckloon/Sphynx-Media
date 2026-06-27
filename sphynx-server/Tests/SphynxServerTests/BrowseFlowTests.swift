@@ -96,7 +96,7 @@ struct BrowseFlowTests {
                 uri: "/v1/resolve/\(sintel.id)", method: .get, headers: jsonHeaders(bearer: token)
             ) { #expect($0.status == .ok); return try $0.decoded() }
             #expect(descriptor.url == "\(baseURL)/sintel.mp4")
-            #expect(descriptor.preResolved == true)
+            #expect(descriptor.terminal == true)
         }
     }
 

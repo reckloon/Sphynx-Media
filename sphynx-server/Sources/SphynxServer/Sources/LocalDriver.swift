@@ -86,14 +86,14 @@ struct LocalDriver: SourceDriver {
             }
             return ResolvedLocation(
                 url: url, headers: [:], container: request.container,
-                ttl: nil, preResolved: true, candidates: nil
+                ttl: nil, terminal: true, candidates: nil
             )
         }
 
         // A plain local media file resolves to a file:// URL.
         return ResolvedLocation(
             url: fileURL.standardizedFileURL.absoluteString, headers: [:],
-            container: request.container, ttl: nil, preResolved: true, candidates: nil
+            container: request.container, ttl: nil, terminal: true, candidates: nil
         )
     }
 

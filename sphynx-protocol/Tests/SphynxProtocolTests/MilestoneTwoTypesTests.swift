@@ -112,7 +112,7 @@ struct ResolveTypesTests {
             headers: ["Authorization": "Bearer x"],
             container: "mkv",
             ttl: 300,
-            preResolved: true,
+            terminal: true,
             tracks: Tracks(preferredAudio: 1, copyableAudio: 1, preferredSubtitle: 4),
             markers: Markers(intro: Marker(start: 75, end: 145), credits: Marker(start: 9120)),
             candidates: [Candidate(url: "https://cdn-b/x", headers: [:], priority: 1)]

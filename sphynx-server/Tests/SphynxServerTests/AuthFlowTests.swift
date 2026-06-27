@@ -61,7 +61,7 @@ struct AuthFlowTests {
                 return try response.decoded()
             }
             #expect(descriptor.url == knownMediaURL)
-            #expect(descriptor.preResolved == true)
+            #expect(descriptor.terminal == true)
             #expect(descriptor.container == "mp4")
         }
     }

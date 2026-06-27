@@ -34,7 +34,7 @@ struct WebDAVDriver: SourceDriver {
             headers: headers,
             container: request.container,
             ttl: nil,
-            preResolved: true,
+            terminal: true,
             candidates: nil
         )
     }
@@ -84,7 +84,7 @@ struct SMBDriver: SourceDriver {
             headers: [:],
             container: request.container,
             ttl: nil,
-            preResolved: true,
+            terminal: true,
             candidates: nil
         )
     }
@@ -121,7 +121,7 @@ struct FTPDriver: SourceDriver {
             headers: [:],
             container: request.container,
             ttl: nil,
-            preResolved: true,
+            terminal: true,
             candidates: nil
         )
     }

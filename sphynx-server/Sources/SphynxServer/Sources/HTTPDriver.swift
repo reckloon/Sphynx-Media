@@ -7,8 +7,8 @@ import SphynxProtocol
 ///   not media bytes).
 /// - `resolve()` hands back the direct URL (joining the source's base URL when
 ///   the item key is relative) plus the source's required request headers. It
-///   marks the descriptor `preResolved` — a direct, fetchable location the client
-///   streams itself. No media bytes ever pass through the server.
+///   marks the descriptor `terminal` — the driver's final, fetchable location the
+///   client streams itself. No media bytes ever pass through the server.
 struct HTTPDriver: SourceDriver {
     let id: String
     /// Optional base URL for relative item keys; nil means keys are absolute.
@@ -46,7 +46,7 @@ struct HTTPDriver: SourceDriver {
             headers: headers,
             container: request.container,
             ttl: ttl,
-            preResolved: true,
+            terminal: true,
             candidates: nil
         )
     }

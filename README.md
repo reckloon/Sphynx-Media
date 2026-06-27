@@ -85,7 +85,7 @@ curl -sX POST localhost:8080/v1/admin/items -H "Authorization: Bearer <accessTok
        "sourceKey":"https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"}'
 
 curl -s localhost:8080/v1/resolve/<itemId> -H "Authorization: Bearer <accessToken>"
-# → { "url": "https://…/BigBuckBunny_320x180.mp4", "preResolved": true, … }
+# → { "url": "https://…/BigBuckBunny_320x180.mp4", "terminal": true, … }
 ```
 
 See [`sphynx-server/README.md`](sphynx-server/README.md) for configuration and the

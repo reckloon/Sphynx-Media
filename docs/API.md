@@ -212,13 +212,17 @@ play time, never cached from browse.
   "url": "https://cdn.example/movie.mkv",
   "headers": { },
   "container": "mkv",
-  "preResolved": true
+  "terminal": true
 }
 ```
 - `url` — DIRECT location; the client streams this itself. Resolved fresh on every
   call and **never stored** — the server keeps only the item's source reference.
 - `headers` — headers the client must send when fetching `url`.
-- `preResolved` — if true, the client skips its own redirect resolution.
+- `terminal` — if true, `url` is the driver's final location: fetch it directly,
+  with no further Sphynx resolve step. The driver's own assertion about what it
+  produced, *not* a probe of the origin — it says nothing about ordinary HTTP
+  redirects (the client's HTTP stack follows those) or timing (resolution is
+  always fresh at play time). Absent/false means resolve `url` yourself first.
 - `ttl` — *optional.* When the source returns a time-bounded link (e.g. a signed
   CDN URL), how many seconds it stays valid; the server passes the driver's value
   straight through and never persists it. The built-in `http`/`local` drivers
