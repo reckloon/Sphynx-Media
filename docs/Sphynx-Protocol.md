@@ -191,7 +191,11 @@ A `placeholder` object is **self-describing** and carries exactly one form. New 
 { "url": "https://…/tiny.jpg" } // a pre-sized low-res image URL
 ```
 
-This maps 1:1 onto a neutral two-case placeholder today; the shape is deliberately open to a third form.
+The form is **open**: a server may store *any* low-res representation — a BlurHash, a small pre-sized image URL, or a future form — and a client ignores forms it doesn't recognize (rendering a plain background).
+
+**Client requirement:** support **both** `blurHash` (decode locally) and `url` (load the small image) for now, using whichever form the server sent.
+
+The reference server emits the **`url`** form — a small pre-sized image link — so it stores and processes no image bytes, keeping the server lightweight. A different server may store a `blurHash` instead; the wire contract is identical either way.
 
 ### 5.6 Open metadata (`extra`)
 

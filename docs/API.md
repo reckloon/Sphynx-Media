@@ -377,10 +377,10 @@ has. A *skeleton* item omits enrichment (overview, genres, ratings, cast).
   "tmdbId": "335984",
   "overview": "…", "year": 2017, "runtime": 9840.0,
   "images": { "primary": "…", "backdrop": "…", "thumb": "…" },
-  "placeholder": { "blurHash": "…" },
+  "placeholder": { "url": "…/tiny.jpg" },
   "seriesId": "…", "seriesTitle": "…", "seasonIndex": 1, "episodeIndex": 3, "childCount": 10,
   "genres": ["Sci-Fi"], "communityRating": 8.0, "officialRating": "R",
-  "cast": [ { "id": "pe_…", "name": "Ryan Gosling", "role": "K", "imageURL": "…", "placeholder": { "blurHash": "…" } } ],
+  "cast": [ { "id": "pe_…", "name": "Ryan Gosling", "role": "K", "imageURL": "…", "placeholder": { "url": "…/tiny.jpg" } } ],
   "resumePosition": 1342.5,
   "updatedAt": "2026-06-27T12:00:00Z",
   "extra": { "tagline": "…", "imdbId": "tt…", "anything": [1, 2, 3] }
@@ -394,9 +394,12 @@ without comparing every field. It **excludes** per-user playstate
 (`resumePosition`), so progress reports don't invalidate the cache. Present at both
 `detail=skeleton` and `detail=full`, in list and single-item responses.
 
-`placeholder` is a self-describing one-of: `{ "blurHash": "…" }` **or**
-`{ "url": "…" }`. Clients use the first form they understand and fall back to a
-plain background otherwise.
+`placeholder` is a self-describing one-of that may carry **any** low-res form. The
+**reference server emits the `url` form** — a small pre-sized image link — so it
+stores and processes no image bytes; the protocol equally allows
+`{ "blurHash": "…" }` or a future form. **Clients should support both `blurHash`
+and `url`** (decode a BlurHash locally; load a `url` image), using whichever the
+server sent, and fall back to a plain background for forms they don't recognize.
 
 ### Open metadata (`extra`)
 
