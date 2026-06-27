@@ -25,14 +25,109 @@ public struct Marker: Codable, Hashable, Sendable {
     }
 }
 
-/// Optional intro/credit markers (§6), e.g. sourced from TheIntroDB by tmdbId.
-public struct Markers: Codable, Hashable, Sendable {
-    public var intro: Marker?
-    public var credits: Marker?
+/// A well-known timeline-segment type. Open enum: a server (or extension) may
+/// define additional segment types, and a client tolerates ones it doesn't know.
+/// The four built-in types cover the common "skip" affordances.
+public enum MarkerType: OpenEnum {
+    /// A "previously on…" recap at the head of an episode.
+    case recap
+    /// The opening title sequence.
+    case intro
+    /// The closing credits.
+    case credits
+    /// A "next time on…" / preview tail.
+    case preview
+    case unknown(String)
 
-    public init(intro: Marker? = nil, credits: Marker? = nil) {
-        self.intro = intro
-        self.credits = credits
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "recap": self = .recap
+        case "intro": self = .intro
+        case "credits": self = .credits
+        case "preview": self = .preview
+        default: return nil
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .recap: "recap"
+        case .intro: "intro"
+        case .credits: "credits"
+        case .preview: "preview"
+        case .unknown(let value): value
+        }
+    }
+}
+
+/// Timeline-segment markers for an item (§6) — recap / intro / credits / preview
+/// and beyond. Each segment maps a **type** to a time window, so a client can
+/// offer "Skip Recap", "Skip Intro", "Next Episode", etc.
+///
+/// The type space is **open**: the four well-known types have convenience
+/// accessors, but a server or extension may contribute any segment type (the
+/// `segments` map is keyed by an arbitrary string) and clients ignore types they
+/// don't recognise. On the wire this is a flat object —
+/// `{ "intro": {…}, "credits": {…}, "recap": {…} }` — so it stays backward
+/// compatible with the original intro/credits shape.
+public struct Markers: Codable, Hashable, Sendable {
+    /// Segment type (`MarkerType.rawValue`) → window. Open-ended.
+    public var segments: [String: Marker]
+
+    public init(segments: [String: Marker] = [:]) {
+        self.segments = segments
+    }
+
+    /// Convenience initialiser for the well-known segment types.
+    public init(
+        recap: Marker? = nil,
+        intro: Marker? = nil,
+        credits: Marker? = nil,
+        preview: Marker? = nil
+    ) {
+        var segments: [String: Marker] = [:]
+        segments[MarkerType.recap.rawValue] = recap
+        segments[MarkerType.intro.rawValue] = intro
+        segments[MarkerType.credits.rawValue] = credits
+        segments[MarkerType.preview.rawValue] = preview
+        self.segments = segments
+    }
+
+    /// Read/write a segment by type (well-known or custom).
+    public subscript(type: MarkerType) -> Marker? {
+        get { segments[type.rawValue] }
+        set { segments[type.rawValue] = newValue }
+    }
+
+    public var recap: Marker? {
+        get { self[.recap] }
+        set { self[.recap] = newValue }
+    }
+    public var intro: Marker? {
+        get { self[.intro] }
+        set { self[.intro] = newValue }
+    }
+    public var credits: Marker? {
+        get { self[.credits] }
+        set { self[.credits] = newValue }
+    }
+    public var preview: Marker? {
+        get { self[.preview] }
+        set { self[.preview] = newValue }
+    }
+
+    /// Whether any segment is present.
+    public var isEmpty: Bool { segments.isEmpty }
+
+    // Flat wire shape: the segment map IS the JSON object.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.segments = try container.decode([String: Marker].self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(segments)
     }
 }
 

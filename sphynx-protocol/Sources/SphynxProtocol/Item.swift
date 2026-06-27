@@ -1,16 +1,44 @@
 import Foundation
 
-/// Neutral image references for an item (§5.4). All optional.
+/// Neutral image references for an item (§5.4). All optional — a server sends the
+/// forms it has; clients use the ones they recognise. New image roles may be added
+/// over time without breaking older clients.
 public struct ItemImages: Codable, Hashable, Sendable {
     /// Poster.
     public var primary: String?
     public var backdrop: String?
     public var thumb: String?
+    /// Transparent title logo (clearlogo), as used by many clients' detail screens.
+    public var logo: String?
+    /// Wide banner art.
+    public var banner: String?
 
-    public init(primary: String? = nil, backdrop: String? = nil, thumb: String? = nil) {
+    public init(
+        primary: String? = nil,
+        backdrop: String? = nil,
+        thumb: String? = nil,
+        logo: String? = nil,
+        banner: String? = nil
+    ) {
         self.primary = primary
         self.backdrop = backdrop
         self.thumb = thumb
+        self.logo = logo
+        self.banner = banner
+    }
+}
+
+/// A chapter / scene marker on an item's timeline (§5.4). Times in **seconds**.
+public struct Chapter: Codable, Hashable, Sendable {
+    public var start: Double
+    public var title: String?
+    /// Optional chapter thumbnail image URL.
+    public var imageURL: String?
+
+    public init(start: Double, title: String? = nil, imageURL: String? = nil) {
+        self.start = start
+        self.title = title
+        self.imageURL = imageURL
     }
 }
 
@@ -55,6 +83,13 @@ public struct Item: Codable, Hashable, Sendable {
     /// Runtime in **seconds**.
     public var runtime: Double?
 
+    /// The work's original-language title, when it differs from `title`.
+    public var originalTitle: String?
+    /// A title to sort by (articles dropped, etc.), when the server provides one.
+    public var sortTitle: String?
+    /// A short marketing tagline.
+    public var tagline: String?
+
     public var images: ItemImages?
     public var placeholder: Placeholder?
 
@@ -67,9 +102,38 @@ public struct Item: Codable, Hashable, Sendable {
 
     // Enrichment (present at detail=full).
     public var genres: [String]?
+    /// Audience rating, typically 0…10 (e.g. TMDB vote average).
     public var communityRating: Double?
+    /// Critic rating, typically 0…100 (e.g. a review-aggregator score).
+    public var criticRating: Double?
+    /// Content rating / certification, e.g. "PG-13", "TV-MA".
     public var officialRating: String?
     public var cast: [CastMember]?
+    /// Director name(s).
+    public var directors: [String]?
+    /// Writer name(s).
+    public var writers: [String]?
+    /// Production studios / networks.
+    public var studios: [String]?
+    /// Production countries (names or ISO codes, as the server has them).
+    public var countries: [String]?
+    /// Free-form tags / keywords.
+    public var tags: [String]?
+    /// Trailer URLs (e.g. YouTube links), when known.
+    public var trailers: [String]?
+    /// Chapter / scene markers along the timeline.
+    public var chapters: [Chapter]?
+    /// Release / first-air status, e.g. "Released", "Continuing", "Ended".
+    public var status: String?
+    /// Premiere / first-air date (RFC 3339 date).
+    public var premiereDate: String?
+    /// End / last-air date for series (RFC 3339 date).
+    public var endDate: String?
+    /// When this item was added to the library (RFC 3339), for "Recently Added".
+    public var dateAdded: String?
+    /// Cross-system identifiers beyond `tmdbId`, e.g. `{"imdb":"tt…","tvdb":"…"}`.
+    /// An open map: clients read the namespaces they understand.
+    public var externalIds: [String: String]?
 
     /// Per-user state, folded in when known. Position in **seconds**; absent or 0
     /// means "from start".
@@ -100,6 +164,9 @@ public struct Item: Codable, Hashable, Sendable {
         overview: String? = nil,
         year: Int? = nil,
         runtime: Double? = nil,
+        originalTitle: String? = nil,
+        sortTitle: String? = nil,
+        tagline: String? = nil,
         images: ItemImages? = nil,
         placeholder: Placeholder? = nil,
         seriesId: String? = nil,
@@ -109,8 +176,21 @@ public struct Item: Codable, Hashable, Sendable {
         childCount: Int? = nil,
         genres: [String]? = nil,
         communityRating: Double? = nil,
+        criticRating: Double? = nil,
         officialRating: String? = nil,
         cast: [CastMember]? = nil,
+        directors: [String]? = nil,
+        writers: [String]? = nil,
+        studios: [String]? = nil,
+        countries: [String]? = nil,
+        tags: [String]? = nil,
+        trailers: [String]? = nil,
+        chapters: [Chapter]? = nil,
+        status: String? = nil,
+        premiereDate: String? = nil,
+        endDate: String? = nil,
+        dateAdded: String? = nil,
+        externalIds: [String: String]? = nil,
         resumePosition: Double? = nil,
         updatedAt: String? = nil,
         extra: [String: JSONValue]? = nil
@@ -122,6 +202,9 @@ public struct Item: Codable, Hashable, Sendable {
         self.overview = overview
         self.year = year
         self.runtime = runtime
+        self.originalTitle = originalTitle
+        self.sortTitle = sortTitle
+        self.tagline = tagline
         self.images = images
         self.placeholder = placeholder
         self.seriesId = seriesId
@@ -131,8 +214,21 @@ public struct Item: Codable, Hashable, Sendable {
         self.childCount = childCount
         self.genres = genres
         self.communityRating = communityRating
+        self.criticRating = criticRating
         self.officialRating = officialRating
         self.cast = cast
+        self.directors = directors
+        self.writers = writers
+        self.studios = studios
+        self.countries = countries
+        self.tags = tags
+        self.trailers = trailers
+        self.chapters = chapters
+        self.status = status
+        self.premiereDate = premiereDate
+        self.endDate = endDate
+        self.dateAdded = dateAdded
+        self.externalIds = externalIds
         self.resumePosition = resumePosition
         self.updatedAt = updatedAt
         self.extra = extra
