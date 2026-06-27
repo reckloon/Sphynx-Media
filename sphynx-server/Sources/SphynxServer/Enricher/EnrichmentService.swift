@@ -70,16 +70,20 @@ struct EnrichmentService: Sendable {
     }
 
     private func apply(_ fields: EnrichedFields, to item: inout ItemRecord) {
-        item.overview = fields.overview
-        if let year = fields.year { item.year = year }
-        item.runtime = fields.runtimeSeconds
-        item.genresJSON = Self.encode(fields.genres)
-        item.communityRating = fields.communityRating
-        item.primaryImage = fields.primaryImage
-        item.backdropImage = fields.backdropImage
-        item.thumbImage = fields.thumbImage
-        item.placeholderURL = fields.placeholderURL
-        item.castJSON = Self.encode(fields.cast)
+        // Manual edits win: never overwrite a field the admin has locked.
+        let locked = item.lockedFields()
+        if !locked.contains(LockableField.overview) { item.overview = fields.overview }
+        if !locked.contains(LockableField.year), let year = fields.year { item.year = year }
+        if !locked.contains(LockableField.runtime) { item.runtime = fields.runtimeSeconds }
+        if !locked.contains(LockableField.genres) { item.genresJSON = Self.encode(fields.genres) }
+        if !locked.contains(LockableField.communityRating) { item.communityRating = fields.communityRating }
+        if !locked.contains(LockableField.images) {
+            item.primaryImage = fields.primaryImage
+            item.backdropImage = fields.backdropImage
+            item.thumbImage = fields.thumbImage
+        }
+        if !locked.contains(LockableField.placeholder) { item.placeholderURL = fields.placeholderURL }
+        if !locked.contains(LockableField.cast) { item.castJSON = Self.encode(fields.cast) }
     }
 
     private static func encode(_ value: some Encodable) -> String? {

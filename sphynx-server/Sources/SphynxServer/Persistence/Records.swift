@@ -191,6 +191,18 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// onto `Item.extra`.
     var extraJSON: String?
 
+    /// Field keys an admin has locked against auto-refresh (manual edits), stored
+    /// uniformly as JSON text. Enrichment + re-scan skip any field in this set.
+    var lockedFieldsJSON: String?
+
+    /// The set of locked field keys (empty if none / malformed).
+    func lockedFields() -> Set<String> {
+        guard let lockedFieldsJSON, let data = lockedFieldsJSON.data(using: .utf8),
+              let list = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return Set(list)
+    }
+
     /// Projection into the protocol's `Item`.
     ///
     /// `skeleton` carries the fields needed to render a tile (images,

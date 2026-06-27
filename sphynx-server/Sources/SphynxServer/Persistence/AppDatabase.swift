@@ -225,6 +225,14 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m11_item_locked_fields") { db in
+            // Manual-edit persistence: field keys an admin locked against
+            // auto-refresh, stored uniformly as JSON text (like genres/extra).
+            try db.alter(table: "item") { t in
+                t.add(column: "lockedFieldsJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

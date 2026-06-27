@@ -109,6 +109,12 @@ Given a TMDB id, fetch and cache the metadata the protocol exposes:
 
 Enrichment is cache-with-TTL: refresh periodically, serve stale-but-present immediately.
 
+**Manual edits are authoritative.** An admin (or anyone with `metadata.edit`) can
+edit a field via `PATCH /v1/admin/items/{id}`, which **locks** that field: every
+subsequent scan, TTL refresh, and forced enrich skips locked fields, so the edit
+survives. This generalizes the per-item `identityPinned` / `markersAuthoritative`
+provenance to every field. Unlocking a field re-enables automatic refresh.
+
 > Open: TTLs per field class, artwork hosting (proxy-and-cache vs. hotlink refs), placeholder generation strategy.
 
 ---

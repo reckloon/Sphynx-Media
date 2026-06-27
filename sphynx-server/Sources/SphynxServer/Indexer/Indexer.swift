@@ -157,13 +157,19 @@ struct Indexer: Sendable {
                 }
             case .movie(let title, let year):
                 if var current = existingByKey.removeValue(forKey: entry.key) {
-                    // Existing movie: refresh fields if the source changed.
-                    if title != current.title || (entry.type ?? current.type) != current.type
-                        || entry.container != current.container || year != current.year {
-                        current.title = title
-                        current.type = entry.type ?? current.type
-                        current.container = entry.container ?? current.container
-                        current.year = year ?? current.year
+                    // Existing movie: refresh source-derived fields if changed —
+                    // but never overwrite a field the admin has locked.
+                    let locked = current.lockedFields()
+                    let newTitle = locked.contains(LockableField.title) ? current.title : title
+                    let newType = entry.type ?? current.type
+                    let newContainer = entry.container ?? current.container
+                    let newYear = locked.contains(LockableField.year) ? current.year : (year ?? current.year)
+                    if newTitle != current.title || newType != current.type
+                        || newContainer != current.container || newYear != current.year {
+                        current.title = newTitle
+                        current.type = newType
+                        current.container = newContainer
+                        current.year = newYear
                         current.updatedAt = now
                         try await catalog.updateItem(current)
                         updated += 1
@@ -245,16 +251,22 @@ struct Indexer: Sendable {
         }
     }
 
-    /// Map enrichment fields onto a record (series/season share this).
+    /// Map enrichment fields onto a record (series/season share this), skipping
+    /// any field the admin has locked so manual edits survive re-enrichment.
     private func apply(_ fields: EnrichedFields, to record: inout ItemRecord, now: Double) {
-        record.overview = fields.overview
-        if let year = fields.year { record.year = year }
-        record.genresJSON = fields.genres.isEmpty ? nil : (try? JSONEncoder().encode(fields.genres)).flatMap { String(data: $0, encoding: .utf8) }
-        record.communityRating = fields.communityRating
-        record.primaryImage = fields.primaryImage
-        record.backdropImage = fields.backdropImage
-        record.thumbImage = fields.thumbImage
-        record.placeholderURL = fields.placeholderURL
+        let locked = record.lockedFields()
+        if !locked.contains(LockableField.overview) { record.overview = fields.overview }
+        if !locked.contains(LockableField.year), let year = fields.year { record.year = year }
+        if !locked.contains(LockableField.genres) {
+            record.genresJSON = fields.genres.isEmpty ? nil : (try? JSONEncoder().encode(fields.genres)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+        if !locked.contains(LockableField.communityRating) { record.communityRating = fields.communityRating }
+        if !locked.contains(LockableField.images) {
+            record.primaryImage = fields.primaryImage
+            record.backdropImage = fields.backdropImage
+            record.thumbImage = fields.thumbImage
+        }
+        if !locked.contains(LockableField.placeholder) { record.placeholderURL = fields.placeholderURL }
         record.enrichedAt = now
     }
 }

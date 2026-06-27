@@ -200,6 +200,12 @@ carries a freshness window (`SPHYNX_ENRICH_TTL`, default **90 days**). A backgro
 **maintenance pass** (`SPHYNX_MAINTENANCE_INTERVAL`, default daily) re-fetches
 anything older. The client does nothing.
 
+**Manual edits opt out.** An admin (or a holder of `metadata.edit`) can edit a
+field via `PATCH /v1/admin/items/{id}`, which **locks** it: refresh and re-scan
+skip locked fields, so the edit is never clobbered. Unlock to re-enable automatic
+refresh. A server-side enricher that writes a field directly should likewise
+respect (or set) the item's lock set.
+
 ### Client-owned data — the server flags it, the client refreshes it
 
 Data only a client can fetch (intro/credit markers from a client-only source like

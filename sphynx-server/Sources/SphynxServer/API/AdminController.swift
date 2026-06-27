@@ -1,3 +1,4 @@
+import Foundation
 import Hummingbird
 import SphynxProtocol
 
@@ -18,6 +19,7 @@ struct AdminController: Sendable {
         admin.post("sources/:sourceId/scan", use: scanSource)
         admin.post("scan", use: scanAll)
         admin.post("items", use: createItem)
+        admin.patch("items/:itemId", use: editItem)
         admin.post("items/:itemId/identity", use: setIdentity)
         admin.post("items/:itemId/enrich", use: enrichItem)
         admin.post("enrich", use: enrichAll)
@@ -138,6 +140,69 @@ struct AdminController: Sendable {
             extra: body.extra
         )
         return record.toProtocol(full: true)
+    }
+
+    /// Edit an item's metadata and **lock** each edited field against
+    /// auto-refresh. Gated by the `metadata.edit` permission (scoped to the
+    /// item's library), so a non-admin editor can be granted it. A locked field
+    /// survives every scan, TTL refresh, and forced enrich; `unlock`/`unlockAll`
+    /// re-enables auto-refresh for those fields.
+    @Sendable
+    func editItem(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemResponse {
+        let identity = try context.requireIdentity()
+        guard let itemId = context.parameters.get("itemId") else {
+            throw SphynxError.badRequest("Missing item id")
+        }
+        guard var item = try await catalog.item(id: itemId) else {
+            throw SphynxError.notFound("No item '\(itemId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to edit metadata")
+        }
+        let body = try await request.decode(as: EditItemRequest.self, context: context)
+
+        var locked = item.lockedFields()
+        var changed = false
+        // Each provided field is written AND locked (manual edit is authoritative).
+        if let title = body.title {
+            guard !title.isEmpty else { throw SphynxError.badRequest("title cannot be empty") }
+            item.title = title; locked.insert(LockableField.title); changed = true
+        }
+        if let overview = body.overview { item.overview = overview; locked.insert(LockableField.overview); changed = true }
+        if let year = body.year { item.year = year; locked.insert(LockableField.year); changed = true }
+        if let runtime = body.runtime { item.runtime = runtime; locked.insert(LockableField.runtime); changed = true }
+        if let genres = body.genres { item.genresJSON = Self.encodeJSON(genres); locked.insert(LockableField.genres); changed = true }
+        if let rating = body.communityRating { item.communityRating = rating; locked.insert(LockableField.communityRating); changed = true }
+        if let official = body.officialRating { item.officialRating = official; locked.insert(LockableField.officialRating); changed = true }
+        if let images = body.images {
+            item.primaryImage = images.primary
+            item.backdropImage = images.backdrop
+            item.thumbImage = images.thumb
+            locked.insert(LockableField.images); changed = true
+        }
+        if let placeholder = body.placeholder { item.placeholderURL = placeholder; locked.insert(LockableField.placeholder); changed = true }
+
+        // Unlock re-enables auto-refresh for those fields (next enrich repopulates).
+        if body.unlockAll == true {
+            locked.removeAll(); changed = true
+        } else if let unlock = body.unlock, !unlock.isEmpty {
+            for key in unlock { locked.remove(key) }
+            changed = true
+        }
+
+        if changed {
+            item.lockedFieldsJSON = Self.encodeJSON(locked.sorted())
+            // An edit is a data change → bump updatedAt so client caches refresh.
+            item.updatedAt = Date().timeIntervalSince1970
+            try await catalog.updateItem(item)
+        }
+        return AdminItemResponse(item: item.toProtocol(full: true), lockedFields: item.lockedFields().sorted())
+    }
+
+    private static func encodeJSON(_ value: some Encodable) -> String? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// Pin an item to a specific TMDB id (admin override) and re-enrich.
@@ -302,6 +367,39 @@ struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
 
 struct AdminUsersResponse: Codable, Sendable, ResponseEncodable {
     var users: [AdminUserResponse]
+}
+
+/// Artwork to set on an item. Each key is optional; omitted keys clear that
+/// image (the whole `images` set is locked as one unit).
+struct EditImages: Codable, Sendable {
+    var primary: String?
+    var backdrop: String?
+    var thumb: String?
+}
+
+/// `PATCH /v1/admin/items/{id}` body. Every field is optional; each one present
+/// is written AND locked against auto-refresh. `unlock` removes specific locks;
+/// `unlockAll` clears them all (re-enabling auto-refresh).
+struct EditItemRequest: Codable, Sendable {
+    var title: String?
+    var overview: String?
+    var year: Int?
+    /// Runtime in **seconds**.
+    var runtime: Double?
+    var genres: [String]?
+    var communityRating: Double?
+    var officialRating: String?
+    var images: EditImages?
+    /// A custom low-res placeholder (image URL).
+    var placeholder: String?
+    var unlock: [String]?
+    var unlockAll: Bool?
+}
+
+/// An item plus the field keys currently locked against auto-refresh (admin view).
+struct AdminItemResponse: Codable, Sendable, ResponseEncodable {
+    var item: Item
+    var lockedFields: [String]
 }
 
 struct SetIdentityRequest: Codable, Sendable {

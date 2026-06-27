@@ -374,6 +374,26 @@ The admin account cannot be deleted (**403**).
 The scan summary includes an `enriched` count — items identified against TMDB and
 enriched during the scan (0 when TMDB isn't configured).
 
+### `PATCH /v1/admin/items/{itemId}` — `metadata.edit`
+
+Edit an item's metadata and **lock** each edited field against auto-refresh.
+Gated by the `metadata.edit` [permission](#permissions) (honoring per-library
+scoping), not the admin role — so a non-admin editor can be granted it.
+
+Every field is optional; each one **present is written and locked**. A locked
+field survives every scan, TTL refresh, and forced enrich, so manual edits stick.
+**Body**
+```jsonc
+{ "title": "…", "overview": "…", "year": 1999, "runtime": 8160,
+  "genres": ["…"], "communityRating": 8.2, "officialRating": "PG-13",
+  "images": { "primary": "https://…", "backdrop": "https://…", "thumb": "https://…" },
+  "placeholder": "https://…",          // custom low-res placeholder (image URL)
+  "unlock": ["overview"],               // remove specific locks (re-enable refresh)
+  "unlockAll": false }                  // or clear every lock
+```
+**200** → `{ "item": <Item>, "lockedFields": ["overview", "title"] }`. To revert a
+field to automatic TMDB data, `unlock` it (or `unlockAll`) and re-enrich.
+
 ### `POST /v1/admin/items/{itemId}/identity`
 
 Admin override: pin an item to a specific TMDB id and re-enrich.
