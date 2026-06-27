@@ -38,7 +38,7 @@ This is a monorepo containing two Swift packages plus the specs:
 
 | Path | What it is |
 |------|------------|
-| [`sphynx-protocol/`](sphynx-protocol) | The wire contract as **pure, dependency-free** Swift value types (Foundation-only). Builds for every Apple platform + Linux. Shared by the server and any client. |
+| [`sphynx-protocol/`](sphynx-protocol) | The wire contract as **pure, dependency-free** Swift value types (Foundation-only). Builds for every Apple platform + Linux. Used directly by the reference server; available for any client that prefers to reuse the types rather than hand-map the JSON. |
 | [`sphynx-server/`](sphynx-server) | The reference server — a [Hummingbird 2](https://github.com/hummingbird-project/hummingbird) app. Uses the protocol types directly as request/response bodies, so it can't drift from the wire format. |
 | [`docs/`](docs) | The [endpoint reference](docs/API.md). The full narrative — protocol, server design, and extending — is the **[complete guide](https://reckloon.github.io/Sphynx-Media/)** ([`Guide.html`](Guide.html)). |
 
@@ -125,11 +125,15 @@ swift test
 CI runs `swift test` for both packages on macOS and a Swift Linux container on
 every push.
 
-> **Note on consuming the protocol package.** Because this is a monorepo, the
-> `sphynx-protocol` package isn't at the repository root, so it can't be added as
-> a SwiftPM *URL* dependency directly. Clients (e.g. Ocelot) consume it via a
-> local path dependency against a checkout. If a standalone distribution becomes
-> necessary, the package can be mirrored to its own repo.
+> **Note on consuming the protocol package.** `sphynx-protocol` is the canonical,
+> dependency-free definition of the wire types, shared by the reference server so
+> it can't drift from the spec. A client **may** consume it to reuse those types,
+> but isn't required to — the wire is plain JSON, so a client can implement the
+> protocol directly from the [docs](https://reckloon.github.io/Sphynx-Media/)
+> (Ocelot does the latter, hand-mapping the JSON with its own `Decodable` types).
+> Because this is a monorepo, the package isn't at the repository root, so a client
+> that does consume it adds it via a local path dependency against a checkout; it
+> can be mirrored to its own repo if standalone distribution is ever needed.
 
 ## License
 

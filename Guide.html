@@ -306,12 +306,12 @@
 <p>The project (<a href="https://github.com/reckloon/Sphynx-Media">reckloon/Sphynx-Media</a>) is a monorepo containing two Swift packages plus the specs:</p>
 <table>
   <tr><th>Path</th><th>What it is</th></tr>
-  <tr><td><code>sphynx-protocol/</code></td><td>The wire contract as <strong>pure, dependency-free</strong> Swift value types (Foundation-only). Builds for every Apple platform + Linux. Shared by the server and any client.</td></tr>
+  <tr><td><code>sphynx-protocol/</code></td><td>The wire contract as <strong>pure, dependency-free</strong> Swift value types (Foundation-only). Builds for every Apple platform + Linux. Used directly by the reference server; available for any client that prefers to reuse the types rather than hand-map the JSON.</td></tr>
   <tr><td><code>sphynx-server/</code></td><td>The reference server — a Hummingbird 2 app. Uses the protocol types directly as request/response bodies, so it cannot drift from the wire format.</td></tr>
   <tr><td><code>docs/</code></td><td>The endpoint reference (<code>API.md</code>). The full narrative — protocol, server design, and extending — is <strong>this guide</strong>.</td></tr>
 </table>
 <div class="callout note">
-  <p><strong>Monorepo caveat.</strong> Because <code>sphynx-protocol</code> is not at the repository root, it can't be added as a SwiftPM <em>URL</em> dependency directly. Clients (e.g. Ocelot) consume it via a <strong>local path dependency</strong> against a checkout. If a standalone distribution becomes necessary, the package can be mirrored to its own repo.</p>
+  <p><strong>On consuming <code>sphynx-protocol</code>.</strong> The package is the canonical, dependency-free definition of the wire types, shared by the reference server so it can't drift from the spec. A client <strong>MAY</strong> consume it to get those types for free, but isn't required to — the wire is plain JSON, so a client can implement the protocol directly from this documentation (Ocelot does the latter, hand-mapping the JSON with its own small <code>Decodable</code> types). Because the package isn't at the repository root it can't be added as a SwiftPM <em>URL</em> dependency; a client that does want to consume it adds it via a <strong>local path dependency</strong> against a checkout today, and it can be mirrored to its own repo if standalone distribution is ever needed.</p>
 </div>
 
 <h3 id="architecture">How the server is built</h3>
@@ -836,11 +836,11 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 </ol>
 
 <div class="callout tip">
-  <p><strong>Adapter pattern.</strong> A client that already models media internally needs only a thin translation layer — it never exposes its internal types. Map <code>resolve.url + headers</code> to a pre-resolved playback request; position fields to your internal time unit; <code>placeholder.{blurHash,url}</code> to a self-describing low-res type; <code>playstate/*</code> to your start/progress/stop hooks; <code>markers.intro</code> to a "Skip Intro" affordance. Ocelot consumes Sphynx through exactly one such adapter.</p>
+  <p><strong>Adapter pattern.</strong> A client that already models media internally needs only a thin translation layer — it never exposes its internal types. Map <code>resolve.url + headers</code> to a pre-resolved playback request; position fields to your internal time unit; <code>placeholder.{blurHash,url}</code> to a self-describing low-res type; <code>playstate/*</code> to your start/progress/stop hooks; <code>markers.intro</code> to a "Skip Intro" affordance. Ocelot speaks Sphynx through exactly one such adapter, implementing the wire directly from this documentation rather than importing a package.</p>
 </div>
 
-<h4>Sharing the protocol types (Swift clients)</h4>
-<p>If your client is Swift, don't re-model the wire types — depend on the <code>sphynx-protocol</code> package so request/response bodies are exactly the server's. Because the package isn't at the repo root, add it as a <strong>local path dependency</strong> against a checkout:</p>
+<h4>Optionally sharing the protocol types (Swift clients)</h4>
+<p>This documentation is the client contract — its field names, units (seconds), and JSON shapes are what you map against, and a thin hand-written <code>Decodable</code> layer is trivial and safe given the optional fields and unknown-tolerant enums (Ocelot does exactly this). If you'd rather not hand-roll the types and your client is Swift, you <em>may</em> instead depend on the <code>sphynx-protocol</code> package to reuse the server's exact value types. Because the package isn't at the repo root, add it as a <strong>local path dependency</strong> against a checkout:</p>
 <pre><code><span class="cmt">// Package.swift</span>
 dependencies: [
   .package(path: <span class="str">"../Sphynx-Media/sphynx-protocol"</span>)

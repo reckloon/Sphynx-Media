@@ -9,8 +9,11 @@ proxying, transcoding, or storing the media bytes. See the
 [Sphynx guide](https://reckloon.github.io/Sphynx-Media/) for the full protocol
 reference and the [API reference](../docs/API.md) for the live endpoints.
 
-This package is the shared contract consumed by **both** the reference server
-(`sphynx-server`) and the Ocelot client app. It is therefore intentionally:
+This package is the **canonical definition** of the wire types. The reference
+server uses it directly (so it can't drift from the spec); a client **may** reuse
+it to get the types for free, but isn't required to — the wire is plain JSON, so a
+client can implement the protocol straight from the docs with its own small
+`Decodable` types (Ocelot does the latter). It is therefore intentionally:
 
 - **Foundation-only** — zero third-party dependencies.
 - **Cross-platform** — builds for every Apple platform and Linux.
