@@ -75,9 +75,11 @@ struct AdminController: Sendable {
             baseURL: body.baseURL,
             headers: body.headers,
             libraryId: body.libraryId,
-            manifestURL: body.manifestURL
+            manifestURL: body.manifestURL,
+            config: body.config,
+            secrets: body.secrets
         )
-        return SourceResponse(id: record.id, label: record.label, driver: record.driver)
+        return SourceResponse(from: record)
     }
 
     @Sendable
@@ -205,12 +207,28 @@ struct CreateSourceRequest: Codable, Sendable {
     var headers: [String: String]?
     var libraryId: String?
     var manifestURL: String?
+    /// Driver-specific, non-secret config (host, port, share, rootPath, …).
+    var config: [String: String]?
+    /// Driver credentials (username, password, token, …). Stored but never
+    /// returned or logged.
+    var secrets: [String: String]?
 }
 
+/// A source as exposed by the API — non-secret fields only. Credentials
+/// (`secrets`, and the HTTP driver's request headers) are deliberately omitted.
 struct SourceResponse: Codable, Sendable, ResponseEncodable {
     var id: String
     var label: String
     var driver: String
+    var config: [String: String]?
+
+    init(from record: SourceRecord) {
+        self.id = record.id
+        self.label = record.label
+        self.driver = record.driver
+        let config = record.config()
+        self.config = config.isEmpty ? nil : config
+    }
 }
 
 struct CreateItemRequest: Codable, Sendable {

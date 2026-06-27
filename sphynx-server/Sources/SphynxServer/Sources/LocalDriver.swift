@@ -18,6 +18,15 @@ struct LocalDriver: SourceDriver {
     /// Absolute path to the directory this source indexes.
     let root: String
 
+    /// Walks a directory tree. The root is `config.rootPath` (falling back to the
+    /// legacy `baseURL` field); no credentials are needed.
+    static let registration = DriverRegistration(kind: "local", requiredConfigKeys: []) { context in
+        guard let root = context.config["rootPath"] ?? context.baseURL, !root.isEmpty else {
+            throw SphynxError.badRequest("A 'local' source needs a root path (config.rootPath)")
+        }
+        return LocalDriver(id: context.id, root: root)
+    }
+
     /// Media file extensions worth indexing (besides `.strm`).
     private static let mediaExtensions: Set<String> = [
         "mkv", "mp4", "m4v", "avi", "mov", "webm", "wmv", "flv",

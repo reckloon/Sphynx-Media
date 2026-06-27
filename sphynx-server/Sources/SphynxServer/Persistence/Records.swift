@@ -77,11 +77,33 @@ struct SourceRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var libraryId: String?
     /// URL of a JSON manifest the indexer lists entries from.
     var manifestURL: String?
+    /// Driver-specific, non-secret configuration (host, port, share, rootPath, …),
+    /// stored as a JSON object of strings.
+    var configJSON: String?
+    /// Driver credentials (username, password, token, …). NEVER returned by the
+    /// API and NEVER written to logs.
+    var secretsJSON: String?
     var createdAt: Double
 
-    /// Decoded request headers (empty if none / malformed).
+    /// Decoded request headers (empty if none / malformed). For the HTTP driver
+    /// these may carry an `Authorization` token, so they're treated as secret —
+    /// never echoed by the source API.
     func headers() -> [String: String] {
-        guard let headersJSON, let data = headersJSON.data(using: .utf8) else { return [:] }
+        Self.decodeStringMap(headersJSON)
+    }
+
+    /// Driver-specific, non-secret configuration.
+    func config() -> [String: String] {
+        Self.decodeStringMap(configJSON)
+    }
+
+    /// Driver credentials. Callers must never log or return these.
+    func secrets() -> [String: String] {
+        Self.decodeStringMap(secretsJSON)
+    }
+
+    private static func decodeStringMap(_ json: String?) -> [String: String] {
+        guard let json, let data = json.data(using: .utf8) else { return [:] }
         return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
     }
 }

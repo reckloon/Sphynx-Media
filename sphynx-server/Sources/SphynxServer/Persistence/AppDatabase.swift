@@ -183,6 +183,18 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m9_source_config_secrets") { db in
+            // Generic per-source config + credentials, so non-HTTP drivers (local,
+            // webdav, smb, ftp) configure without the HTTP-shaped columns.
+            // `configJSON` is driver-specific, non-secret keys (host, port, share,
+            // rootPath, …); `secretsJSON` holds credentials that are NEVER returned
+            // by the API or written to logs.
+            try db.alter(table: "source") { t in
+                t.add(column: "configJSON", .text)
+                t.add(column: "secretsJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

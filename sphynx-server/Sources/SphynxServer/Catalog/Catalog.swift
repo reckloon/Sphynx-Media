@@ -38,23 +38,30 @@ struct Catalog: Sendable {
         baseURL: String?,
         headers: [String: String]?,
         libraryId: String?,
-        manifestURL: String?
+        manifestURL: String?,
+        config: [String: String]? = nil,
+        secrets: [String: String]? = nil
     ) async throws -> SourceRecord {
-        let headersJSON: String? = try headers.flatMap { dict in
-            String(data: try JSONEncoder().encode(dict), encoding: .utf8)
-        }
         let record = SourceRecord(
             id: Tokens.newID("src_"),
             label: label,
             driver: driver,
             baseURL: baseURL,
-            headersJSON: headersJSON,
+            headersJSON: Self.encodeStringMap(headers),
             libraryId: libraryId,
             manifestURL: manifestURL,
+            configJSON: Self.encodeStringMap(config),
+            secretsJSON: Self.encodeStringMap(secrets),
             createdAt: Date().timeIntervalSince1970
         )
         try await db.writer.write { db in try record.insert(db) }
         return record
+    }
+
+    /// Encode a non-empty string map to JSON text (nil when empty/absent).
+    private static func encodeStringMap(_ map: [String: String]?) -> String? {
+        guard let map, !map.isEmpty else { return nil }
+        return (try? JSONEncoder().encode(map)).flatMap { String(data: $0, encoding: .utf8) }
     }
 
     func source(id: String) async throws -> SourceRecord? {

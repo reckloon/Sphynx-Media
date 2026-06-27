@@ -83,39 +83,18 @@ struct ManifestEntry: Codable, Sendable {
     var episode: Int?
 }
 
-/// Builds a concrete driver for a source record. The one place that knows the
-/// mapping from driver-kind strings to driver types.
-struct DriverFactory: Sendable {
-    let fetcher: any HTTPFetching
-
-    init(fetcher: any HTTPFetching = URLSessionFetcher()) {
-        self.fetcher = fetcher
-    }
-
-    func makeDriver(for source: SourceRecord) throws -> any SourceDriver {
-        switch source.driver {
-        case "http", "https":
-            return HTTPDriver(
-                id: source.id,
-                baseURL: source.baseURL,
-                headers: source.headers(),
-                ttl: nil,
-                manifestURL: source.manifestURL,
-                fetcher: fetcher
-            )
-        case "local":
-            // The local root is configured via the source's `baseURL` field.
-            guard let root = source.baseURL, !root.isEmpty else {
-                throw SphynxError.badRequest("A 'local' source needs a root path (set baseURL)")
-            }
-            return LocalDriver(id: source.id, root: root)
-        default:
-            throw SphynxError.noMediaSource("Unsupported source driver '\(source.driver)'")
-        }
-    }
-
-    /// Driver for self-contained items whose key is an absolute URL (no source).
-    func inlineHTTPDriver() -> HTTPDriver {
-        HTTPDriver(id: "inline", baseURL: nil, headers: [:], ttl: nil, manifestURL: nil, fetcher: fetcher)
+extension HTTPDriver {
+    /// Reachable over plain HTTP(S). `baseURL`/`manifestURL` come from `config`
+    /// (falling back to the legacy columns); request headers act as the secret
+    /// and are never echoed by the API.
+    static let registration = DriverRegistration(kind: "http", requiredConfigKeys: []) { context in
+        HTTPDriver(
+            id: context.id,
+            baseURL: context.config["baseURL"] ?? context.baseURL,
+            headers: context.headers,
+            ttl: nil,
+            manifestURL: context.config["manifestURL"] ?? context.manifestURL,
+            fetcher: context.fetcher
+        )
     }
 }
