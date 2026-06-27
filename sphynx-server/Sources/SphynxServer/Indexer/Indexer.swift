@@ -49,17 +49,23 @@ struct Indexer: Sendable {
             return details
         }
 
-        func ensureSeries(_ title: String) async throws -> ItemRecord {
+        func ensureSeries(_ title: String, year: Int?) async throws -> ItemRecord {
             let cacheKey = HeuristicIdentifier.normalize(title)
             if let cached = seriesCache[cacheKey] { return cached }
-            if let existing = try await catalog.seriesItem(libraryId: source.libraryId ?? "", title: title) {
+            if var existing = try await catalog.seriesItem(libraryId: source.libraryId ?? "", title: title) {
+                // Backfill a year from the show folder when the container lacks one.
+                if existing.year == nil, let year {
+                    existing.year = year
+                    existing.updatedAt = now
+                    try await catalog.updateItem(existing)
+                }
                 seriesCache[cacheKey] = existing
                 return existing
             }
             var record = try await catalog.createItem(
                 type: "series", title: title, sourceId: source.id, sourceKey: "",
                 container: nil, tmdbId: nil, libraryId: source.libraryId,
-                parentId: nil, year: nil, seriesTitle: title
+                parentId: nil, year: year, seriesTitle: title
             )
             if let tv, let tmdbId = try? await tv.identifySeries(title: title) {
                 record.tmdbId = String(tmdbId)
@@ -102,8 +108,9 @@ struct Indexer: Sendable {
 
         // --- reconcile each entry ---
         for entry in entries {
-            if let ep = Self.episodeInfo(entry) {
-                let series = try await ensureSeries(ep.series)
+            switch Self.classify(entry) {
+            case .episode(let ep):
+                let series = try await ensureSeries(ep.series, year: ep.year)
                 let season = try await ensureSeason(series: series, season: ep.season)
                 touchedContainers.insert(series.id)
                 touchedContainers.insert(season.id)
@@ -113,7 +120,7 @@ struct Indexer: Sendable {
                     episodeMeta = seasonDetailsCache["\(tmdbId)|\(ep.season)"]?
                         .episodes.first { $0.episodeNumber == ep.episode }
                 }
-                let episodeTitle = entry.title ?? episodeMeta?.name ?? "Episode \(ep.episode)"
+                let episodeTitle = entry.title ?? episodeMeta?.name ?? ep.episodeTitle ?? "Episode \(ep.episode)"
 
                 if let current = existingByKey.removeValue(forKey: entry.key) {
                     // Keep the episode's tree links correct; otherwise leave as-is.
@@ -148,29 +155,29 @@ struct Indexer: Sendable {
                     }
                     added += 1
                 }
-            } else if var current = existingByKey.removeValue(forKey: entry.key) {
-                // Existing movie: refresh hint fields if the manifest changed.
-                let newTitle = entry.title ?? current.title
-                let newType = entry.type ?? current.type
-                if newTitle != current.title || newType != current.type
-                    || entry.container != current.container || entry.year != current.year {
-                    current.title = newTitle
-                    current.type = newType
-                    current.container = entry.container ?? current.container
-                    current.year = entry.year ?? current.year
-                    current.updatedAt = now
-                    try await catalog.updateItem(current)
-                    updated += 1
+            case .movie(let title, let year):
+                if var current = existingByKey.removeValue(forKey: entry.key) {
+                    // Existing movie: refresh fields if the source changed.
+                    if title != current.title || (entry.type ?? current.type) != current.type
+                        || entry.container != current.container || year != current.year {
+                        current.title = title
+                        current.type = entry.type ?? current.type
+                        current.container = entry.container ?? current.container
+                        current.year = year ?? current.year
+                        current.updatedAt = now
+                        try await catalog.updateItem(current)
+                        updated += 1
+                    }
+                } else {
+                    // New movie (flat).
+                    _ = try await catalog.createItem(
+                        type: entry.type ?? "movie",
+                        title: title,
+                        sourceId: source.id, sourceKey: entry.key, container: entry.container,
+                        tmdbId: nil, libraryId: source.libraryId, parentId: nil, year: year
+                    )
+                    added += 1
                 }
-            } else {
-                // New movie (flat).
-                _ = try await catalog.createItem(
-                    type: entry.type ?? "movie",
-                    title: entry.title ?? Self.titleFromKey(entry.key),
-                    sourceId: source.id, sourceKey: entry.key, container: entry.container,
-                    tmdbId: nil, libraryId: source.libraryId, parentId: nil, year: entry.year
-                )
-                added += 1
             }
         }
 
@@ -207,17 +214,35 @@ struct Indexer: Sendable {
         return summaries
     }
 
-    /// Detect a TV episode from an entry: filename `SxxExx`/`NxNN` is primary;
-    /// explicit manifest hints are the fallback. Returns nil for movies.
-    static func episodeInfo(_ entry: SourceEntry) -> (series: String, season: Int, episode: Int)? {
-        if let parsed = EpisodeParser.parse(entry.key) {
-            return (parsed.seriesTitle, parsed.season, parsed.episode)
-        }
+    /// A TV episode's identity after merging hints + folder-aware parsing.
+    struct EpisodeInfo { var series: String; var season: Int; var episode: Int; var episodeTitle: String?; var year: Int? }
+
+    /// What an entry is, with the merged identity to store.
+    enum Classified {
+        case episode(EpisodeInfo)
+        case movie(title: String, year: Int?)
+    }
+
+    /// Classify an entry into a movie or an episode, merging the source's explicit
+    /// hints (from an HTTP manifest) with folder-aware parsing of the key.
+    ///
+    /// Precedence: explicit manifest episode hints win; otherwise the folder-aware
+    /// `PathParser` decides (an `SxxExx`/`NxNN` in the filename beats a
+    /// season-folder, which beats the filename for the title).
+    static func classify(_ entry: SourceEntry) -> Classified {
+        // Explicit manifest episode hints (HTTP sources that pre-identify TV).
         if entry.type == "episode", let season = entry.season, let episode = entry.episode {
             let series = entry.seriesTitle ?? entry.title ?? FilenameParser.parse(entry.key).title
-            return (series, season, episode)
+            return .episode(EpisodeInfo(series: series, season: season, episode: episode, episodeTitle: entry.title, year: entry.year))
         }
-        return nil
+
+        switch PathParser.parse(entry.key) {
+        case .episode(let series, let season, let episode, let epTitle, let year):
+            return .episode(EpisodeInfo(series: series, season: season, episode: episode, episodeTitle: epTitle, year: entry.year ?? year))
+        case .movie(let title, let year):
+            // The manifest's title/year, when present, override the parsed ones.
+            return .movie(title: entry.title ?? title, year: entry.year ?? year)
+        }
     }
 
     /// Map enrichment fields onto a record (series/season share this).
@@ -231,14 +256,6 @@ struct Indexer: Sendable {
         record.thumbImage = fields.thumbImage
         record.placeholderURL = fields.placeholderURL
         record.enrichedAt = now
-    }
-
-    /// Derive a title from a key when the manifest gives none.
-    static func titleFromKey(_ key: String) -> String {
-        let last = key.split(separator: "/").last.map(String.init) ?? key
-        let noExt = last.contains(".") ? String(last[..<last.lastIndex(of: ".")!]) : last
-        let spaced = noExt.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: ".", with: " ")
-        return spaced.isEmpty ? key : spaced
     }
 }
 

@@ -22,6 +22,10 @@ enum FilenameParser {
         "internal", "limited", "directors", "cut", "imax", "hdr", "dv", "sdr",
     ]
 
+    /// Whether a token is release junk (resolution, codec, source tag, …).
+    /// Exposed so folder-aware parsing can trim a title at the first junk token.
+    static func isJunk(_ token: String) -> Bool { junk.contains(token.lowercased()) }
+
     /// Year must be plausible (1900 .. nextYear) to avoid matching numbers that
     /// merely look like years (e.g. "2049" in a title).
     private static let maxYear: Int = (Calendar.current.component(.year, from: Date())) + 1
