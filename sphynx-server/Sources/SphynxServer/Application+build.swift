@@ -83,6 +83,7 @@ func buildApplication(
             catalog: catalog,
             identifier: HeuristicIdentifier(tmdb: client),
             enricher: Enricher(tmdb: client),
+            tv: TVEnricher(tmdb: client),
             ttl: configuration.enrichmentTTL,
             logger: logger
         )

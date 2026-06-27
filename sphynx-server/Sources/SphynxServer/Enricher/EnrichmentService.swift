@@ -7,9 +7,14 @@ struct EnrichmentService: Sendable {
     let catalog: Catalog
     let identifier: any Identifier
     let enricher: Enricher
+    /// TV identify + enrich (present when TMDB is configured). Movies use
+    /// `enricher`; TV (series/season/episode) routes through this.
+    let tv: TVEnricher?
     /// Freshness window — enriched items aren't re-fetched until this elapses.
     let ttl: Double
     let logger: Logger
+
+    private static let tvTypes: Set<String> = ["series", "season", "episode"]
 
     /// Identify (if needed) and enrich one item, persisting changes.
     /// Returns true if the item was updated. Best-effort: failures are logged,
@@ -21,6 +26,11 @@ struct EnrichmentService: Sendable {
         // Skip fresh, already-identified items unless forced.
         if !force, let enrichedAt = item.enrichedAt, item.tmdbId != nil, now - enrichedAt < ttl {
             return false
+        }
+
+        // TV items use the TV endpoints, not the movie endpoint.
+        if Self.tvTypes.contains(item.type) {
+            return await processTV(item, now: now)
         }
 
         do {
@@ -56,6 +66,72 @@ struct EnrichmentService: Sendable {
             return true
         } catch {
             logger.warning("Enrichment failed for item \(item.id): \(error)")
+            return false
+        }
+    }
+
+    /// Enrich a TV item (series / season / episode) via the TV endpoints, honoring
+    /// admin field locks. Series resolve their own TMDB id (pinned or searched);
+    /// seasons/episodes inherit the series id stored on the row.
+    private func processTV(_ item: ItemRecord, now: Double) async -> Bool {
+        guard let tv else { return false }  // TV enrichment needs TMDB configured
+        do {
+            var updated = item
+            switch item.type {
+            case "series":
+                // Resolve the series TMDB id: pinned, else known, else search.
+                let resolvedId: Int?
+                if item.identityPinned, let id = item.tmdbId.flatMap(Int.init) {
+                    resolvedId = id
+                } else if let id = item.tmdbId.flatMap(Int.init) {
+                    resolvedId = id
+                } else {
+                    resolvedId = try await tv.identifySeries(title: item.seriesTitle ?? item.title)
+                }
+                guard let resolvedId else { return false }
+                updated.tmdbId = String(resolvedId)
+                // Series fields map onto the same EnrichedFields the movie path
+                // uses, so the shared `apply` honors locks identically.
+                apply(try await tv.seriesFields(tmdbId: resolvedId), to: &updated)
+
+            case "season":
+                guard let seriesId = item.tmdbId.flatMap(Int.init), let season = item.seasonIndex else { return false }
+                let details = try await tv.season(tmdbId: seriesId, season: season)
+                let locked = updated.lockedFields()
+                if !locked.contains(LockableField.overview) { updated.overview = details.overview }
+                if !locked.contains(LockableField.images) {
+                    updated.primaryImage = TMDBImage.url(details.posterPath, size: "w500")
+                    updated.thumbImage = TMDBImage.url(details.posterPath, size: "w342")
+                }
+                if !locked.contains(LockableField.placeholder) {
+                    updated.placeholderURL = TMDBImage.url(details.posterPath, size: "w92")
+                }
+
+            case "episode":
+                guard let seriesId = item.tmdbId.flatMap(Int.init),
+                      let season = item.seasonIndex, let episode = item.episodeIndex else { return false }
+                let details = try await tv.season(tmdbId: seriesId, season: season)
+                guard let meta = details.episodes.first(where: { $0.episodeNumber == episode }) else { return false }
+                let locked = updated.lockedFields()
+                if !locked.contains(LockableField.overview) { updated.overview = meta.overview }
+                if !locked.contains(LockableField.runtime) { updated.runtime = meta.runtimeMinutes.map { Double($0) * 60 } }
+                if !locked.contains(LockableField.images) {
+                    updated.primaryImage = TMDBImage.url(meta.stillPath, size: "w780")
+                    updated.thumbImage = TMDBImage.url(meta.stillPath, size: "w300")
+                }
+                if !locked.contains(LockableField.placeholder) {
+                    updated.placeholderURL = TMDBImage.url(meta.stillPath, size: "w92")
+                }
+
+            default:
+                return false
+            }
+            updated.enrichedAt = now
+            updated.updatedAt = now
+            try await catalog.updateItem(updated)
+            return true
+        } catch {
+            logger.warning("TV enrichment failed for item \(item.id): \(error)")
             return false
         }
     }
