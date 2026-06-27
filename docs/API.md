@@ -266,6 +266,13 @@ Catalog setup, indexing, and manual entry. **Auth required + admin role**
 `manifestURL` is where the indexer lists entries. **200** →
 `{ "id": "src_…", "label": "...", "driver": "http" }`.
 
+For a `local` source, set `driver` to `local` and `baseURL` to a directory path;
+the indexer walks that tree, deriving each item's identity from the folder
+layout (`Title (Year)/file` for movies, `Show (Year)/Season N/file` for TV). A
+re-scan re-walks the folder, so it doubles as the periodically-updated source.
+`.strm` files are followed at resolve time to their contained URL — bytes never
+pass through the server.
+
 The manifest is a simple JSON document the indexer reads (metadata, not media):
 ```json
 { "items": [

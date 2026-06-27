@@ -103,6 +103,12 @@ struct DriverFactory: Sendable {
                 manifestURL: source.manifestURL,
                 fetcher: fetcher
             )
+        case "local":
+            // The local root is configured via the source's `baseURL` field.
+            guard let root = source.baseURL, !root.isEmpty else {
+                throw SphynxError.badRequest("A 'local' source needs a root path (set baseURL)")
+            }
+            return LocalDriver(id: source.id, root: root)
         default:
             throw SphynxError.noMediaSource("Unsupported source driver '\(source.driver)'")
         }
