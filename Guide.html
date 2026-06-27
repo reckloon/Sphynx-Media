@@ -755,20 +755,26 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>Clients branch on <code>code</code>, not <code>message</code>. Codes in use: <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>no_media_source</code>, <code>rate_limited</code>, <code>server_error</code>, <code>unavailable</code>, and the open value <code>bad_request</code>. <strong>Unknown codes must be tolerated.</strong></p>
 
 <h3 id="api-item">Item shape</h3>
-<p>All fields except <code>id</code>, <code>title</code>, <code>type</code> are optional; the server sends what it has. A <em>skeleton</em> item omits enrichment (overview, genres, ratings, cast).</p>
+<p>All fields except <code>id</code>, <code>title</code>, <code>type</code> are optional; the server sends what it has. The canonical set is deliberately broad — matching what mainstream clients display — so a client can rely on these names; anything a field-rich server adds beyond them rides in <code>extra</code>. A <em>skeleton</em> item carries the tile fields (images, placeholder, year, <code>dateAdded</code>) and omits the heavier enrichment (overview, genres, ratings, cast, studios, …).</p>
 <pre><code><span class="key">{
   "id":"it_…", "type":"movie", "title":"Blade Runner 2049", "tmdbId":"335984",
+  "originalTitle":"…", "sortTitle":"…", "tagline":"…",
   "overview":"…", "year":2017, "runtime":9840.0,
-  "images": { "primary":"…", "backdrop":"…", "thumb":"…" },
+  "images": { "primary":"…", "backdrop":"…", "thumb":"…", "logo":"…", "banner":"…" },
   "placeholder": { "url":"…/tiny.jpg" },
   "seriesId":"…", "seriesTitle":"…", "seasonIndex":1, "episodeIndex":3, "childCount":10,
-  "genres":["Sci-Fi"], "communityRating":8.0, "officialRating":"R",
+  "genres":["Sci-Fi"], "communityRating":8.0, "criticRating":88, "officialRating":"R",
   "cast":[ { "id":"pe_…", "name":"Ryan Gosling", "role":"K", "imageURL":"…",
             "placeholder":{"url":"…/tiny.jpg"} } ],
+  "directors":["…"], "writers":["…"], "studios":["…"], "countries":["…"], "tags":["…"],
+  "trailers":["https://…"], "chapters":[ { "start":0.0, "title":"Intro" } ],
+  "status":"Released", "premiereDate":"2017-10-06", "endDate":"…", "dateAdded":"2026-06-27T12:00:00Z",
+  "externalIds": { "imdb":"tt1856101", "tvdb":"…" },
   "resumePosition":1342.5,
   "updatedAt":"2026-06-27T12:00:00Z",
-  "extra": { "tagline":"…", "imdbId":"tt…", "anything":[1,2,3] }
+  "extra": { "anything":[1,2,3] }
 }</span></code></pre>
+<p>Every field above is optional and omitted when empty — a server that doesn't have <code>criticRating</code> or <code>chapters</code> simply omits them, and a client renders gracefully without them. The reference server fills the TMDB-derived ones (tagline, studios, directors/writers, <code>externalIds.imdb</code>, premiereDate, status, …) for movies; it leaves the rest for richer servers or extensions. <code>externalIds</code> is an open map keyed by namespace (<code>imdb</code>, <code>tvdb</code>, …); <code>dateAdded</code> powers a "Recently Added" view.</p>
 <p><code>updatedAt</code> (RFC 3339) is the last change to <strong>client-rendered</strong> data for the item (title, images, enrichment, markers…) — the max of the server's per-field change times. A client can diff this one value to decide "changed since I cached it?" without comparing every field. It <strong>excludes</strong> per-user playstate (<code>resumePosition</code>), so progress reports don't invalidate the cache.</p>
 <p><code>placeholder</code> is a self-describing one-of that may carry <strong>any</strong> low-res form. The reference server emits the <code>url</code> form — a small pre-sized image link — so it stores and processes no image bytes; the protocol equally allows <code>{ "blurHash":"…" }</code> or a future form. <strong>Clients should support both <code>blurHash</code> and <code>url</code></strong>, using whichever the server sent, and fall back to a plain background for forms they don't recognize.</p>
 
@@ -963,6 +969,24 @@ item.markersUpdatedAt = now
   <li>Declare <code>static let registration = DriverRegistration(kind:, requiredConfigKeys:, make:)</code>. <code>requiredConfigKeys</code> are validated before <code>make</code> runs, so a misconfigured source fails fast with a clear message.</li>
   <li>Add the registration to <code>DriverFactory.defaultRegistrations</code>. That one list is the only shared edit — there is no central <code>switch</code>.</li>
 </ol>
+
+<h4>Resolving — handing off an authenticated location</h4>
+<p>Because the server never proxies bytes, <code>resolve()</code> hands the client a location it can fetch <em>and authenticate</em> itself. There are three flavours, all expressible in the descriptor:</p>
+<table>
+  <tr><th>Backend</th><th>How <code>resolve()</code> authenticates</th><th>Descriptor</th></tr>
+  <tr><td>S3 / object store, some CDNs</td><td>Server mints a <strong>time-bounded signed URL</strong> with its stored key</td><td><code>url</code> (signed) + <code>ttl</code>; no credentials reach the client</td></tr>
+  <tr><td>HTTP / WebDAV</td><td>Server returns the URL + <strong>auth headers</strong></td><td><code>url</code> + <code>headers</code> (e.g. <code>Authorization</code>)</td></tr>
+  <tr><td>SMB / FTP</td><td>No signed-URL concept → URL with <strong>embedded credentials</strong></td><td><code>smb://user:pass@host/share/key</code>; the client's native stack authenticates</td></tr>
+</table>
+<p>The server is a <strong>credential broker, not a byte proxy</strong>: it holds each source's <code>secrets</code> and only materialises them into a descriptor — for an authorised user, at play time. <code>list()</code> walks the backend; <code>resolve()</code> describes <em>where</em> + <em>how to authenticate</em>.</p>
+
+<h4>Security of the handoff</h4>
+<ul>
+  <li><strong>Secrets stay server-side.</strong> A source's credentials live in its <code>secrets</code> and are <strong>never returned</strong> by browse or source-list responses — only the non-secret <code>config</code> is shown. (Encryption-at-rest is the remaining hardening.)</li>
+  <li><strong>Descriptors are sensitive.</strong> They may carry a signed URL or raw credentials, so they're returned only to an authorised caller, served over TLS, resolved fresh per play, and <strong>never logged</strong> (only method + path are). A driver that embeds credentials in a <code>url</code> must keep descriptors out of logs.</li>
+  <li><strong>Prefer signed URLs.</strong> S3/CDN signed URLs leak no credentials and expire via <code>ttl</code> — the safest handoff.</li>
+  <li><strong>SMB/FTP hand the share password to the client</strong> (inherent to those protocols). That suits a trusted, single-admin deployment, gated by the user's play permission. For users who shouldn't hold the credential, serve that content from a signed-URL or HTTP backend instead — the server will never proxy as an alternative.</li>
+</ul>
 </section>
 
 <!-- ========================= ROADMAP ========================= -->
