@@ -780,11 +780,18 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items</span></div>
 <pre><code><span class="key">{ "title":"Big Buck Bunny", "type":"movie", "container":"mp4",
-  "sourceId":"src_…", "sourceKey":"path/or/absolute-url", "tmdbId":"…" }</span></code></pre>
+  "sourceId":"src_…", "sourceKey":"path/or/absolute-url", "tmdbId":"…",
+  "libraryId":"lib_…", "parentId":"it_…", "year":2008,
+  "extra":{ "anything":[1,2,3] } }</span></code></pre>
 <ul>
+  <li><code>title</code> and <code>sourceKey</code> are the only required fields.</li>
   <li><code>sourceKey</code> — an absolute URL (self-contained) <strong>or</strong> a key relative to the source's <code>baseURL</code>.</li>
   <li><code>sourceId</code> — optional; omit it when <code>sourceKey</code> is an absolute URL.</li>
   <li><code>type</code> defaults to <code>movie</code>.</li>
+  <li><code>libraryId</code> — optional; the library this item belongs to (top-level browse membership).</li>
+  <li><code>parentId</code> — optional; a parent item id to nest under (e.g. an episode under a season).</li>
+  <li><code>year</code> — optional release year.</li>
+  <li><code>extra</code> — optional open map of server-defined metadata, stored and projected onto the item's <code>extra</code>.</li>
 </ul>
 <p><strong>200</strong> → the created item.</p>
 
@@ -794,7 +801,7 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <h3 id="api-errors">Errors</h3>
 <p>Every non-2xx response uses this envelope:</p>
 <pre><code><span class="key">{ "error": { "code":"unauthorized", "message":"Token expired.", "retryable":false } }</span></code></pre>
-<p>Clients branch on <code>code</code>, not <code>message</code>. Codes in use: <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>no_media_source</code>, <code>rate_limited</code>, <code>server_error</code>, <code>unavailable</code>, and the open value <code>bad_request</code>. <strong>Unknown codes must be tolerated.</strong></p>
+<p>Clients branch on <code>code</code>, not <code>message</code>. Codes in use: <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>no_media_source</code>, <code>rate_limited</code>, <code>server_error</code>, <code>unavailable</code>, and the open values <code>bad_request</code> and <code>conflict</code>. <strong>Unknown codes must be tolerated.</strong></p>
 
 <h3 id="api-item">Item shape</h3>
 <p>All fields except <code>id</code>, <code>title</code>, <code>type</code> are optional; the server sends what it has. The canonical set is deliberately broad — matching what mainstream clients display — so a client can rely on these names; anything a field-rich server adds beyond them rides in <code>extra</code>. A <em>skeleton</em> item carries the tile fields (images, placeholder, year, <code>dateAdded</code>) and omits the heavier enrichment (overview, genres, ratings, cast, studios, …).</p>

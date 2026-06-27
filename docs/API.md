@@ -10,7 +10,7 @@ the full narrative — protocol, server design, and extending — is the
 - Bodies: `application/json`
 - Times/durations: **seconds** (floating point)
 - Auth: `Authorization: Bearer <accessToken>` on everything except `/v1/info` and
-  `/v1/auth/login`
+  `/v1/auth/{login,refresh,logout}`
 - Device scoping: send a stable per-install `X-Sphynx-Device: <opaque>` header
 
 ## Conventions
@@ -485,12 +485,19 @@ Enrich every item that needs it (new or stale). **200** → `{ "enriched": 7 }`.
 **Body**
 ```json
 { "title": "Big Buck Bunny", "type": "movie", "container": "mp4",
-  "sourceId": "src_…", "sourceKey": "path/or/absolute-url", "tmdbId": "..." }
+  "sourceId": "src_…", "sourceKey": "path/or/absolute-url", "tmdbId": "...",
+  "libraryId": "lib_…", "parentId": "it_…", "year": 2008,
+  "extra": { "anything": [1, 2, 3] } }
 ```
+- `title` and `sourceKey` are the only required fields.
 - `sourceKey` — an absolute URL (self-contained) **or** a key relative to the
   source's `baseURL`.
 - `sourceId` — optional; omit it when `sourceKey` is an absolute URL.
 - `type` defaults to `movie`.
+- `libraryId` — optional; the library this item belongs to (top-level browse membership).
+- `parentId` — optional; a parent item id to nest under (e.g. an episode under a season).
+- `year` — optional release year.
+- `extra` — optional open map of server-defined metadata, stored and projected onto the item's `extra`.
 
 **200** → the created [`Item`](#item-shape).
 
@@ -513,8 +520,8 @@ Every non-2xx response uses this envelope:
 
 Clients branch on `code`, not `message`. Codes in use:
 `unauthorized`, `forbidden`, `not_found`, `no_media_source`, `rate_limited`,
-`server_error`, `unavailable`, and the open value `bad_request`. Unknown codes
-must be tolerated.
+`server_error`, `unavailable`, and the open values `bad_request` and `conflict`.
+Unknown codes must be tolerated.
 
 ---
 
