@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sphynx — The Complete Guide</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --bg-alt: #161b22;
+    --bg-code: #11161d;
+    --panel: #1b222c;
+    --border: #2a323d;
+    --text: #c9d4e0;
+    --text-dim: #8a97a6;
+    --heading: #f0f4f8;
+    --accent: #5db0ff;
+    --accent-soft: #1e3a52;
+    --green: #4ec98a;
+    --amber: #e3b341;
+    --red: #f07178;
+    --purple: #c792ea;
+    --radius: 8px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .wrap { display: flex; max-width: 1400px; margin: 0 auto; }
+  nav.sidebar {
+    width: 280px;
+    flex: 0 0 280px;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 18px 60px 24px;
+    border-right: 1px solid var(--border);
+    background: var(--bg-alt);
+  }
+  main {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 40px 56px 120px;
+  }
+  @media (max-width: 900px) {
+    nav.sidebar { display: none; }
+    main { padding: 28px 20px 80px; }
+  }
+
+  /* Sidebar */
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .brand .logo { font-size: 26px; }
+  .brand h1 { font-size: 20px; margin: 0; color: var(--heading); letter-spacing: .3px; }
+  .brand .tag { font-size: 12px; color: var(--text-dim); margin: 0 0 22px; }
+  nav.sidebar ul { list-style: none; margin: 0 0 14px; padding: 0; }
+  nav.sidebar > ul > li > a {
+    display: block; padding: 5px 10px; border-radius: 6px;
+    color: var(--text-dim); font-size: 13.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px; margin-top: 10px;
+  }
+  nav.sidebar ul ul { margin: 2px 0 6px; }
+  nav.sidebar ul ul li a {
+    display: block; padding: 4px 10px 4px 20px; border-radius: 6px;
+    color: var(--text-dim); font-size: 13.5px; border-left: 2px solid transparent;
+  }
+  nav.sidebar ul ul li a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
+  nav.sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+
+  /* Typography */
+  main h2 {
+    font-size: 28px; color: var(--heading); margin: 56px 0 4px;
+    padding-top: 18px; border-top: 1px solid var(--border); letter-spacing: .2px;
+  }
+  main section:first-of-type h2 { border-top: none; padding-top: 0; margin-top: 0; }
+  main h3 { font-size: 20px; color: var(--heading); margin: 34px 0 8px; }
+  main h4 { font-size: 16px; color: var(--heading); margin: 24px 0 6px; }
+  main p { margin: 12px 0; }
+  main ul, main ol { padding-left: 22px; }
+  main li { margin: 6px 0; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  .lead { font-size: 18px; color: var(--text); }
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--bg-code); border: 1px solid var(--border);
+    padding: 1.5px 5px; border-radius: 4px; color: var(--purple);
+  }
+  pre {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; overflow-x: auto;
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.55; position: relative;
+  }
+  pre code { background: none; border: none; padding: 0; color: var(--text); font-size: inherit; }
+  pre .cmt { color: var(--text-dim); }
+  pre .kw { color: var(--purple); }
+  pre .str { color: var(--green); }
+  pre .key { color: var(--accent); }
+  pre .num { color: var(--amber); }
+
+  /* Tables */
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel); color: var(--heading); font-weight: 600; }
+  tr:nth-child(even) td { background: var(--bg-alt); }
+  td code, th code { font-size: .92em; }
+
+  /* Callouts */
+  .callout {
+    border-radius: var(--radius); padding: 12px 16px 12px 44px; margin: 18px 0;
+    position: relative; font-size: 14.5px; border: 1px solid var(--border); background: var(--bg-alt);
+  }
+  .callout::before {
+    position: absolute; left: 14px; top: 11px; font-size: 16px; line-height: 1.3;
+  }
+  .callout p { margin: 6px 0; }
+  .callout.note { border-left: 3px solid var(--accent); }
+  .callout.note::before { content: "ℹ️"; }
+  .callout.tip { border-left: 3px solid var(--green); }
+  .callout.tip::before { content: "✅"; }
+  .callout.warn { border-left: 3px solid var(--amber); }
+  .callout.warn::before { content: "⚠️"; }
+  .callout.soon { border-left: 3px solid var(--purple); }
+  .callout.soon::before { content: "🚧"; }
+
+  /* Badges */
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; padding: 2px 7px; border-radius: 20px; vertical-align: middle;
+    margin-left: 6px;
+  }
+  .badge.soon { background: #2d2440; color: var(--purple); border: 1px solid #463562; }
+  .badge.live { background: #16331f; color: var(--green); border: 1px solid #245236; }
+  .badge.get { background: #173044; color: var(--accent); }
+  .badge.post { background: #16331f; color: var(--green); }
+  .badge.put { background: #3a3216; color: var(--amber); }
+  .badge.auth { background: #2a313c; color: var(--text-dim); border: 1px solid var(--border); }
+
+  /* Endpoint header */
+  .ep { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 28px 0 4px; }
+  .ep .path { font-family: var(--mono); font-size: 15px; color: var(--heading); font-weight: 600; }
+  .ep .method {
+    font-family: var(--mono); font-weight: 700; font-size: 12px; padding: 3px 9px;
+    border-radius: 5px; letter-spacing: .5px;
+  }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #161d28 0%, #11161d 100%);
+    border: 1px solid var(--border); border-radius: 12px; padding: 32px 34px; margin-bottom: 8px;
+  }
+  .hero h2 { border: none; margin: 0 0 6px; padding: 0; font-size: 32px; }
+  .hero .sub { color: var(--text-dim); font-size: 17px; margin: 0; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .pill { font-size: 12.5px; background: var(--panel); border: 1px solid var(--border); color: var(--text-dim); padding: 4px 11px; border-radius: 20px; }
+
+  .copybtn {
+    position: absolute; top: 8px; right: 8px; background: var(--panel); color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 5px; font-size: 11px; padding: 3px 8px; cursor: pointer;
+    opacity: 0; transition: opacity .15s;
+  }
+  pre:hover .copybtn { opacity: 1; }
+  .copybtn:hover { color: var(--text); }
+
+  .toc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: 22px 0; }
+  .toc-card { background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .toc-card a { font-weight: 600; font-size: 15px; }
+  .toc-card p { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
+
+  footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13px; }
+  .kbd { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="sidebar">
+  <div class="brand"><span class="logo">🐈‍⬛</span><h1>Sphynx</h1></div>
+  <p class="tag">The Complete Guide</p>
+  <ul>
+    <li><a href="#intro">Introduction</a>
+      <ul>
+        <li><a href="#what">What is Sphynx?</a></li>
+        <li><a href="#concepts">Core concepts</a></li>
+        <li><a href="#layout">Repository layout</a></li>
+      </ul>
+    </li>
+    <li><a href="#setup">Setup &amp; Run</a>
+      <ul>
+        <li><a href="#prereqs">Prerequisites</a></li>
+        <li><a href="#install">Install &amp; build</a></li>
+        <li><a href="#firstrun">First run</a></li>
+        <li><a href="#config">Configuration</a></li>
+        <li><a href="#docker">Docker / Linux</a></li>
+      </ul>
+    </li>
+    <li><a href="#firstlibrary">Your First Library</a>
+      <ul>
+        <li><a href="#walk-login">1. Log in</a></li>
+        <li><a href="#walk-library">2. Create a library</a></li>
+        <li><a href="#walk-source">3. Add a source</a></li>
+        <li><a href="#walk-scan">4. Scan &amp; enrich</a></li>
+        <li><a href="#walk-play">5. Browse &amp; resolve</a></li>
+      </ul>
+    </li>
+    <li><a href="#api">API Reference</a>
+      <ul>
+        <li><a href="#api-conventions">Conventions</a></li>
+        <li><a href="#api-discovery">Discovery</a></li>
+        <li><a href="#api-auth">Authentication</a></li>
+        <li><a href="#api-browse">Browse</a></li>
+        <li><a href="#api-markers">Markers</a></li>
+        <li><a href="#api-resolve">Resolve</a></li>
+        <li><a href="#api-playstate">Playstate</a></li>
+        <li><a href="#api-admin">Admin</a></li>
+        <li><a href="#api-errors">Errors</a></li>
+        <li><a href="#api-item">Item shape</a></li>
+      </ul>
+    </li>
+    <li><a href="#protocol">Implementing the Protocol</a>
+      <ul>
+        <li><a href="#proto-principles">Principles</a></li>
+        <li><a href="#proto-client">Client side</a></li>
+        <li><a href="#proto-server">Server side</a></li>
+        <li><a href="#proto-forward">Forward compatibility</a></li>
+      </ul>
+    </li>
+    <li><a href="#extending">Extending Sphynx</a>
+      <ul>
+        <li><a href="#ext-access">Access model</a></li>
+        <li><a href="#ext-read">Reading new metadata</a></li>
+        <li><a href="#ext-contribute">Client contribution</a></li>
+        <li><a href="#ext-serverwrite">Server-side write</a></li>
+        <li><a href="#ext-freshness">Freshness &amp; expiry</a></li>
+        <li><a href="#ext-drivers">Source drivers</a></li>
+      </ul>
+    </li>
+    <li><a href="#roadmap">Roadmap &amp; Coming Soon</a></li>
+    <li><a href="#faq">FAQ &amp; Troubleshooting</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ========================= INTRO ========================= -->
+<section id="intro">
+  <div class="hero">
+    <h2>Sphynx</h2>
+    <p class="sub">An open <strong>media-meta-server</strong> and wire protocol. It indexes media that lives on remote storage or CDNs, identifies and enriches it against TMDB, and hands clients a <strong>direct, playable URL</strong> — without ever proxying, transcoding, or storing a single media byte.</p>
+    <div class="pills">
+      <span class="pill">Swift 6</span>
+      <span class="pill">Hummingbird 2</span>
+      <span class="pill">SQLite / GRDB</span>
+      <span class="pill">TMDB identity</span>
+      <span class="pill">Control plane only</span>
+      <span class="pill">MIT licensed</span>
+    </div>
+  </div>
+
+  <p class="lead">This guide is the single complete reference for Sphynx. It walks a newcomer from zero to a running server, documents every HTTP endpoint, and explains how to implement the Sphynx protocol on <strong>both the client and the server</strong>.</p>
+
+  <div class="toc-cards">
+    <div class="toc-card"><a href="#setup">🛠 Setup &amp; Run</a><p>Install the toolchain, build, and run the reference server from scratch.</p></div>
+    <div class="toc-card"><a href="#firstlibrary">📚 Your First Library</a><p>A copy-paste walkthrough: login → source → scan → resolve → play.</p></div>
+    <div class="toc-card"><a href="#api">🔌 API Reference</a><p>Every endpoint the reference server implements, with request/response shapes.</p></div>
+    <div class="toc-card"><a href="#protocol">📐 Implement the Protocol</a><p>Build your own client or server that speaks Sphynx on the wire.</p></div>
+    <div class="toc-card"><a href="#extending">🧩 Extending</a><p>Add metadata, contribute markers, write a new source driver.</p></div>
+    <div class="toc-card"><a href="#roadmap">🚧 Coming Soon</a><p>The published Docker image, web control panel, search, and more.</p></div>
+  </div>
+</section>
+
+<h3 id="what">What is Sphynx?</h3>
+<p>Sphynx is a drop-in alternative to the <em>backend</em> role that Jellyfin and Plex play — <strong>minus the media byte plane</strong>. It does library indexing, content identification, metadata enrichment, users/auth, playstate, and intro-marker lookup, then resolves an item to a direct location the client fetches itself.</p>
+<p>The single differentiator: <strong>Sphynx assumes the media is remote and direct-streamable</strong>, so the entire transcode/segment/serve subsystem those servers carry simply does not exist here. <strong>No bytes ever transit the server.</strong></p>
+<p>It was designed side-by-side with <strong>Ocelot</strong>, a native Apple media player whose direct-stream-only engine consumes Sphynx through a thin adapter — but the protocol is provider-neutral and client-agnostic. Items are keyed by <strong>TMDB id</strong> wherever possible, so any client or third-party server can implement either side.</p>
+
+<div class="callout note">
+  <p><strong>The one-sentence mental model:</strong> the server is <em>brain, not muscle</em>. It answers <em>"what do you have?"</em> and <em>"where exactly is this file right now?"</em> — the client does the streaming.</p>
+</div>
+
+<h3 id="concepts">Core concepts</h3>
+<table>
+  <tr><th>Principle</th><th>What it means</th></tr>
+  <tr><td><strong>Control plane only</strong></td><td><code>/resolve</code> describes <em>where</em> the bytes are (direct URL + headers + ttl), called late at play time, never cached from a browse response. The server moves no bytes.</td></tr>
+  <tr><td><strong>TMDB-centric identity</strong></td><td>Items carry a TMDB id where one exists. It is the join key for artwork, intro markers, and cross-server interoperability.</td></tr>
+  <tr><td><strong>Forward-compatible JSON</strong></td><td>Unknown fields are ignored; new enum-like string values decode to an <code>.unknown</code> case instead of breaking older clients.</td></tr>
+  <tr><td><strong>Neutral units</strong></td><td>Time is always <strong>seconds</strong> (floating point) on the wire. Wall-clock timestamps are RFC 3339 strings.</td></tr>
+  <tr><td><strong>Open, neutral metadata</strong></td><td>Every canonical field is optional with a fixed meaning/unit; a client maps only the <em>name</em>. Anything beyond the canonical set rides in an open <code>extra</code> bag.</td></tr>
+  <tr><td><strong>Boring, proven auth</strong></td><td>Password hashing (bcrypt), short access token + rotating refresh token, device-scoped sessions, per-user row scoping.</td></tr>
+</table>
+
+<h3 id="layout">Repository layout</h3>
+<p>The project (<a href="https://github.com/reckloon/Sphynx-Media">reckloon/Sphynx-Media</a>) is a monorepo containing two Swift packages plus the specs:</p>
+<table>
+  <tr><th>Path</th><th>What it is</th></tr>
+  <tr><td><code>sphynx-protocol/</code></td><td>The wire contract as <strong>pure, dependency-free</strong> Swift value types (Foundation-only). Builds for every Apple platform + Linux. Shared by the server and any client.</td></tr>
+  <tr><td><code>sphynx-server/</code></td><td>The reference server — a Hummingbird 2 app. Uses the protocol types directly as request/response bodies, so it cannot drift from the wire format.</td></tr>
+  <tr><td><code>docs/</code></td><td>The protocol spec, server design, endpoint reference (<code>API.md</code>), and the extension guide.</td></tr>
+</table>
+<div class="callout note">
+  <p><strong>Monorepo caveat.</strong> Because <code>sphynx-protocol</code> is not at the repository root, it can't be added as a SwiftPM <em>URL</em> dependency directly. Clients (e.g. Ocelot) consume it via a <strong>local path dependency</strong> against a checkout. If a standalone distribution becomes necessary, the package can be mirrored to its own repo.</p>
+</div>
+
+<!-- ========================= SETUP ========================= -->
+<section id="setup">
+<h2>Setup &amp; Run</h2>
+<p>This section takes you from a clean machine to a running Sphynx server answering requests. No prior Swift experience required.</p>
+
+<h3 id="prereqs">Prerequisites</h3>
+<ul>
+  <li><strong>A Swift 6 toolchain.</strong>
+    <ul>
+      <li><strong>macOS:</strong> install <a href="https://apps.apple.com/app/xcode/id497799835">Xcode</a> (15+ ships a Swift 6 toolchain). After installing, run <code>xcode-select --install</code> for the command-line tools.</li>
+      <li><strong>Linux:</strong> install the Swift toolchain from <a href="https://www.swift.org/install/">swift.org/install</a>, or just use the Docker workflow below.</li>
+    </ul>
+  </li>
+  <li><strong>git</strong> — to clone the repository.</li>
+  <li><strong>curl</strong> — to exercise the API from the terminal (any HTTP client works).</li>
+  <li><em>(Optional)</em> <strong>Docker</strong> — for the Linux build/test/run loop without installing Swift locally.</li>
+  <li><em>(Optional)</em> A <strong>TMDB v3 API key</strong> — only needed to auto-identify and enrich titles. Get one free at <a href="https://www.themoviedb.org/settings/api">themoviedb.org</a>. Without it, the server still runs; you just add items manually.</li>
+</ul>
+
+<p>Verify your toolchain:</p>
+<pre><code><span class="cmt"># Should report Swift 6.x or newer</span>
+swift --version</code></pre>
+
+<div class="callout warn">
+  <p><strong>macOS + iCloud Desktop gotcha.</strong> If you check the repo out under <code>~/Desktop</code> or <code>~/Documents</code> while iCloud Drive sync is on, the <code>.build</code> directory can be synced mid-compile and code-signing fails. Clone somewhere <em>not</em> synced (e.g. <code>~/code/</code> or <code>~/.local/</code>), or move <code>.build</code> off the synced tree with a symlink.</p>
+</div>
+
+<h3 id="install">Install &amp; build</h3>
+<pre><code><span class="cmt"># 1. Clone the monorepo (gets both packages + docs)</span>
+git clone https://github.com/reckloon/Sphynx-Media.git
+cd Sphynx-Media/sphynx-server
+
+<span class="cmt"># 2. Build it (first build resolves dependencies — may take a few minutes)</span>
+swift build
+
+<span class="cmt"># 3. (Optional) run the test suite</span>
+swift test</code></pre>
+
+<div class="callout note">
+  <p>The server depends on its sibling <code>sphynx-protocol</code> package via the local path <code>../sphynx-protocol</code>. Cloning the whole monorepo keeps that sibling layout intact — don't move the folders apart.</p>
+</div>
+
+<h3 id="firstrun">First run</h3>
+<pre><code><span class="cmt"># From the sphynx-server directory</span>
+swift run SphynxServer
+<span class="cmt"># → serves on http://0.0.0.0:8080</span></code></pre>
+
+<p>In another terminal, confirm it's alive. <code>/v1/info</code> is unauthenticated — it's how a client verifies "this URL is a Sphynx server" before showing any login UI:</p>
+<pre><code>curl -s localhost:8080/v1/info</code></pre>
+<pre><code><span class="key">{</span>
+  <span class="key">"product"</span>: <span class="str">"Sphynx"</span>,
+  <span class="key">"serverName"</span>: <span class="str">"Sphynx Reference Server"</span>,
+  <span class="key">"id"</span>: <span class="str">"srv_reference"</span>,
+  <span class="key">"version"</span>: <span class="str">"1.0"</span>,
+  <span class="key">"protocol"</span>: [<span class="str">"v1"</span>],
+  <span class="key">"capabilities"</span>: { <span class="key">"search"</span>: <span class="kw">false</span>, <span class="key">"playstate"</span>: <span class="kw">true</span>, <span class="key">"candidates"</span>: <span class="kw">false</span>,
+    <span class="key">"metadata"</span>: { <span class="key">"markers"</span>: <span class="str">"readwrite"</span>, <span class="key">"images"</span>: <span class="str">"read"</span> } }
+}</span></code></pre>
+
+<p>On first run the server bootstraps an admin account. The defaults are <code>admin</code> / <code>changeme</code>.</p>
+<div class="callout warn">
+  <p><strong>Change the admin password before exposing the server.</strong> Set <code>SPHYNX_ADMIN_USERNAME</code> and <code>SPHYNX_ADMIN_PASSWORD</code> on the <em>first</em> run (they only apply when bootstrapping a fresh database). See <a href="#config">Configuration</a>.</p>
+</div>
+
+<h3 id="config">Configuration</h3>
+<p>Everything is configured through environment variables — no config file to edit. Set them inline or export them before <code>swift run</code>:</p>
+<pre><code>SPHYNX_PORT=9000 SPHYNX_ADMIN_PASSWORD='a-strong-secret' swift run SphynxServer</code></pre>
+
+<table>
+  <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code>SPHYNX_HOST</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
+  <tr><td><code>SPHYNX_PORT</code></td><td><code>8080</code></td><td>Bind port</td></tr>
+  <tr><td><code>SPHYNX_SERVER_NAME</code></td><td><code>Sphynx Reference Server</code></td><td>Name reported by <code>/v1/info</code></td></tr>
+  <tr><td><code>SPHYNX_SERVER_ID</code></td><td><code>srv_reference</code></td><td>Stable id reported by <code>/v1/info</code></td></tr>
+  <tr><td><code>SPHYNX_VERSION</code></td><td><code>1.0</code></td><td>Version reported by <code>/v1/info</code></td></tr>
+  <tr><td><code>SPHYNX_DB_PATH</code></td><td><code>data/sphynx.sqlite</code></td><td>SQLite path (<code>:memory:</code> = ephemeral, lost on restart)</td></tr>
+  <tr><td><code>SPHYNX_ADMIN_USERNAME</code></td><td><code>admin</code></td><td>Bootstrap admin (first run only)</td></tr>
+  <tr><td><code>SPHYNX_ADMIN_PASSWORD</code></td><td><code>changeme</code></td><td>Bootstrap admin password — <strong>change this</strong></td></tr>
+  <tr><td><code>SPHYNX_ACCESS_TTL</code></td><td><code>3600</code></td><td>Access-token lifetime (seconds)</td></tr>
+  <tr><td><code>SPHYNX_REFRESH_TTL</code></td><td><code>2592000</code></td><td>Refresh-token lifetime (seconds, 30d)</td></tr>
+  <tr><td><code>SPHYNX_TMDB_API_KEY</code></td><td><em>(empty)</em></td><td>TMDB v3 key; empty disables identification/enrichment</td></tr>
+  <tr><td><code>SPHYNX_ENRICH_TTL</code></td><td><code>7776000</code> (90d)</td><td>Server-owned enrichment freshness; re-fetched by maintenance</td></tr>
+  <tr><td><code>SPHYNX_MARKERS_ACCESS</code></td><td><code>readwrite</code></td><td>Marker access: <code>none</code> | <code>read</code> | <code>readwrite</code> (writes still granted per-user)</td></tr>
+  <tr><td><code>SPHYNX_MARKERS_STALE_AFTER</code></td><td><code>604800</code> (7d)</td><td>Age after which markers are reported <code>stale</code> for client refresh</td></tr>
+  <tr><td><code>SPHYNX_PLAYSTATE_RETENTION</code></td><td><code>31536000</code> (365d)</td><td>Playstate retention; older entries purged by maintenance</td></tr>
+  <tr><td><code>SPHYNX_MAINTENANCE_INTERVAL</code></td><td><code>86400</code> (1d)</td><td>Background maintenance interval; <code>0</code> disables it</td></tr>
+</table>
+
+<div class="callout tip">
+  <p>For a throwaway test server that leaves nothing behind, set <code>SPHYNX_DB_PATH=:memory:</code>. The database (and your admin account, libraries, items) vanish on restart.</p>
+</div>
+
+<h3 id="docker">Docker / Linux</h3>
+<div class="callout soon">
+  <p><strong>A pre-built, published Docker image is coming soon.</strong> Until then, build the image yourself from the repo — the Dockerfile and compose file are included and handle the sibling-package layout for you.</p>
+</div>
+
+<p>The build context must be the <strong>parent</strong> directory (it needs both packages). The provided files set that up:</p>
+<pre><code><span class="cmt"># From the sphynx-server directory — builds the image and runs it</span>
+docker compose up --build
+<span class="cmt"># then:</span>
+curl http://localhost:8080/v1/info
+
+<span class="cmt"># Or run the test suite inside a Swift Linux container (needs Docker)</span>
+./scripts/test-linux.sh          <span class="cmt"># runs `swift test` inside swift:6.3-noble</span></code></pre>
+
+<p>To build the image by hand:</p>
+<pre><code><span class="cmt"># Note the trailing `..` — context is the PARENT dir with BOTH packages</span>
+docker build -f sphynx-server/Dockerfile -t sphynx-server ..
+docker run -p 8080:8080 -e SPHYNX_ADMIN_PASSWORD='secret' sphynx-server</code></pre>
+
+<div class="callout warn">
+  <p><strong>Docker Desktop on macOS:</strong> always use <code>docker build</code> / <code>docker compose</code> (which stream the source as a tar), <strong>not</strong> bind-mounted source. Mounted source triggers the virtiofs <em>"Resource deadlock avoided" (EDEADLK)</em> failures that plague Swift builds under Docker Desktop.</p>
+</div>
+</section>
+
+<!-- ========================= FIRST LIBRARY ========================= -->
+<section id="firstlibrary">
+<h2>Your First Library</h2>
+<p>A full, copy-paste walkthrough. By the end you'll have logged in, created a library, indexed media from a source, and resolved an item to a direct playable URL. Replace <code>localhost:8080</code> with your server if different.</p>
+
+<h3 id="walk-login">1. Log in</h3>
+<p>Authenticate as the bootstrapped admin to get an access token. Send a stable per-install <code>X-Sphynx-Device</code> header so this device can be revoked independently later.</p>
+<pre><code>curl -sX POST localhost:8080/v1/auth/login \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -H <span class="str">'X-Sphynx-Device: my-laptop-001'</span> \
+  -d <span class="str">'{"username":"admin","password":"changeme"}'</span></code></pre>
+<pre><code><span class="key">{ "accessToken": "eyJ…", "refreshToken": "rt_…", "expiresIn": 3600,
+  "user": { "id": "u_…", "displayName": "admin" } }</span></code></pre>
+<p>Save the <code>accessToken</code> — every other call needs <code>Authorization: Bearer &lt;accessToken&gt;</code>. For convenience in a shell:</p>
+<pre><code>TOKEN=<span class="str">"eyJ…"</span>   <span class="cmt"># paste your accessToken</span>
+AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
+
+<h3 id="walk-library">2. Create a library</h3>
+<p>Libraries are the top-level collections users browse. Admin-only.</p>
+<pre><code>curl -sX POST localhost:8080/v1/admin/libraries \
+  -H <span class="str">"$AUTH"</span> -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{"title":"Movies","kind":"movies"}'</span>
+<span class="cmt"># → { "id": "lib_…", "title": "Movies", "kind": "movies" }</span></code></pre>
+
+<h3 id="walk-source">3. Add a source</h3>
+<p>A <strong>source</strong> is where the media actually lives, plus how to reach it. The indexer reads a source's <em>manifest</em> (a JSON list of entries — metadata, never bytes) and feeds the named library. Here's an HTTP source pointed at a manifest:</p>
+<pre><code>curl -sX POST localhost:8080/v1/admin/sources \
+  -H <span class="str">"$AUTH"</span> -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{ "label":"My CDN", "driver":"http", "libraryId":"lib_…",
+       "baseURL":"https://cdn.example",
+       "manifestURL":"https://cdn.example/manifest.json" }'</span>
+<span class="cmt"># → { "id": "src_…", "label": "My CDN", "driver": "http", "config": { … } }</span></code></pre>
+
+<p>The manifest is a simple document; <code>key</code> is resolved into a direct URL (relative to <code>baseURL</code>, or absolute):</p>
+<pre><code><span class="key">{ "items": [
+    { "key": "BigBuckBunny_320x180.mp4", "title": "Big Buck Bunny", "type": "movie", "year": 2008 },
+    { "key": "Breaking.Bad.S01E01.mkv", "container": "mkv" }
+] }</span></code></pre>
+
+<div class="callout tip">
+  <p><strong>No CDN handy?</strong> Use the <code>local</code> driver — set <code>config.rootPath</code> to a folder on disk and the indexer walks it, deriving identity from the folder layout: <code>Title (Year)/file</code> for movies, <code>Show (Year)/Season N/file</code> for TV. <code>.strm</code> files are followed at resolve time to their contained URL.</p>
+  <pre><code>{ "label":"NAS Movies", "driver":"local", "libraryId":"lib_…",
+  "config": { "rootPath": "/srv/media/movies" } }</code></pre>
+</div>
+
+<p>Other backends (WebDAV, SMB, FTP) configure through two open maps — <code>config</code> for non-secret settings and <code>secrets</code> for credentials (never returned, never logged):</p>
+<pre><code><span class="key">{ "label":"NAS", "driver":"webdav", "libraryId":"lib_…",
+  "config":  { "baseURL":"https://nas.example/remote.php/dav" },
+  "secrets": { "username":"alice", "password":"•••" } }</span></code></pre>
+
+<h3 id="walk-scan">4. Scan &amp; enrich</h3>
+<p>Index the source: fetch its manifest, diff against the catalog, apply adds/updates/removes.</p>
+<pre><code>curl -sX POST localhost:8080/v1/admin/sources/src_…/scan -H <span class="str">"$AUTH"</span>
+<span class="cmt"># → { "sourceId":"src_…", "scanned":12, "added":3, "updated":1, "removed":0, "enriched":3 }</span></code></pre>
+<p>If <code>SPHYNX_TMDB_API_KEY</code> is set, the scan also <strong>identifies</strong> each entry against TMDB (movies and TV) and enriches posters, overviews, cast, and — for TV — builds a <strong>series → season → episode</strong> tree with season posters and episode stills. The <code>enriched</code> count reflects that (0 when TMDB isn't configured).</p>
+
+<div class="callout note">
+  <p><strong>Don't have a manifest source?</strong> You can add a single item by hand pointing at any direct URL — great for a first end-to-end test:</p>
+  <pre><code>curl -sX POST localhost:8080/v1/admin/items -H "$AUTH" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Big Buck Bunny","container":"mp4",
+       "sourceKey":"https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"}'</code></pre>
+  <p>When <code>sourceKey</code> is an absolute URL, you can omit <code>sourceId</code> entirely.</p>
+</div>
+
+<h3 id="walk-play">5. Browse &amp; resolve</h3>
+<p>List libraries, then browse a library's children with <code>parent=</code>:</p>
+<pre><code>curl -s localhost:8080/v1/libraries -H <span class="str">"$AUTH"</span>
+curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <span class="str">"$AUTH"</span>
+<span class="cmt"># → { "items": [ { "id":"it_…", "type":"movie", "title":"Big Buck Bunny", "year":2008 } ], … }</span></code></pre>
+
+<p>Finally, the heart of Sphynx — <strong>resolve</strong> an item to a direct, playable location at play time. The client streams this URL itself; the server moved no bytes.</p>
+<pre><code>curl -s localhost:8080/v1/resolve/it_… -H <span class="str">"$AUTH"</span>
+<span class="cmt"># → { "url":"https://…/BigBuckBunny_320x180.mp4", "container":"mp4",
+#       "preResolved":true, "ttl":300 }</span></code></pre>
+
+<div class="callout tip">
+  <p>That's the entire spine: <strong>login → browse → resolve → play</strong>. Everything else (playstate, markers, enrichment, multiple users) layers on top of these calls.</p>
+</div>
+</section>
+
+<!-- ========================= API REFERENCE ========================= -->
+<section id="api">
+<h2>API Reference</h2>
+<p>The complete HTTP surface implemented by <code>sphynx-server</code> today, tracking the protocol spec (the source of truth). This mirrors the repo's live <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md"><code>docs/API.md</code></a>.</p>
+<ul>
+  <li>Base path: <code>/v1</code></li>
+  <li>Bodies: <code>application/json</code></li>
+  <li>Times/durations: <strong>seconds</strong> (floating point)</li>
+  <li>Auth: <code>Authorization: Bearer &lt;accessToken&gt;</code> on everything except <code>/v1/info</code> and <code>/v1/auth/login</code></li>
+  <li>Device scoping: send a stable per-install <code>X-Sphynx-Device: &lt;opaque&gt;</code> header</li>
+</ul>
+
+<h3 id="api-conventions">Conventions</h3>
+<table>
+  <tr><th>Aspect</th><th>Rule</th></tr>
+  <tr><td>Unknown JSON fields</td><td>Ignored (forward-compatible)</td></tr>
+  <tr><td>Unknown enum strings</td><td>Decoded as an <code>.unknown</code> value, never an error</td></tr>
+  <tr><td>Errors</td><td>Consistent envelope (see <a href="#api-errors">Errors</a>) + standard HTTP status</td></tr>
+  <tr><td>IDs</td><td>Opaque strings — treat as cookies, don't parse</td></tr>
+</table>
+
+<h3 id="api-discovery">Discovery</h3>
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/info</span><span class="badge auth">unauthenticated</span></div>
+<p>Confirm a URL is a Sphynx server and learn its capabilities.</p>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "product":"Sphynx", "serverName":"Sphynx Reference Server", "id":"srv_reference",
+  "version":"1.0", "protocol":["v1"],
+  "capabilities": { "search":false, "playstate":true, "candidates":false,
+    "metadata": { "markers":"readwrite", "images":"read" } } }</span></code></pre>
+<p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable.</p>
+
+<h3 id="api-auth">Authentication</h3>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/login</span><span class="badge auth">unauthenticated</span></div>
+<p><strong>Body</strong> <code>{ "username":"…", "password":"…" }</code>. Optional header <code>X-Sphynx-Device</code>.</p>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "accessToken":"…", "refreshToken":"…", "expiresIn":3600,
+  "user": { "id":"u_…", "displayName":"admin" } }</span></code></pre>
+<p><strong>401</strong> <code>unauthorized</code> — invalid username or password.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/refresh</span></div>
+<p><strong>Body</strong> <code>{ "refreshToken":"…" }</code>. Returns a <strong>new</strong> token pair; the presented refresh token is <strong>rotated</strong> (the old one is immediately invalidated). Same response shape as login. <strong>401</strong> on an invalid, expired, or already-rotated token.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/logout</span></div>
+<p><strong>Body</strong> <code>{ "refreshToken":"…", "allDevices":false }</code>. Revokes the presented refresh token's session. <code>allDevices:true</code> revokes every session on the same device id. <strong>204 No Content</strong> on success (idempotent).</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/me</span><span class="badge auth">auth</span></div>
+<p>The authenticated user plus <strong>that user's effective</strong> per-field metadata access. Where <code>/v1/info</code> advertises what the <em>server</em> supports, this reflects what <em>this user</em> may actually do (writes are granted per-user by an admin).</p>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "user": { "id":"u_…", "displayName":"Bob" },
+  "metadata": { "markers":"readwrite", "images":"read" } }</span></code></pre>
+<p>A client should use this (not <code>/v1/info</code>) to decide whether to show a "contribute / fix this" affordance.</p>
+
+<h3 id="api-browse">Browse</h3>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/libraries</span><span class="badge auth">auth</span></div>
+<p>The top-level collections a user can browse.</p>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "libraries": [ { "id":"lib_…", "title":"Movies", "kind":"movies" } ] }</span></code></pre>
+<p><code>kind</code> is an open string enum (<code>movies</code>, <code>tvShows</code>, <code>homeVideos</code>, <code>musicVideos</code>, <code>boxSets</code>, <code>collection</code>, <code>other</code>, …); clients map unknown kinds to a default.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items</span><span class="badge auth">auth</span></div>
+<p>Children of a container.</p>
+<table>
+  <tr><th>Param</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>parent</code></td><td><em>required</em></td><td>A <strong>library id</strong> (top-level items) or an <strong>item id</strong> (its children)</td></tr>
+  <tr><td><code>detail</code></td><td><code>skeleton</code></td><td><code>skeleton</code> (tile fields) or <code>full</code> (adds enrichment)</td></tr>
+  <tr><td><code>limit</code></td><td><code>50</code></td><td>Page size (1–200)</td></tr>
+  <tr><td><code>cursor</code></td><td>—</td><td>Opaque pagination cursor from a previous <code>nextCursor</code></td></tr>
+</table>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "items": [ { "id":"it_…", "type":"movie", "title":"…", "year":2008 } ],
+  "nextCursor": "b2Zmc2V0OjUw" }</span></code></pre>
+<p>An absent <code>nextCursor</code> means the end of the list.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}?detail=full</span><span class="badge auth">auth</span></div>
+<p>A single item. <strong>404</strong> <code>not_found</code> if absent. See <a href="#api-item">Item shape</a>.</p>
+
+<h3 id="api-markers">Markers <span class="badge live">bi-directional</span></h3>
+<p>Intro/credit markers are <strong>item-level</strong> (shared across a server's clients) and gated by <code>capabilities.metadata["markers"]</code>. See <a href="#ext-contribute">Extending</a> for the contribution model (e.g. a client bridging TheIntroDB).</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}/markers</span><span class="badge auth">markers ≥ read</span></div>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "markers": { "intro":{"start":75,"end":145}, "credits":{"start":9120} },
+  "source":"theintrodb", "confidence":0.95, "authoritative":false,
+  "updatedAt":"2026-06-27T12:00:00Z", "stale":false }</span></code></pre>
+<p><strong>404</strong> if the server doesn't offer markers, or none are stored. <code>stale:true</code> means the markers are older than the server's freshness window and a client with a data source should re-fetch and <code>PUT</code> updated ones. Authoritative markers are never stale.</p>
+
+<div class="ep"><span class="method badge put">PUT</span><span class="path">/v1/items/{itemId}/markers</span><span class="badge auth">markers == readwrite</span></div>
+<p><strong>Body</strong> <code>{ "markers": {…}, "source":"…", "confidence":0.9 }</code> → <strong>200</strong> with the stored markers info.</p>
+<ul>
+  <li><strong>403</strong> <code>forbidden</code> if the server is read-only for markers, <strong>or the user hasn't been granted the <code>markers</code> write</strong> (writes are per-user; admins always have it). Check <code>GET /v1/auth/me</code>.</li>
+  <li><strong>409</strong> <code>conflict</code> if authoritative markers exist and the caller isn't admin — a best-effort client contribution may not clobber server-detected/admin data.</li>
+</ul>
+<p>Contributed markers also appear in the <code>/resolve</code> descriptor's <code>markers</code>.</p>
+
+<h3 id="api-resolve">Resolve</h3>
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/resolve/{itemId}</span><span class="badge auth">auth</span></div>
+<p>The late-bound handoff: turns an item into a direct, playable location. Called at play time, never cached from browse.</p>
+<pre><code><span class="cmt">// 200</span>
+<span class="key">{ "url":"https://cdn.example/movie.mkv", "headers":{}, "container":"mkv",
+  "ttl":300, "preResolved":true }</span></code></pre>
+<ul>
+  <li><code>url</code> — DIRECT location; the client streams this itself.</li>
+  <li><code>headers</code> — headers the client must send when fetching <code>url</code>.</li>
+  <li><code>ttl</code> — seconds the descriptor is valid; absent = no expiry.</li>
+  <li><code>preResolved</code> — if true, the client skips its own redirect resolution.</li>
+  <li><code>tracks</code>, <code>markers</code>, <code>candidates</code> — optional; <code>tracks</code>/<code>candidates</code> absent in the current build.</li>
+</ul>
+<p><strong>404</strong> <code>not_found</code> (no such item) / <code>no_media_source</code> (item's source unavailable).</p>
+
+<h3 id="api-playstate">Playstate</h3>
+<p>Per-user resume tracking, <strong>row-scoped to the authenticated subject</strong> — a user only ever reads/writes their own state. Positions are in <strong>seconds</strong>. All require auth.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/playstate/{itemId}/start</span></div>
+<p><strong>Body</strong> <code>{ "position":12.5 }</code> → <strong>204</strong>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/playstate/{itemId}/progress</span></div>
+<p><strong>Body</strong> <code>{ "position":1342.5, "paused":false }</code> → <strong>204</strong>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/playstate/{itemId}/stop</span></div>
+<p><strong>Body</strong> <code>{ "position":1500.0, "failed":false }</code> → <strong>204</strong>. On <code>failed:true</code> the server <strong>does not overwrite</strong> the stored resume point — a misfire (the playhead never advanced past startup) can't clobber a good position.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/playstate/{itemId}</span></div>
+<p><strong>200</strong> → <code>{ "position":1342.5, "updatedAt":"…" }</code>. No stored state → <code>{ "position":0, … }</code> ("from start").</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/playstate?items=&lt;id,id,…&gt;</span></div>
+<p>Batch read. <strong>200</strong> → <code>{ "states": { "it_1": { "position":…, "updatedAt":… } } }</code>. Items with no stored state are omitted.</p>
+
+<div class="callout note">
+  <p><code>resumePosition</code> is also folded into item responses (browse list + single item) for the authenticated user, so a "continue watching" UI needs no extra call.</p>
+</div>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/continue</span><span class="badge auth">auth</span></div>
+<p>The user's in-progress items (stored position &gt; 0), <strong>most-recently-played first</strong>, each with <code>resumePosition</code> folded in. Cursor-paginated; <code>detail</code> selects skeleton/full. Returns the same <code>ItemsResponse</code> shape as <code>/v1/items</code>.</p>
+<p>The server only stores and exposes the data (per-user position + <code>updatedAt</code>, ordered by recency) — <strong>the client owns presentation and policy</strong>: it has each item's runtime, so it decides what counts as "finished", whether to hide it, how to sort.</p>
+
+<h3 id="api-admin">Admin <span class="badge auth">server-specific, not part of the wire protocol</span></h3>
+<p>Catalog setup, indexing, and manual entry. <strong>Auth required + admin role</strong> (<code>403 forbidden</code> otherwise).</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/libraries</span></div>
+<p><strong>Body</strong> <code>{ "title":"Movies", "kind":"movies" }</code> (<code>kind</code> defaults to <code>other</code>). <strong>200</strong> → <code>{ "id":"lib_…", "title":"Movies", "kind":"movies" }</code>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources</span></div>
+<pre><code><span class="key">{ "label":"My CDN", "driver":"http", "baseURL":"https://cdn.example",
+  "headers":{ "Authorization":"…" }, "libraryId":"lib_…",
+  "manifestURL":"https://cdn.example/manifest.json" }</span></code></pre>
+<p><code>driver</code> defaults to <code>http</code>. <code>libraryId</code> is the library this source feeds; <code>manifestURL</code> is where the indexer lists entries. <strong>200</strong> → <code>{ "id":"src_…", "label":"…", "driver":"http", "config":{…} }</code> — only non-secret fields are returned.</p>
+<p>Drivers other than HTTP configure through two open maps: <strong><code>config</code></strong> for non-secret settings, and <strong><code>secrets</code></strong> for credentials. Secrets are stored but <strong>never</strong> returned or logged (for the HTTP driver, request <code>headers</code> are treated the same way).</p>
+<pre><code><span class="key">{ "label":"NAS", "driver":"webdav", "libraryId":"lib_…",
+  "config":  { "baseURL":"https://nas.example/remote.php/dav" },
+  "secrets": { "username":"alice", "password":"•••" } }</span></code></pre>
+<p>For a <code>local</code> source, set <code>driver</code> to <code>local</code> and <code>config.rootPath</code> to a directory path; the indexer walks that tree, deriving identity from the folder layout (<code>Title (Year)/file</code> for movies, <code>Show (Year)/Season N/file</code> for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated source. <code>.strm</code> files are followed at resolve time to their contained URL.</p>
+<p>The manifest is a simple JSON document the indexer reads (metadata, not media). <strong>TV</strong> is detected from the filename (<code>S01E02</code>, <code>1x05</code>, …): the indexer builds a series → season → episode tree, deduping shared series/seasons, and (when TMDB is configured) identifies and enriches them. Entries may instead carry explicit <code>seriesTitle</code> / <code>season</code> / <code>episode</code> hints. Browse the tree via <code>parent=</code> with <code>seriesId</code>, <code>seasonIndex</code>, <code>episodeIndex</code>, and <code>childCount</code> on each item.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources/{sourceId}/scan</span></div>
+<p>Index one source: fetch its manifest, diff against the catalog, apply adds/updates/removes. <strong>200</strong> → <code>{ "sourceId":"src_…", "scanned":12, "added":3, "updated":1, "removed":0, "enriched":3 }</code>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/scan</span></div>
+<p>Scan every source. <strong>200</strong> → <code>{ "sources": [ &lt;scan summary&gt;, … ] }</code>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users</span></div>
+<p>Create a user. <strong>Body</strong> <code>{ "username":"bob", "password":"…", "displayName":"Bob", "isAdmin":false, "writeGrants":["markers"] }</code>. <strong>200</strong> → the created user. <strong>409</strong> if the username is taken.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users/{userId}/grants</span></div>
+<p>Set a user's metadata write grants (the fields they may contribute). <strong>Body</strong> <code>{ "writeGrants":["markers"] }</code> → <strong>200</strong> with the updated user. This is how an admin controls <strong>per-user read/write permission</strong>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items/{itemId}/identity</span></div>
+<p>Admin override: pin an item to a specific TMDB id and re-enrich. <strong>Body</strong> <code>{ "tmdbId":"603", "type":"movie" }</code>. <strong>200</strong> → the enriched item.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items/{itemId}/enrich</span></div>
+<p>Force re-identification + enrichment of one item. <strong>200</strong> → the enriched item.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/enrich</span></div>
+<p>Enrich every item that needs it (new or stale). <strong>200</strong> → <code>{ "enriched":7 }</code>.</p>
+<div class="callout note">
+  <p>The three enrichment endpoints require TMDB to be configured (<code>SPHYNX_TMDB_API_KEY</code>); otherwise they return <strong>400</strong> <code>bad_request</code>.</p>
+</div>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items</span></div>
+<pre><code><span class="key">{ "title":"Big Buck Bunny", "type":"movie", "container":"mp4",
+  "sourceId":"src_…", "sourceKey":"path/or/absolute-url", "tmdbId":"…" }</span></code></pre>
+<ul>
+  <li><code>sourceKey</code> — an absolute URL (self-contained) <strong>or</strong> a key relative to the source's <code>baseURL</code>.</li>
+  <li><code>sourceId</code> — optional; omit it when <code>sourceKey</code> is an absolute URL.</li>
+  <li><code>type</code> defaults to <code>movie</code>.</li>
+</ul>
+<p><strong>200</strong> → the created item.</p>
+
+<h3 id="api-errors">Errors</h3>
+<p>Every non-2xx response uses this envelope:</p>
+<pre><code><span class="key">{ "error": { "code":"unauthorized", "message":"Token expired.", "retryable":false } }</span></code></pre>
+<p>Clients branch on <code>code</code>, not <code>message</code>. Codes in use: <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>no_media_source</code>, <code>rate_limited</code>, <code>server_error</code>, <code>unavailable</code>, and the open value <code>bad_request</code>. <strong>Unknown codes must be tolerated.</strong></p>
+
+<h3 id="api-item">Item shape</h3>
+<p>All fields except <code>id</code>, <code>title</code>, <code>type</code> are optional; the server sends what it has. A <em>skeleton</em> item omits enrichment (overview, genres, ratings, cast).</p>
+<pre><code><span class="key">{
+  "id":"it_…", "type":"movie", "title":"Blade Runner 2049", "tmdbId":"335984",
+  "overview":"…", "year":2017, "runtime":9840.0,
+  "images": { "primary":"…", "backdrop":"…", "thumb":"…" },
+  "placeholder": { "url":"…/tiny.jpg" },
+  "seriesId":"…", "seriesTitle":"…", "seasonIndex":1, "episodeIndex":3, "childCount":10,
+  "genres":["Sci-Fi"], "communityRating":8.0, "officialRating":"R",
+  "cast":[ { "id":"pe_…", "name":"Ryan Gosling", "role":"K", "imageURL":"…",
+            "placeholder":{"url":"…/tiny.jpg"} } ],
+  "resumePosition":1342.5,
+  "updatedAt":"2026-06-27T12:00:00Z",
+  "extra": { "tagline":"…", "imdbId":"tt…", "anything":[1,2,3] }
+}</span></code></pre>
+<p><code>updatedAt</code> (RFC 3339) is the last change to <strong>client-rendered</strong> data for the item (title, images, enrichment, markers…) — the max of the server's per-field change times. A client can diff this one value to decide "changed since I cached it?" without comparing every field. It <strong>excludes</strong> per-user playstate (<code>resumePosition</code>), so progress reports don't invalidate the cache.</p>
+<p><code>placeholder</code> is a self-describing one-of that may carry <strong>any</strong> low-res form. The reference server emits the <code>url</code> form — a small pre-sized image link — so it stores and processes no image bytes; the protocol equally allows <code>{ "blurHash":"…" }</code> or a future form. <strong>Clients should support both <code>blurHash</code> and <code>url</code></strong>, using whichever the server sent, and fall back to a plain background for forms they don't recognize.</p>
+
+<h4>Open metadata (<code>extra</code>)</h4>
+<p>The canonical fields above are the neutral contract: each has a fixed meaning and unit; a client only maps the <em>name</em> to whatever it calls the field internally. For anything beyond the canonical set, an item may carry an <code>extra</code> object of arbitrary server-defined metadata. A client reads the keys it understands and ignores the rest. Together with the forward-compatibility rules, this is what lets a server serve whatever metadata it wants while older clients keep working. <code>extra</code> is omitted entirely when empty.</p>
+
+<h4>Planned</h4>
+<p>Defined in the protocol or roadmap but not yet implemented: per-user watched/favorite state; browse sort &amp; filter; <code>GET /v1/search</code>; ranked <code>candidates</code> in the <code>/resolve</code> descriptor.</p>
+</section>
+
+<!-- ========================= PROTOCOL ========================= -->
+<section id="protocol">
+<h2>Implementing the Protocol</h2>
+<p>The reference server is one implementation; the wire contract is the real product. This section is for anyone building a <strong>different client</strong> (a player, a web UI) or a <strong>different server</strong> (a third-party backend) that needs to interoperate. The HTTP shapes in the <a href="#api">API Reference</a> are the contract; here we cover the rules that make independent implementations interoperate.</p>
+
+<h3 id="proto-principles">Principles to honor on both sides</h3>
+<table>
+  <tr><th>Rule</th><th>Why it matters</th></tr>
+  <tr><td><strong>HTTPS + JSON</strong>, base path <code>/&lt;version&gt;</code></td><td>Breaking changes bump the version (<code>/v2</code>); additive changes never do.</td></tr>
+  <tr><td><strong>Opaque IDs</strong></td><td>Treat ids as cookies. Never parse, never assume a format. <code>it_…</code> / <code>lib_…</code> prefixes are conventions, not contracts.</td></tr>
+  <tr><td><strong>Seconds everywhere</strong></td><td>All positions/durations are floating-point seconds. Convert to your internal unit only at the boundary.</td></tr>
+  <tr><td><strong>RFC 3339 timestamps</strong></td><td>Wall-clock times (<code>updatedAt</code>, token expiry context) are ISO 8601 strings.</td></tr>
+  <tr><td><strong>Cursor pagination</strong></td><td><code>cursor</code> in, <code>nextCursor</code> out. Absent <code>nextCursor</code> = end. Cursors are opaque.</td></tr>
+  <tr><td><strong>Consistent error envelope</strong></td><td>Branch on <code>error.code</code>, never <code>error.message</code>.</td></tr>
+</table>
+
+<h3 id="proto-client">Building a client</h3>
+<p>A minimal Sphynx client needs to walk this path. Each step maps to one endpoint:</p>
+<ol>
+  <li><strong>Discover</strong> — <code>GET /v1/info</code> (no auth). Confirm <code>product == "Sphynx"</code> and that <code>protocol</code> includes a version you speak before showing a login screen. Read <code>capabilities</code> to decide which features to surface.</li>
+  <li><strong>Authenticate</strong> — <code>POST /v1/auth/login</code> with a stable <code>X-Sphynx-Device</code> header. Store both tokens. When a call returns <strong>401</strong> with <code>code: "unauthorized"</code>, call <code>POST /v1/auth/refresh</code> once, then retry; if refresh also fails, send the user back to login.</li>
+  <li><strong>Browse</strong> — <code>GET /v1/libraries</code>, then <code>GET /v1/items?parent=…</code>. Render tiles from <code>detail=skeleton</code>; fetch <code>detail=full</code> (or <code>GET /v1/items/{id}</code>) when the user opens an item. Page with <code>nextCursor</code>.</li>
+  <li><strong>Resolve at play time</strong> — <code>GET /v1/resolve/{id}</code> the moment the user hits play, <strong>never earlier</strong>. Stream <code>url</code> yourself, sending any <code>headers</code>. Respect <code>ttl</code>: if playback drops after it expires, re-resolve. If <code>preResolved</code> is true, skip your own redirect-following.</li>
+  <li><strong>Report playstate</strong> — POST <code>start</code> / periodic <code>progress</code> / <code>stop</code>. On a failed/aborted start, send <code>stop</code> with <code>failed:true</code> so you don't clobber a good resume point.</li>
+  <li><strong>Contribute (optional)</strong> — check <code>GET /v1/auth/me</code> (not <code>/v1/info</code>) for your <em>effective</em> write access before showing a "fix this" affordance; <code>PUT</code> markers when granted.</li>
+</ol>
+
+<div class="callout tip">
+  <p><strong>Adapter pattern.</strong> A client that already models media internally needs only a thin translation layer — it never exposes its internal types. Map <code>resolve.url + headers</code> to a pre-resolved playback request; position fields to your internal time unit; <code>placeholder.{blurHash,url}</code> to a self-describing low-res type; <code>playstate/*</code> to your start/progress/stop hooks; <code>markers.intro</code> to a "Skip Intro" affordance. Ocelot consumes Sphynx through exactly one such adapter.</p>
+</div>
+
+<h4>Sharing the protocol types (Swift clients)</h4>
+<p>If your client is Swift, don't re-model the wire types — depend on the <code>sphynx-protocol</code> package so request/response bodies are exactly the server's. Because the package isn't at the repo root, add it as a <strong>local path dependency</strong> against a checkout:</p>
+<pre><code><span class="cmt">// Package.swift</span>
+dependencies: [
+  .package(path: <span class="str">"../Sphynx-Media/sphynx-protocol"</span>)
+],
+targets: [
+  .target(name: <span class="str">"MyClient"</span>, dependencies: [
+    .product(name: <span class="str">"SphynxProtocol"</span>, package: <span class="str">"sphynx-protocol"</span>)
+  ])
+]</code></pre>
+<p>The package is Foundation-only and dependency-free, so it builds on every Apple platform and Linux without dragging in a server stack.</p>
+
+<h3 id="proto-server">Building a server</h3>
+<p>Any HTTP server can speak Sphynx. To interoperate with existing clients, implement at least the spine — discovery, auth, browse, resolve — and advertise honestly in <code>/v1/info</code>:</p>
+<ul>
+  <li><strong><code>GET /v1/info</code> must be unauthenticated</strong> and return <code>product: "Sphynx"</code>, a stable <code>id</code>, and a <code>protocol</code> array. Advertise only capabilities you actually implement; clients treat a missing capability as <code>false</code>/<code>none</code>.</li>
+  <li><strong>Auth shape is fixed but the crypto is yours.</strong> Issue a short-lived access token + a rotating refresh token; rotate the refresh token on every use and invalidate the old one. Scope tokens to <code>X-Sphynx-Device</code> so one device can be revoked alone. Hash passwords with a proven KDF (the reference server uses bcrypt). Row-scope all per-user data to the token's subject.</li>
+  <li><strong>Resolve is the whole point.</strong> Return a direct, client-fetchable <code>url</code> plus any <code>headers</code> and a <code>ttl</code>. Never proxy or redirect bytes through your process. If your locations are time-bounded, set <code>ttl</code> and expect clients to re-resolve.</li>
+  <li><strong>Pick your access policy.</strong> <code>capabilities.metadata</code> is per-field <code>none|read|readwrite</code>. A field absent from the map is <code>none</code>. If you accept contributions, also implement the per-user grant model so <code>/v1/auth/me</code> can report effective access.</li>
+  <li><strong>Serve what you have.</strong> Every Item field except <code>id</code>/<code>title</code>/<code>type</code> is optional. Omit what you lack; put anything non-canonical in <code>extra</code>. Don't invent required fields — clients won't expect them.</li>
+</ul>
+
+<div class="callout note">
+  <p><strong>The reference server's trick:</strong> its request/response bodies <em>are</em> the <code>SphynxProtocol</code> value types, so it physically cannot drift from the wire format. If you build in Swift, do the same and the compiler enforces conformance for you.</p>
+</div>
+
+<h3 id="proto-forward">Forward compatibility — the rules that let everyone evolve</h3>
+<p>These four rules are what make independent client/server versions interoperate. Implement them on <strong>both</strong> sides:</p>
+<ol>
+  <li><strong>Ignore unknown top-level fields.</strong> A newer server may add fields your decoder doesn't model. Drop them silently; never error.</li>
+  <li><strong>Tolerate unknown enum strings.</strong> <code>type</code>, <code>kind</code>, <code>capabilities.metadata</code> values, error <code>code</code>s are all open enums. Decode an unrecognized value to an <code>.unknown(raw)</code> case and map it to a neutral default — never crash.</li>
+  <li><strong>Treat all metadata as optional.</strong> The absence of a field means "not available," not "error." Render gracefully without it.</li>
+  <li><strong>Read <code>extra</code> opportunistically.</strong> Pull keys you understand from <code>item.extra</code>; ignore the rest. This is how a server exposes new metadata to new clients without breaking old ones — no negotiation, no versioning.</li>
+</ol>
+<div class="callout warn">
+  <p><strong>Open questions the protocol intentionally leaves to implementations:</strong> whether <code>ttl</code> is advisory or enforced and how a client re-resolves mid-session; who owns failover ordering when <code>candidates</code> exist; image size hints (<code>?w=600</code>) vs. one canonical size; whether markers are inlined in <code>/resolve</code> or fetched separately; fallback identity (IMDB/TVDB/hash) when TMDB can't resolve; and a future binary wire encoding. Don't hard-code assumptions about these — they may shape future versions.</p>
+</div>
+</section>
+
+<!-- ========================= EXTENDING ========================= -->
+<section id="extending">
+<h2>Extending Sphynx</h2>
+<p>Sphynx is designed so that <strong>metadata can grow without breaking anyone</strong>. There are three ways the system extends, in order of how often you'll reach for them — plus the source-driver framework for new storage backends. Mirrors the repo's <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/EXTENDING.md"><code>docs/EXTENDING.md</code></a>.</p>
+<p>The throughline: <strong>the protocol's canonical fields are neutral and optional, and everything else is open.</strong> A server serves whatever metadata it has; a client consumes what it understands and ignores the rest.</p>
+
+<h3 id="ext-access">0. The access model</h3>
+<p><code>GET /v1/info</code> advertises a per-field access policy. <code>MetadataAccess</code> is an <strong>open enum</strong>: <code>none</code> | <code>read</code> | <code>readwrite</code> (+ unknown future values). A field <strong>absent</strong> from the map means <code>none</code> — the client may still read whatever the server includes on an item, but there's no contribution endpoint advertised. The reference server sets it from config (<code>SPHYNX_MARKERS_ACCESS</code>).</p>
+<p><code>capabilities.metadata</code> advertises what the <strong>server</strong> supports. Write access is then granted <strong>per user by an admin</strong> (<code>POST /v1/admin/users/{id}/grants</code>), so two users on the same server can have different write permissions. A client learns its <strong>own effective access</strong> from <code>GET /v1/auth/me</code>.</p>
+<div class="callout note">
+  <p>A client should <strong>check <code>/v1/auth/me</code> before offering a "fix this"/"contribute" affordance</strong> (not <code>/v1/info</code>), and gracefully degrade when its effective access is <code>read</code>/<code>none</code>. Effective write = server advertises the field <code>readwrite</code> <strong>and</strong> the user is granted it (admins are always granted).</p>
+</div>
+
+<h3 id="ext-read">1. Reading new metadata — no extension needed</h3>
+<p><strong>Clients need no extension to read new metadata.</strong> Two mechanisms guarantee it:</p>
+<ul>
+  <li><strong>Canonical fields are optional and neutral.</strong> When the server starts sending a field a client already models (say <code>officialRating</code>), the client just reads it. The meaning and unit are fixed by the protocol; the client only maps the <em>name</em>.</li>
+  <li><strong>Open <code>extra</code> bag + forward-compatible decoding.</strong> Anything outside the canonical set rides in <code>item.extra</code> (arbitrary JSON). Unknown top-level fields are ignored; unknown enum strings decode to <code>.unknown(...)</code>.</li>
+</ul>
+<pre><code><span class="cmt">// A server exposing data beyond the canonical schema:</span>
+<span class="key">{ "id":"it_1", "type":"movie", "title":"Alien",
+  "extra": { "imdbId":"tt0078748", "tagline":"In space…", "dolbyVision":true } }</span></code></pre>
+<p>A client that knows <code>extra.dolbyVision</code> shows an HDR badge; one that doesn't ignores it. <strong>No versioning, no negotiation, no breakage.</strong></p>
+
+<h3 id="ext-contribute">2. Client-side contribution (write)</h3>
+<p>When a server advertises a field as <code>readwrite</code>, clients may <strong>contribute</strong> metadata back. This is how data that must be sourced client-side reaches the server and gets shared with everyone.</p>
+<h4>Worked example: TheIntroDB → Sphynx</h4>
+<p><a href="https://theintrodb.org/docs">TheIntroDB</a> requires a <strong>client-only</strong> integration — a <em>server</em> must not call it. Sphynx respects that by never fetching it server-side. Instead the client bridges it:</p>
+<ol>
+  <li>Client plays an item with a <code>tmdbId</code>.</li>
+  <li>Client (per TheIntroDB's terms) fetches intro/credit markers from TheIntroDB.</li>
+  <li>Client checks <code>capabilities.metadata["markers"] == "readwrite"</code> (and its own grant via <code>/v1/auth/me</code>).</li>
+  <li>Client contributes them:</li>
+</ol>
+<pre><code>PUT /v1/items/{itemId}/markers
+Authorization: Bearer &lt;token&gt;
+Content-Type: application/json
+
+<span class="key">{ "markers": { "intro":{"start":75,"end":145}, "credits":{"start":9120} },
+  "source":"theintrodb", "confidence":0.95 }</span></code></pre>
+<p>Sphynx stores them <strong>item-level</strong>, so every other client on that server now gets the markers — in <code>GET /v1/items/{id}/markers</code> and folded into <code>GET /v1/resolve/{id}</code> — <strong>without</strong> each client having to call TheIntroDB.</p>
+<p>The contribution carries <strong>provenance</strong> (<code>source</code>, <code>confidence</code>, contributing user). Client contributions are best-effort: the server records them but marks them non-<code>authoritative</code>, and <strong>refuses to let a client overwrite authoritative markers</strong> (409 Conflict). Handle <strong>403</strong> (read-only / not granted), <strong>409</strong> (would clobber authoritative), and <strong>404</strong> (not offered) by degrading gracefully.</p>
+
+<h3 id="ext-serverwrite">3. Server-side extension (self-write)</h3>
+<p>A server (or a server <em>extension</em>) can <strong>write metadata itself</strong> — e.g. an <strong>intro detector</strong> that analyses media and produces markers. These writes go through the server's internal catalog API, not the public HTTP contribution endpoint, and are marked <strong>authoritative</strong> so client contributions won't override them.</p>
+<div class="callout note">
+  <p>The reference server does not ship an intro detector — this is the documented <em>seam</em> so one can be added as an extension. <code>ItemRecord</code> already carries <code>markersJSON</code> + provenance (<code>markersSource</code>, <code>markersConfidence</code>, <code>markersAuthoritative</code>, <code>markersContributedBy</code>, <code>markersUpdatedAt</code>), and <code>Catalog.updateItem(_:)</code> persists them.</p>
+</div>
+<pre><code><span class="kw">var</span> item = <span class="kw">try await</span> catalog.item(id: itemId)!
+item.markersJSON = encode(Markers(intro: .init(start: <span class="num">75</span>, end: <span class="num">145</span>)))
+item.markersSource = <span class="str">"intro-detector"</span>
+item.markersConfidence = <span class="num">0.9</span>
+item.markersAuthoritative = <span class="kw">true</span>        <span class="cmt">// server-detected → wins over client</span>
+item.markersUpdatedAt = now
+<span class="kw">try await</span> catalog.updateItem(item)</code></pre>
+<p>Because <code>markersAuthoritative == true</code>, a later client <code>PUT</code> is rejected with <strong>409 Conflict</strong> (only an admin can override). The precedence policy in one sentence: <strong>server-detected / admin-pinned beats best-effort client contributions.</strong></p>
+<h4>Adding a new server-written field, end to end</h4>
+<ol>
+  <li><strong>Storage:</strong> add column(s) to the relevant record + a migration.</li>
+  <li><strong>Access:</strong> add the field to <code>AccessPolicy</code> (advertise <code>read</code> or <code>readwrite</code>).</li>
+  <li><strong>Read:</strong> surface it on the item projection / a <code>GET</code> endpoint / <code>/resolve</code>.</li>
+  <li><strong>Write:</strong> a contribution endpoint (if client-writable) and/or an internal write path for the extension.</li>
+  <li><strong>Provenance:</strong> record source + authority so precedence stays sane.</li>
+  <li><strong>Docs:</strong> note the field's meaning, unit, and access in <code>API.md</code>.</li>
+</ol>
+<p>If the field is niche/server-specific, skip the canonical schema and use <code>item.extra</code> instead — clients read it without any protocol change.</p>
+
+<h3 id="ext-freshness">4. Freshness &amp; expiry</h3>
+<p>Metadata goes stale. Sphynx keeps it fresh along the <strong>same ownership split</strong> as contribution — whoever can <em>fetch</em> the data is responsible for <em>refreshing</em> it:</p>
+<ul>
+  <li><strong>Server-owned data — the server refreshes it.</strong> Data the server can re-fetch (TMDB enrichment: posters, overview, cast) carries a freshness window (<code>SPHYNX_ENRICH_TTL</code>, default 90 days). A background maintenance pass (<code>SPHYNX_MAINTENANCE_INTERVAL</code>, default daily) re-fetches anything older. The client does nothing.</li>
+  <li><strong>Client-owned data — the server flags it, the client refreshes it.</strong> Data only a client can fetch (markers from a client-only source) can't be refreshed server-side. <code>GET /v1/items/{id}/markers</code> returns <code>stale:true</code> once markers pass <code>SPHYNX_MARKERS_STALE_AFTER</code> (default 7 days). A client with a data source should, on <code>stale:true</code> <strong>or</strong> 404, re-fetch and <code>PUT</code> updated markers — closing the loop.</li>
+</ul>
+<p>Refresh never clobbers higher-authority data: the maintenance pass only touches <strong>server-owned</strong> fields, and <strong>authoritative</strong> markers are never reported <code>stale</code>. Per-user playstate untouched for <code>SPHYNX_PLAYSTATE_RETENTION</code> (default 365 days) is purged by the maintenance pass.</p>
+
+<h3 id="ext-drivers">5. Source drivers — adding a backend</h3>
+<p>A <strong>source driver</strong> teaches Sphynx to read a new kind of storage backend. The framework is a registry: a driver declares its kind and the config it needs, and the core never changes to accommodate it. The contract is deliberately narrow:</p>
+<ul>
+  <li><strong><code>list()</code></strong> — a metadata-only walk that yields one <code>SourceEntry</code> per media file (a key, plus optional container/size hints). It never reads media bytes.</li>
+  <li><strong><code>resolve()</code></strong> — turns one entry's key into a direct, <strong>client-fetchable</strong> location (a URL, plus any headers and a TTL). The client streams it; bytes never pass through the server.</li>
+</ul>
+<p>That split is the whole design: only <em>listing</em> differs between backends. <code>resolve</code> just emits a scheme-appropriate URL — <code>https://…</code> for HTTP/WebDAV, <code>smb://…</code> for SMB, <code>ftp://…</code> for FTP.</p>
+
+<h4>Driver status</h4>
+<table>
+  <tr><th>Kind</th><th><code>resolve</code> (handoff)</th><th><code>list</code> (enumerate)</th></tr>
+  <tr><td><code>http</code> / <code>https</code></td><td>✅ direct URL + headers</td><td>✅ via a JSON manifest</td></tr>
+  <tr><td><code>local</code></td><td>✅ <code>.strm</code> → its URL; else <code>file://</code></td><td>✅ filesystem walk</td></tr>
+  <tr><td><code>webdav</code></td><td>✅ <code>https://</code> + auth header</td><td>🚧 scaffold — <code>PROPFIND</code> over existing HTTP client</td></tr>
+  <tr><td><code>smb</code></td><td>✅ <code>smb://host/share/key</code></td><td>🚧 scaffold — needs an SMB client library</td></tr>
+  <tr><td><code>ftp</code></td><td>✅ <code>ftp://host/key</code></td><td>🚧 scaffold — needs an FTP client library</td></tr>
+</table>
+<p>The scaffolded drivers resolve today; their <code>list()</code> returns a clear "not implemented yet" until the listing piece lands. Resolving for all of them already honours the core rule: the server hands back a location and moves no bytes.</p>
+
+<h4>Authoring a driver</h4>
+<ol>
+  <li>Implement <code>SourceDriver</code> (<code>list()</code> + <code>resolve()</code>), reading non-secret settings from <code>SourceContext.config</code> and credentials from <code>SourceContext.secrets</code>.</li>
+  <li>Declare <code>static let registration = DriverRegistration(kind:, requiredConfigKeys:, make:)</code>. <code>requiredConfigKeys</code> are validated before <code>make</code> runs, so a misconfigured source fails fast with a clear message.</li>
+  <li>Add the registration to <code>DriverFactory.defaultRegistrations</code>. That one list is the only shared edit — there is no central <code>switch</code>.</li>
+</ol>
+</section>
+
+<!-- ========================= ROADMAP ========================= -->
+<section id="roadmap">
+<h2>Roadmap &amp; Coming Soon</h2>
+<p>Built spine-first. What's working today is documented above; what's flagged here isn't ready yet.</p>
+
+<h3>Working today <span class="badge live">live</span></h3>
+<ul>
+  <li><strong>Discovery &amp; auth</strong> — <code>GET /v1/info</code>; password login with short access tokens + rotating refresh tokens; device-scoped sessions.</li>
+  <li><strong>Browse</strong> — libraries and items (skeleton/full), cursor pagination, single-item detail.</li>
+  <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles.</li>
+  <li><strong>Resolve</strong> — direct, time-bounded playback location + headers (never proxied).</li>
+  <li><strong>Playstate</strong> — start/progress/stop with failed-stop protection, <code>resumePosition</code> folded into browse, and a continue-watching feed.</li>
+  <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable intro/credit markers; an open <code>extra</code> bag.</li>
+  <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
+</ul>
+
+<h3>Coming soon <span class="badge soon">planned</span></h3>
+<div class="callout soon">
+  <p><strong>Published Docker image.</strong> A pre-built image you can <code>docker run</code> without cloning. For now, <a href="#docker">build it yourself</a> from the included Dockerfile.</p>
+</div>
+<div class="callout soon">
+  <p><strong>Web control panel.</strong> A browser admin UI for libraries, sources, scans, and users — everything that today goes through the <a href="#api-admin">admin API</a> by hand.</p>
+</div>
+<div class="callout soon">
+  <p><strong>Search</strong> (<code>GET /v1/search</code>), <strong>watched / favorites</strong> state, <strong>browse sort &amp; filter</strong> and Recently Added, <strong>ranked <code>candidates</code></strong> in the resolve descriptor, and <strong>more source drivers</strong> (completing WebDAV/SMB/FTP listing).</p>
+</div>
+</section>
+
+<!-- ========================= FAQ ========================= -->
+<section id="faq">
+<h2>FAQ &amp; Troubleshooting</h2>
+
+<h4>The server won't build — code-signing or <code>.build</code> errors on macOS.</h4>
+<p>You're almost certainly building inside an iCloud-synced folder (<code>~/Desktop</code>, <code>~/Documents</code>). Move the checkout somewhere unsynced, or symlink <code>.build</code> off the synced tree. See the <a href="#prereqs">prerequisites</a> warning.</p>
+
+<h4>Docker build fails with "Resource deadlock avoided" (EDEADLK).</h4>
+<p>Docker Desktop for Mac + bind-mounted source. Use <code>docker build</code> / <code>docker compose</code> (which stream a tar), not a mounted volume. The provided Dockerfile already does this. See <a href="#docker">Docker / Linux</a>.</p>
+
+<h4><code>swift build</code> can't find <code>sphynx-protocol</code>.</h4>
+<p>The server resolves it via the local path <code>../sphynx-protocol</code>. Build from inside <code>sphynx-server/</code> within a full monorepo checkout — don't move the two package folders apart.</p>
+
+<h4>Enrichment isn't happening — posters/overviews are missing.</h4>
+<p>TMDB isn't configured. Set <code>SPHYNX_TMDB_API_KEY</code> to a TMDB v3 key and re-scan (or call <code>POST /v1/admin/enrich</code>). Without it the server runs fine but every item stays a skeleton, and the enrichment endpoints return <strong>400</strong>.</p>
+
+<h4>I changed <code>SPHYNX_ADMIN_PASSWORD</code> but login still uses the old one.</h4>
+<p>Admin bootstrap only applies when creating a <em>fresh</em> database. If <code>data/sphynx.sqlite</code> already exists, the account is already there. Delete the DB (or point <code>SPHYNX_DB_PATH</code> at a new file) to re-bootstrap, or change the password through normal account management.</p>
+
+<h4>Resolve returns <code>404 no_media_source</code>.</h4>
+<p>The item exists but its source is unavailable (e.g. the manifest URL is unreachable, or a driver's <code>list()</code> isn't implemented yet). Check the source config and that the underlying URL is reachable.</p>
+
+<h4>A client got a <code>409 conflict</code> on <code>PUT …/markers</code>.</h4>
+<p>Authoritative markers (server-detected or admin-pinned) already exist; a best-effort client contribution can't clobber them. Only an admin can override. This is intended precedence, not an error to retry.</p>
+
+<footer>
+  <p>Sphynx — an open media-meta-server and wire protocol. Source: <a href="https://github.com/reckloon/Sphynx-Media">github.com/reckloon/Sphynx-Media</a> · MIT licensed.</p>
+  <p>This guide tracks the live specs in the repo: <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/Sphynx-Protocol.md">Protocol</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/Sphynx-Server.md">Server design</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md">API</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/EXTENDING.md">Extending</a>.</p>
+</footer>
+</section>
+
+</main>
+</div>
+
+<script>
+  // Copy buttons on code blocks
+  document.querySelectorAll('pre').forEach(function (pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copybtn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function () {
+      var code = pre.querySelector('code');
+      navigator.clipboard.writeText((code || pre).innerText).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1200);
+      });
+    });
+    pre.appendChild(btn);
+  });
+
+  // Scroll-spy: highlight the active sidebar link
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.sidebar a'));
+  var map = {};
+  links.forEach(function (a) {
+    var id = a.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) map[id] = a;
+  });
+  var targets = Object.keys(map).map(function (id) { return document.getElementById(id); });
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        links.forEach(function (l) { l.classList.remove('active'); });
+        var a = map[e.target.id];
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+  targets.forEach(function (t) { observer.observe(t); });
+</script>
+</body>
+</html>
