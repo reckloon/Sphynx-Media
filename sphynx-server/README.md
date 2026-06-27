@@ -12,6 +12,10 @@ The wire contract it speaks lives in the sibling [`sphynx-protocol`](../sphynx-p
 package, which this package depends on via a local path. Request/response bodies
 *are* the protocol's value types, so the server cannot drift from the wire format.
 
+> **Docs:** the [complete guide](https://reckloon.github.io/Sphynx-Media/) covers
+> setup, the full walkthrough, and how the server is built; the
+> [API reference](../docs/API.md) lists every endpoint.
+
 ## Requirements
 
 - Swift 6 toolchain (macOS via Xcode, or Linux).
@@ -80,6 +84,7 @@ the provided `Dockerfile` and `docker-compose.yml` handle this for you.
 
 ## Subsystem map
 
-Code is organised along the seams from [`Sphynx-Server.md`](../docs/Sphynx-Server.md) — Sources,
-Indexer, Identifier, Enricher, Catalog, Resolver, Users/Auth, Playstate, API. For
-v1 they live in one process.
+Code is organised along the subsystem seams — Sources, Indexer, Identifier,
+Enricher, Catalog, Resolver, Users/Auth, Playstate, API (see the
+[guide → How the server is built](https://reckloon.github.io/Sphynx-Media/#architecture)).
+For v1 they live in one process.

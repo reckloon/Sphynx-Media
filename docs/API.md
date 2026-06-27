@@ -1,9 +1,10 @@
 # Sphynx API Reference
 
-The HTTP surface implemented by `sphynx-server`, tracking
-[`Sphynx-Protocol.md`](Sphynx-Protocol.md) (the source of truth). This document
-reflects **what is implemented today**; unimplemented protocol endpoints are
-listed under [Planned](#planned).
+The HTTP surface implemented by `sphynx-server`. This is the endpoint reference;
+the full narrative — protocol, server design, and extending — is the
+[complete guide](https://reckloon.github.io/Sphynx-Media/). This document reflects
+**what is implemented today**; unimplemented protocol endpoints are listed under
+[Planned](#planned).
 
 - Base path: `/v1`
 - Bodies: `application/json`
@@ -48,7 +49,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
-— readable if served, but not contributable. See [EXTENDING.md](EXTENDING.md).
+— readable if served, but not contributable. See the [guide → Extending](https://reckloon.github.io/Sphynx-Media/#extending).
 
 ---
 
@@ -156,8 +157,9 @@ A single item. **404** `not_found` if absent. See [Item shape](#item-shape).
 ## Markers (bi-directional)
 
 Intro/credit markers are **item-level** (shared across a server's clients) and
-gated by `capabilities.metadata["markers"]`. See [EXTENDING.md](EXTENDING.md) for
-the contribution model (e.g. a client bridging TheIntroDB).
+gated by `capabilities.metadata["markers"]`. See the
+[guide → Extending](https://reckloon.github.io/Sphynx-Media/#extending) for the
+contribution model (e.g. a client bridging TheIntroDB).
 
 ### `GET /v1/items/{itemId}/markers` — auth; requires markers ≥ `read`
 
@@ -171,7 +173,8 @@ the contribution model (e.g. a client bridging TheIntroDB).
 
 `stale: true` means the markers are older than the server's freshness window and a
 client with a data source should re-fetch and `PUT` updated ones (see
-[EXTENDING.md §4](EXTENDING.md)). Authoritative markers are never stale.
+[guide → Freshness](https://reckloon.github.io/Sphynx-Media/#ext-freshness)).
+Authoritative markers are never stale.
 
 ### `PUT /v1/items/{itemId}/markers` — auth; requires markers == `readwrite`
 
@@ -201,15 +204,19 @@ play time, never cached from browse.
   "url": "https://cdn.example/movie.mkv",
   "headers": { },
   "container": "mkv",
-  "ttl": 300,
   "preResolved": true
 }
 ```
-- `url` — DIRECT location; the client streams this itself.
+- `url` — DIRECT location; the client streams this itself. Resolved fresh on every
+  call and **never stored** — the server keeps only the item's source reference.
 - `headers` — headers the client must send when fetching `url`.
-- `ttl` — seconds the descriptor is valid; absent = no expiry.
 - `preResolved` — if true, the client skips its own redirect resolution.
-- `tracks`, `markers`, `candidates` — optional; absent in the current build.
+- `ttl` — *optional.* When the source returns a time-bounded link (e.g. a signed
+  CDN URL), how many seconds it stays valid; the server passes the driver's value
+  straight through and never persists it. The built-in `http`/`local` drivers
+  return plain, non-expiring URLs, so `ttl` is absent. Absent = no expiry.
+- `tracks`, `markers`, `candidates` — optional; `tracks`/`candidates` absent in the
+  current build.
 
 **404** `not_found` (no such item) / `no_media_source` (item's source unavailable).
 
@@ -296,8 +303,9 @@ directory path; the indexer walks that tree, deriving each item's identity from
 the folder layout (`Title (Year)/file` for movies, `Show (Year)/Season N/file`
 for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated
 source. `.strm` files are followed at resolve time to their contained URL — bytes
-never pass through the server. See EXTENDING.md §5 for the full driver list and
-how to add a backend.
+never pass through the server. See the
+[guide → Source drivers](https://reckloon.github.io/Sphynx-Media/#ext-drivers) for
+the full driver list and how to add a backend.
 
 The manifest is a simple JSON document the indexer reads (metadata, not media):
 ```json

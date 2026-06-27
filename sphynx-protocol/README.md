@@ -5,8 +5,9 @@ The **Sphynx** wire contract expressed as pure, dependency-free Swift value type
 Sphynx is an open protocol for a *media-meta-server*: a server that indexes media
 living on remote storage or CDNs, enriches it with metadata, and hands clients a
 **direct playback URL** plus everything needed to play and track it — without ever
-proxying, transcoding, or storing the media bytes. See [`Sphynx-Protocol.md`](../docs/Sphynx-Protocol.md)
-for the full specification (the source of truth).
+proxying, transcoding, or storing the media bytes. See the
+[Sphynx guide](https://reckloon.github.io/Sphynx-Media/) for the full protocol
+reference and the [API reference](../docs/API.md) for the live endpoints.
 
 This package is the shared contract consumed by **both** the reference server
 (`sphynx-server`) and the Ocelot client app. It is therefore intentionally:
@@ -41,7 +42,10 @@ swift test
 
 ## Status
 
-Milestone 1: discovery types (`ServerInfo`, `Capabilities`), the error envelope,
-the open-enum machinery, and the forward-compatibility guardrail. The remaining
-protocol types (auth, items, browse, resolve, playstate, search) land as the
-server milestones reach them.
+The wire contract as built today: discovery (`ServerInfo`, `Capabilities`), auth +
+per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`), the
+`Item` model (images, placeholder one-of, cast, TV positioning, open `extra`),
+browse + pagination, resolve (`ResolveDescriptor`, tracks, candidates), playstate,
+bi-directional markers (`MarkerContribution`, `MarkersInfo`), the error envelope,
+and the open-enum machinery. The test suite round-trips every type and proves
+unknown payloads decode without throwing.

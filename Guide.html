@@ -195,6 +195,7 @@
         <li><a href="#what">What is Sphynx?</a></li>
         <li><a href="#concepts">Core concepts</a></li>
         <li><a href="#layout">Repository layout</a></li>
+        <li><a href="#architecture">How the server is built</a></li>
       </ul>
     </li>
     <li><a href="#setup">Setup &amp; Run</a>
@@ -293,7 +294,7 @@
 <h3 id="concepts">Core concepts</h3>
 <table>
   <tr><th>Principle</th><th>What it means</th></tr>
-  <tr><td><strong>Control plane only</strong></td><td><code>/resolve</code> describes <em>where</em> the bytes are (direct URL + headers + ttl), called late at play time, never cached from a browse response. The server moves no bytes.</td></tr>
+  <tr><td><strong>Control plane only</strong></td><td><code>/resolve</code> describes <em>where</em> the bytes are (a direct URL + headers, plus an optional expiry only when the source's link is time-bounded), called late at play time, never cached from a browse response. The server stores only the source <em>reference</em> — never a resolved URL — and resolves fresh on every play. It moves no bytes.</td></tr>
   <tr><td><strong>TMDB-centric identity</strong></td><td>Items carry a TMDB id where one exists. It is the join key for artwork, intro markers, and cross-server interoperability.</td></tr>
   <tr><td><strong>Forward-compatible JSON</strong></td><td>Unknown fields are ignored; new enum-like string values decode to an <code>.unknown</code> case instead of breaking older clients.</td></tr>
   <tr><td><strong>Neutral units</strong></td><td>Time is always <strong>seconds</strong> (floating point) on the wire. Wall-clock timestamps are RFC 3339 strings.</td></tr>
@@ -307,11 +308,26 @@
   <tr><th>Path</th><th>What it is</th></tr>
   <tr><td><code>sphynx-protocol/</code></td><td>The wire contract as <strong>pure, dependency-free</strong> Swift value types (Foundation-only). Builds for every Apple platform + Linux. Shared by the server and any client.</td></tr>
   <tr><td><code>sphynx-server/</code></td><td>The reference server — a Hummingbird 2 app. Uses the protocol types directly as request/response bodies, so it cannot drift from the wire format.</td></tr>
-  <tr><td><code>docs/</code></td><td>The protocol spec, server design, endpoint reference (<code>API.md</code>), and the extension guide.</td></tr>
+  <tr><td><code>docs/</code></td><td>The endpoint reference (<code>API.md</code>). The full narrative — protocol, server design, and extending — is <strong>this guide</strong>.</td></tr>
 </table>
 <div class="callout note">
   <p><strong>Monorepo caveat.</strong> Because <code>sphynx-protocol</code> is not at the repository root, it can't be added as a SwiftPM <em>URL</em> dependency directly. Clients (e.g. Ocelot) consume it via a <strong>local path dependency</strong> against a checkout. If a standalone distribution becomes necessary, the package can be mirrored to its own repo.</p>
 </div>
+
+<h3 id="architecture">How the server is built</h3>
+<p>The reference server is a pipeline of small subsystems, each a seam that could later split into its own service. <strong>Bytes never enter the pipeline</strong> — every stage works on metadata only.</p>
+<table>
+  <tr><th>Subsystem</th><th>Role</th></tr>
+  <tr><td><strong>Sources</strong></td><td>Admin-configured remote locations to index, each with a <strong>driver</strong> (<code>http</code>, <code>local</code>, <code>webdav</code>, …) plus non-secret <code>config</code> and withheld <code>secrets</code>.</td></tr>
+  <tr><td><strong>Indexer</strong></td><td>Walks a source's driver to list raw entries, then diffs against the catalog to add / remove / update — a cheap, metadata-only pass. The source is the source of truth.</td></tr>
+  <tr><td><strong>Identifier</strong></td><td>Turns a raw entry (filename + folder layout) into a confident TMDB id (+ season/episode). The load-bearing part — everything downstream keys off a correct id.</td></tr>
+  <tr><td><strong>Enricher</strong></td><td>Given a TMDB id, fetches overview, runtime, genres, ratings, artwork, and cast — cached with a freshness window.</td></tr>
+  <tr><td><strong>Catalog</strong></td><td>The queryable item store the API reads from: identity, enrichment, and parent/child structure (series → season → episode).</td></tr>
+  <tr><td><strong>Resolver</strong></td><td>The late-bound handoff: asks the item's driver for a direct, fetchable URL <em>at play time</em>. Stores no URL.</td></tr>
+  <tr><td><strong>Users / Playstate</strong></td><td>Accounts, auth, per-user permissions, and resume positions — all row-scoped to the authenticated subject.</td></tr>
+  <tr><td><strong>API</strong></td><td>The thin HTTP layer that speaks the Sphynx protocol, reusing the protocol value types directly as request/response bodies so the server can't drift from the wire format.</td></tr>
+</table>
+<p>The two subsystems that carry the most design risk are the <strong>Identifier</strong> (matching the right title is the perennial media-server hard problem) and the <strong>Source/driver model</strong> (each new backend is just a new driver). Everything else is well-trodden.</p>
 
 <!-- ========================= SETUP ========================= -->
 <section id="setup">
@@ -503,7 +519,7 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>Finally, the heart of Sphynx — <strong>resolve</strong> an item to a direct, playable location at play time. The client streams this URL itself; the server moved no bytes.</p>
 <pre><code>curl -s localhost:8080/v1/resolve/it_… -H <span class="str">"$AUTH"</span>
 <span class="cmt"># → { "url":"https://…/BigBuckBunny_320x180.mp4", "container":"mp4",
-#       "preResolved":true, "ttl":300 }</span></code></pre>
+#       "preResolved":true }</span></code></pre>
 
 <div class="callout tip">
   <p>That's the entire spine: <strong>login → browse → resolve → play</strong>. Everything else (playstate, markers, enrichment, multiple users) layers on top of these calls.</p>
@@ -513,12 +529,12 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <!-- ========================= API REFERENCE ========================= -->
 <section id="api">
 <h2>API Reference</h2>
-<p>The complete HTTP surface implemented by <code>sphynx-server</code> today, tracking the protocol spec (the source of truth). This mirrors the repo's live <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md"><code>docs/API.md</code></a>.</p>
+<p>The complete HTTP surface implemented by <code>sphynx-server</code> today. Also available as Markdown in the repo at <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md"><code>docs/API.md</code></a>.</p>
 <ul>
   <li>Base path: <code>/v1</code></li>
   <li>Bodies: <code>application/json</code></li>
   <li>Times/durations: <strong>seconds</strong> (floating point)</li>
-  <li>Auth: <code>Authorization: Bearer &lt;accessToken&gt;</code> on everything except <code>/v1/info</code> and <code>/v1/auth/login</code></li>
+  <li>Auth: <code>Authorization: Bearer &lt;accessToken&gt;</code> on everything except <code>/v1/info</code> and the <code>/v1/auth/{login,refresh,logout}</code> calls</li>
   <li>Device scoping: send a stable per-install <code>X-Sphynx-Device: &lt;opaque&gt;</code> header</li>
 </ul>
 
@@ -619,12 +635,12 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>The late-bound handoff: turns an item into a direct, playable location. Called at play time, never cached from browse.</p>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "url":"https://cdn.example/movie.mkv", "headers":{}, "container":"mkv",
-  "ttl":300, "preResolved":true }</span></code></pre>
+  "preResolved":true }</span></code></pre>
 <ul>
-  <li><code>url</code> — DIRECT location; the client streams this itself.</li>
+  <li><code>url</code> — DIRECT location; the client streams this itself. Resolved fresh on every call and <strong>never stored</strong> — Sphynx keeps only the item's source reference.</li>
   <li><code>headers</code> — headers the client must send when fetching <code>url</code>.</li>
-  <li><code>ttl</code> — seconds the descriptor is valid; absent = no expiry.</li>
   <li><code>preResolved</code> — if true, the client skips its own redirect resolution.</li>
+  <li><code>ttl</code> — <em>optional.</em> When the source hands back a time-bounded link (e.g. a signed CDN URL), how many seconds it stays valid; the server passes the driver's value straight through and never persists it. The built-in <code>http</code>/<code>local</code> drivers return plain, non-expiring URLs, so <code>ttl</code> is absent. Absent = no expiry.</li>
   <li><code>tracks</code>, <code>markers</code>, <code>candidates</code> — optional; <code>tracks</code>/<code>candidates</code> absent in the current build.</li>
 </ul>
 <p><strong>404</strong> <code>not_found</code> (no such item) / <code>no_media_source</code> (item's source unavailable).</p>
@@ -656,7 +672,7 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>The server only stores and exposes the data (per-user position + <code>updatedAt</code>, ordered by recency) — <strong>the client owns presentation and policy</strong>: it has each item's runtime, so it decides what counts as "finished", whether to hide it, how to sort.</p>
 
 <h3 id="api-admin">Admin <span class="badge auth">server-specific, not part of the wire protocol</span></h3>
-<p>Catalog setup, indexing, and manual entry. <strong>Auth required + admin role</strong> (<code>403 forbidden</code> otherwise).</p>
+<p>Catalog setup, indexing, and manual entry. <strong>Auth required</strong>, and the <strong>admin role</strong> unless noted — the item-edit <code>PATCH</code> is gated by the <code>metadata.edit</code> permission instead, so it can be granted to a non-admin. <code>403 forbidden</code> otherwise.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/libraries</span></div>
 <p><strong>Body</strong> <code>{ "title":"Movies", "kind":"movies" }</code> (<code>kind</code> defaults to <code>other</code>). <strong>200</strong> → <code>{ "id":"lib_…", "title":"Movies", "kind":"movies" }</code>.</p>
@@ -837,7 +853,7 @@ targets: [
 <!-- ========================= EXTENDING ========================= -->
 <section id="extending">
 <h2>Extending Sphynx</h2>
-<p>Sphynx is designed so that <strong>metadata can grow without breaking anyone</strong>. There are three ways the system extends, in order of how often you'll reach for them — plus the source-driver framework for new storage backends. Mirrors the repo's <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/EXTENDING.md"><code>docs/EXTENDING.md</code></a>.</p>
+<p>Sphynx is designed so that <strong>metadata can grow without breaking anyone</strong>. There are three ways the system extends, in order of how often you'll reach for them — plus the source-driver framework for new storage backends.</p>
 <p>The throughline: <strong>the protocol's canonical fields are neutral and optional, and everything else is open.</strong> A server serves whatever metadata it has; a client consumes what it understands and ignores the rest.</p>
 
 <h3 id="ext-access">0. The access model</h3>
@@ -902,7 +918,20 @@ item.markersUpdatedAt = now
 <p>If the field is niche/server-specific, skip the canonical schema and use <code>item.extra</code> instead — clients read it without any protocol change.</p>
 
 <h3 id="ext-freshness">4. Freshness &amp; expiry</h3>
-<p>Metadata goes stale. Sphynx keeps it fresh along the <strong>same ownership split</strong> as contribution — whoever can <em>fetch</em> the data is responsible for <em>refreshing</em> it:</p>
+
+<div class="callout note">
+  <p><strong>Two planes — only one of them ever goes "stale."</strong></p>
+  <ul>
+    <li><strong>Existence &amp; location</strong> — the item list, each item's source key, and the playback URL. Owned by the <strong>source</strong>. Sphynx stores the source <em>reference</em>, never a resolved URL, and <strong>never marks it stale or gives it a TTL</strong>. It changes only when you <strong>re-scan the source</strong>: a re-list that diffs the directory — new keys added, vanished keys removed. The source is the source of truth, so if you delete an item from Sphynx's DB it is <strong>re-added on the next scan</strong> as long as the source still lists it. (A manually-added item that points at a bare absolute URL has no source to re-add it, so that delete is permanent; and a re-added item is a fresh row, so any manual edits / field-locks on the deleted one are gone.) Playback URLs are resolved fresh on every play.</li>
+    <li><strong>Layered metadata</strong> — TMDB enrichment and intro/credit markers, fetched from elsewhere. This <em>does</em> carry a freshness window, refreshed by re-fetching TMDB or by a client re-contributing — <strong>never</strong> by re-scanning the source. That's what the rest of this section covers.</li>
+  </ul>
+</div>
+
+<div class="callout soon">
+  <p><strong>Scan cadence.</strong> Today a re-scan is triggered manually (<code>POST /v1/admin/scan</code>, or per source). A <strong>per-source scan interval</strong>, configured in that source's own settings — so e.g. an FTP source can re-list every 15 minutes while a WebDAV source re-lists every 5 — is planned, with a scheduler re-listing each source on its own cadence.</p>
+</div>
+
+<p>The <em>layered-metadata</em> plane goes stale; Sphynx keeps it fresh along the <strong>same ownership split</strong> as contribution — whoever can <em>fetch</em> the data is responsible for <em>refreshing</em> it:</p>
 <ul>
   <li><strong>Server-owned data — the server refreshes it.</strong> Data the server can re-fetch (TMDB enrichment: posters, overview, cast) carries a freshness window (<code>SPHYNX_ENRICH_TTL</code>, default 90 days). A background maintenance pass (<code>SPHYNX_MAINTENANCE_INTERVAL</code>, default daily) re-fetches anything older. The client does nothing.</li>
   <li><strong>Client-owned data — the server flags it, the client refreshes it.</strong> Data only a client can fetch (markers from a client-only source) can't be refreshed server-side. <code>GET /v1/items/{id}/markers</code> returns <code>stale:true</code> once markers pass <code>SPHYNX_MARKERS_STALE_AFTER</code> (default 7 days). A client with a data source should, on <code>stale:true</code> <strong>or</strong> 404, re-fetch and <code>PUT</code> updated markers — closing the loop.</li>
@@ -913,7 +942,7 @@ item.markersUpdatedAt = now
 <p>A <strong>source driver</strong> teaches Sphynx to read a new kind of storage backend. The framework is a registry: a driver declares its kind and the config it needs, and the core never changes to accommodate it. The contract is deliberately narrow:</p>
 <ul>
   <li><strong><code>list()</code></strong> — a metadata-only walk that yields one <code>SourceEntry</code> per media file (a key, plus optional container/size hints). It never reads media bytes.</li>
-  <li><strong><code>resolve()</code></strong> — turns one entry's key into a direct, <strong>client-fetchable</strong> location (a URL, plus any headers and a TTL). The client streams it; bytes never pass through the server.</li>
+  <li><strong><code>resolve()</code></strong> — turns one entry's key into a direct, <strong>client-fetchable</strong> location (a URL, plus any headers and an <em>optional</em> expiry, set only when the link is time-bounded). The client streams it; bytes never pass through the server. The server stores nothing the driver returns — it resolves on demand.</li>
 </ul>
 <p>That split is the whole design: only <em>listing</em> differs between backends. <code>resolve</code> just emits a scheme-appropriate URL — <code>https://…</code> for HTTP/WebDAV, <code>smb://…</code> for SMB, <code>ftp://…</code> for FTP.</p>
 
@@ -946,7 +975,7 @@ item.markersUpdatedAt = now
   <li><strong>Discovery &amp; auth</strong> — <code>GET /v1/info</code>; password login with short access tokens + rotating refresh tokens; device-scoped sessions.</li>
   <li><strong>Browse</strong> — libraries and items (skeleton/full), cursor pagination, single-item detail.</li>
   <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles.</li>
-  <li><strong>Resolve</strong> — direct, time-bounded playback location + headers (never proxied).</li>
+  <li><strong>Resolve</strong> — direct playback location + headers, resolved fresh per play and never stored (never proxied; carries an optional expiry only for time-bounded source links).</li>
   <li><strong>Playstate</strong> — start/progress/stop with failed-stop protection, <code>resumePosition</code> folded into browse, and a continue-watching feed.</li>
   <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable intro/credit markers; an open <code>extra</code> bag.</li>
   <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
@@ -991,7 +1020,7 @@ item.markersUpdatedAt = now
 
 <footer>
   <p>Sphynx — an open media-meta-server and wire protocol. Source: <a href="https://github.com/reckloon/Sphynx-Media">github.com/reckloon/Sphynx-Media</a> · MIT licensed.</p>
-  <p>This guide tracks the live specs in the repo: <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/Sphynx-Protocol.md">Protocol</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/Sphynx-Server.md">Server design</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md">API</a> · <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/EXTENDING.md">Extending</a>.</p>
+  <p>This guide is the complete reference — protocol, server, API, and extending. The endpoint list is also available as Markdown in the repo: <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md">docs/API.md</a>.</p>
 </footer>
 </section>
 

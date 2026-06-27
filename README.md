@@ -10,6 +10,8 @@ transcoding, or storing a single media byte.
 
 *The server is brain, not muscle: it resolves **where** the media is; the client streams it directly.*
 
+📖 **[Read the complete guide →](https://reckloon.github.io/Sphynx-Media/)** &nbsp;·&nbsp; [API reference](docs/API.md)
+
 </div>
 
 ---
@@ -38,12 +40,14 @@ This is a monorepo containing two Swift packages plus the specs:
 |------|------------|
 | [`sphynx-protocol/`](sphynx-protocol) | The wire contract as **pure, dependency-free** Swift value types (Foundation-only). Builds for every Apple platform + Linux. Shared by the server and any client. |
 | [`sphynx-server/`](sphynx-server) | The reference server — a [Hummingbird 2](https://github.com/hummingbird-project/hummingbird) app. Uses the protocol types directly as request/response bodies, so it can't drift from the wire format. |
-| [`docs/`](docs) | The [protocol spec](docs/Sphynx-Protocol.md), [server design](docs/Sphynx-Server.md), [endpoint reference](docs/API.md), and the [extension guide](docs/EXTENDING.md). |
+| [`docs/`](docs) | The [endpoint reference](docs/API.md). The full narrative — protocol, server design, and extending — is the **[complete guide](https://reckloon.github.io/Sphynx-Media/)** ([`Guide.html`](Guide.html)). |
 
 ## Core principles
 
-- **Control plane only.** `/resolve` describes *where* the bytes are (direct URL +
-  headers + ttl), called late at play time, never cached from a browse response.
+- **Control plane only.** `/resolve` describes *where* the bytes are (a direct URL +
+  headers, plus an optional expiry only for time-bounded source links), called late
+  at play time. The server stores only the source reference, never a resolved URL,
+  and resolves fresh on every play.
 - **TMDB-centric identity.** The join key for artwork, intro markers, and
   cross-server interoperability.
 - **Forward-compatible JSON.** Unknown fields are ignored; new enum-like string
@@ -98,12 +102,13 @@ Built spine-first. Working today:
 - **Identity & enrichment** — movies and **TV** identified against TMDB. TV builds
   a series → season → episode tree (posters, season art, episode stills/titles).
 - **Browse hierarchy** — libraries → series → seasons → episodes via `parent=`.
-- **Resolve** — direct, time-bounded playback location + headers (never proxied).
+- **Resolve** — direct playback location + headers, resolved fresh per play and
+  never stored (never proxied; optional expiry only for time-bounded source links).
 - **Playstate** — resume tracking (start/progress/stop) with failed-stop
   protection, `resumePosition` folded into browse, and a continue-watching feed.
 - **Bi-directional metadata** — server-configurable, per-field read/write access;
   contributable intro/credit markers; an open `extra` bag for arbitrary
-  server-defined metadata. See the [extension guide](docs/EXTENDING.md).
+  server-defined metadata. See the [complete guide](https://reckloon.github.io/Sphynx-Media/).
 
 Roadmap: watched/favorites + sort/filter, search, ranked resolve fallbacks, and
 more source drivers.
