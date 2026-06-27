@@ -534,6 +534,14 @@ names; anything beyond them rides in `extra`. A *skeleton* item carries the tile
 fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
 (overview, genres, ratings, cast, studios, …).
 
+> **Skeleton contract.** Although `detail=` is a bandwidth hint, the reference
+> server **guarantees** that a `detail=skeleton` item omits *every* enrichment
+> field (overview, genres, ratings, cast, runtime, tagline, studios, directors,
+> writers, countries, externalIds, …). Clients may therefore treat the absence of
+> an enrichment field — e.g. `genres == null` — as a reliable "not yet enriched"
+> signal and decide whether to fetch `detail=full`. A server that wants this to
+> hold for its clients must do the same (never emit enrichment in a skeleton).
+
 ```json
 {
   "id": "it_…",
