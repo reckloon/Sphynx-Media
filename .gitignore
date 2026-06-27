@@ -1,12 +1,16 @@
 # SwiftPM
 .build
 .build/
+.build *
 .swiftpm/
 
 # macOS
 .DS_Store
 *.xcodeproj
 xcuserdata/
+# iCloud/Finder name-collision duplicates ("<name> 2", "<name> 3", …)
+* [0-9]
+* [0-9]/
 
 # Local runtime artifacts (catalog/user DB)
 *.sqlite
