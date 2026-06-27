@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Monorepo: both packages live here, so the server's local-path dependency on
+# sphynx-protocol resolves directly — no cross-repo checkout needed. Each job runs
+# `swift test` for both packages, on macOS and in a Swift Linux container.
+jobs:
+  macos:
+    name: macOS (swift test)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Test sphynx-protocol
+        working-directory: sphynx-protocol
+        run: swift test
+      - name: Test sphynx-server
+        working-directory: sphynx-server
+        run: swift test
+
+  linux:
+    name: Linux (swift test)
+    runs-on: ubuntu-latest
+    container: swift:6.3-noble
+    steps:
+      - name: Install SQLite headers (GRDB links system SQLite)
+        run: apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Test sphynx-protocol
+        working-directory: sphynx-protocol
+        run: swift test
+      - name: Test sphynx-server
+        working-directory: sphynx-server
+        run: swift test

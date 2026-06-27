@@ -1,0 +1,15 @@
+# SwiftPM
+.build
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+*.xcodeproj
+xcuserdata/
+
+# Local runtime artifacts (catalog/user DB)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+**/data/
