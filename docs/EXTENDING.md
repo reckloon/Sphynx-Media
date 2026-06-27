@@ -230,6 +230,67 @@ expire on their own.
 
 ---
 
+## 5. Source drivers — adding a backend
+
+A **source driver** teaches Sphynx to read a new kind of storage backend. The
+framework is a registry: a driver declares its kind and the config it needs, and
+the core never changes to accommodate it. The contract is deliberately narrow, so
+the server stays a metadata server:
+
+- **`list()`** — a metadata-only walk that yields one `SourceEntry` per media file
+  (a key, plus optional container/size hints). It never reads media bytes.
+- **`resolve()`** — turns one entry's key into a direct, **client-fetchable**
+  location (a URL, plus any headers and a TTL). The client streams it; bytes never
+  pass through the server.
+
+That split is the whole design: only *listing* differs between backends. `resolve`
+just emits a scheme-appropriate URL — `https://…` for HTTP/WebDAV, `smb://…` for
+SMB, `ftp://…` for FTP.
+
+### Per-source config and secrets
+
+Each source carries two open maps so a driver configures without HTTP-shaped
+columns:
+
+- **`config`** — non-secret, driver-specific settings (`rootPath`, `host`, `port`,
+  `share`, `baseURL`, …). Echoed back by the source API.
+- **`secrets`** — credentials (`username`, `password`, `token`, …). **Never**
+  returned by the API and **never** written to logs. (For the HTTP driver, the
+  request `headers` play the same role and are likewise withheld.)
+
+```json
+POST /v1/admin/sources
+{ "label": "NAS", "driver": "webdav", "libraryId": "lib_…",
+  "config":  { "baseURL": "https://nas.example/remote.php/dav" },
+  "secrets": { "username": "alice", "password": "•••" } }
+```
+
+### Authoring a driver
+
+1. Implement `SourceDriver` (`list()` + `resolve()`), reading non-secret settings
+   from `SourceContext.config` and credentials from `SourceContext.secrets`.
+2. Declare a `static let registration = DriverRegistration(kind:, requiredConfigKeys:, make:)`.
+   `requiredConfigKeys` are validated before `make` runs, so a misconfigured
+   source fails fast with a clear message.
+3. Add the registration to `DriverFactory.defaultRegistrations`. That one list is
+   the only shared edit — there is no central `switch`.
+
+### Driver status
+
+| Kind | `resolve` (handoff) | `list` (enumerate) |
+|---|---|---|
+| `http` / `https` | ✅ direct URL + headers | ✅ via a JSON manifest |
+| `local` | ✅ `.strm` → its URL; else `file://` | ✅ filesystem walk |
+| `webdav` | ✅ `https://` + auth header | ⬜ scaffold — `PROPFIND` over the existing HTTP client (no new dependency) |
+| `smb` | ✅ `smb://host/share/key` | ⬜ scaffold — needs an SMB client library |
+| `ftp` | ✅ `ftp://host/key` | ⬜ scaffold — needs an FTP client library |
+
+The scaffolded drivers resolve today; their `list()` returns a clear "not
+implemented yet" until the listing piece lands. Resolving for all of them already
+honours the core rule: the server hands back a location and moves no bytes.
+
+---
+
 ## Summary
 
 | You want to… | Do this | Need an extension? |

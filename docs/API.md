@@ -264,14 +264,27 @@ Catalog setup, indexing, and manual entry. **Auth required + admin role**
 ```
 `driver` defaults to `http`. `libraryId` is the library this source feeds;
 `manifestURL` is where the indexer lists entries. **200** →
-`{ "id": "src_…", "label": "...", "driver": "http" }`.
+`{ "id": "src_…", "label": "...", "driver": "http", "config": { … } }` — only
+non-secret fields are returned.
 
-For a `local` source, set `driver` to `local` and `baseURL` to a directory path;
-the indexer walks that tree, deriving each item's identity from the folder
-layout (`Title (Year)/file` for movies, `Show (Year)/Season N/file` for TV). A
-re-scan re-walks the folder, so it doubles as the periodically-updated source.
-`.strm` files are followed at resolve time to their contained URL — bytes never
-pass through the server.
+Drivers other than HTTP configure through two open maps: **`config`** for
+non-secret, driver-specific settings, and **`secrets`** for credentials. Secrets
+are stored but **never** returned by this endpoint or written to logs (for the
+HTTP driver, request `headers` are treated the same way).
+
+```json
+{ "label": "NAS", "driver": "webdav", "libraryId": "lib_…",
+  "config":  { "baseURL": "https://nas.example/remote.php/dav" },
+  "secrets": { "username": "alice", "password": "•••" } }
+```
+
+For a `local` source, set `driver` to `local` and `config.rootPath` to a
+directory path; the indexer walks that tree, deriving each item's identity from
+the folder layout (`Title (Year)/file` for movies, `Show (Year)/Season N/file`
+for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated
+source. `.strm` files are followed at resolve time to their contained URL — bytes
+never pass through the server. See EXTENDING.md §5 for the full driver list and
+how to add a backend.
 
 The manifest is a simple JSON document the indexer reads (metadata, not media):
 ```json
