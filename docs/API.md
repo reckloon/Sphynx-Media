@@ -156,16 +156,23 @@ A single item. **404** `not_found` if absent. See [Item shape](#item-shape).
 
 ## Markers (bi-directional)
 
-Intro/credit markers are **item-level** (shared across a server's clients) and
+Timeline-segment markers are **item-level** (shared across a server's clients) and
 gated by `capabilities.metadata["markers"]`. See the
 [guide → Extending](https://reckloon.github.io/Sphynx-Media/#extending) for the
 contribution model (e.g. a client bridging TheIntroDB).
+
+A marker maps a **segment type** to a `{ start, end }` window (seconds; `end`
+optional for open-ended). The four well-known types are `recap`, `intro`,
+`credits`, and `preview`. The type space is **open** — a server or extension may
+contribute any segment type (e.g. `sponsor`); clients ignore types they don't
+recognise. On the wire it's a flat object keyed by type.
 
 ### `GET /v1/items/{itemId}/markers` — auth; requires markers ≥ `read`
 
 **200**
 ```json
-{ "markers": { "intro": {"start":75,"end":145}, "credits": {"start":9120} },
+{ "markers": { "recap": {"start":0,"end":30}, "intro": {"start":75,"end":145},
+               "credits": {"start":9120}, "preview": {"start":9150,"end":9180} },
   "source": "theintrodb", "confidence": 0.95, "authoritative": false,
   "updatedAt": "2026-06-27T12:00:00Z", "stale": false }
 ```
@@ -178,8 +185,9 @@ Authoritative markers are never stale.
 
 ### `PUT /v1/items/{itemId}/markers` — auth; requires markers == `readwrite`
 
-**Body** `{ "markers": { "intro": {…}, "credits": {…} }, "source": "…", "confidence": 0.9 }`
-→ **200** with the stored [MarkersInfo].
+**Body** `{ "markers": { "recap": {…}, "intro": {…}, "credits": {…}, "preview": {…} }, "source": "…", "confidence": 0.9 }`
+→ **200** with the stored [MarkersInfo]. Any segment type is accepted, including
+custom ones beyond the four well-known.
 
 - **403** `forbidden` if the server is read-only for markers, **or the user
   hasn't been granted the `markers` write** (writes are per-user; admins always
@@ -266,13 +274,28 @@ via `GET /v1/playstate?items=…` (each entry carries `updatedAt`).
 
 ## Admin (server-specific, not part of the wire protocol)
 
-Catalog setup, indexing, and manual entry. **Auth required + admin role**
-(`403 forbidden` otherwise).
+Catalog setup, indexing, and manual entry. **Auth required**, and the **admin
+role** unless noted — the item-edit `PATCH` is gated by the `metadata.edit`
+permission instead. `403 forbidden` otherwise.
 
 ### `POST /v1/admin/libraries`
 
 **Body** `{ "title": "Movies", "kind": "movies" }` (`kind` defaults to `other`).
 **200** → `{ "id": "lib_…", "title": "Movies", "kind": "movies" }`.
+
+### `GET /v1/admin/libraries`
+
+List all libraries. **200** → `{ "libraries": [ { "id": "lib_…", "title": "…", "kind": "…" }, … ] }`.
+
+### `PATCH /v1/admin/libraries/{libraryId}`
+
+Update a library. **Body** (any subset) `{ "title": "…", "kind": "…" }` → **200**
+with the updated library.
+
+### `DELETE /v1/admin/libraries/{libraryId}`
+
+**Cascade.** Deletes the library, every item it holds, and the sources that feed
+it. **204** on success.
 
 ### `POST /v1/admin/sources`
 
@@ -306,6 +329,23 @@ source. `.strm` files are followed at resolve time to their contained URL — by
 never pass through the server. See the
 [guide → Source drivers](https://reckloon.github.io/Sphynx-Media/#ext-drivers) for
 the full driver list and how to add a backend.
+
+### `GET /v1/admin/sources`
+
+List all sources (non-secret fields only). **200** →
+`{ "sources": [ { "id": "src_…", "label": "…", "driver": "http", "config": { … } }, … ] }`.
+
+### `PATCH /v1/admin/sources/{sourceId}`
+
+Update a source. **Body** (any subset)
+`{ "label": "…", "baseURL": "…", "manifestURL": "…", "libraryId": "…", "headers": {…}, "config": {…}, "secrets": {…} }`
+— any map given replaces the stored one. **200** → the updated source (secrets
+withheld).
+
+### `DELETE /v1/admin/sources/{sourceId}`
+
+**Cascade.** Deletes the source, the items it produced, and any series/season
+containers those items leave empty. **204** on success.
 
 The manifest is a simple JSON document the indexer reads (metadata, not media):
 ```json
@@ -432,6 +472,13 @@ Enrich every item that needs it (new or stale). **200** → `{ "enriched": 7 }`.
 
 **200** → the created [`Item`](#item-shape).
 
+### `DELETE /v1/admin/items/{itemId}`
+
+**Cascade.** Deletes the item and its whole subtree (a series takes its seasons +
+episodes), then prunes any container the deletion leaves empty. **204** on success.
+An item still listed by its source reappears on the next scan — the source is the
+source of truth.
+
 ---
 
 ## Errors
@@ -452,7 +499,11 @@ must be tolerated.
 ## Item shape
 
 All fields except `id`, `title`, `type` are optional; the server sends what it
-has. A *skeleton* item omits enrichment (overview, genres, ratings, cast).
+has, and every field is omitted when empty. The canonical set is deliberately
+broad — matching what mainstream clients display — so a client can rely on these
+names; anything beyond them rides in `extra`. A *skeleton* item carries the tile
+fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
+(overview, genres, ratings, cast, studios, …).
 
 ```json
 {
@@ -460,15 +511,21 @@ has. A *skeleton* item omits enrichment (overview, genres, ratings, cast).
   "type": "movie",
   "title": "Blade Runner 2049",
   "tmdbId": "335984",
+  "originalTitle": "…", "sortTitle": "…", "tagline": "…",
   "overview": "…", "year": 2017, "runtime": 9840.0,
-  "images": { "primary": "…", "backdrop": "…", "thumb": "…" },
+  "images": { "primary": "…", "backdrop": "…", "thumb": "…", "logo": "…", "banner": "…" },
   "placeholder": { "url": "…/tiny.jpg" },
   "seriesId": "…", "seriesTitle": "…", "seasonIndex": 1, "episodeIndex": 3, "childCount": 10,
-  "genres": ["Sci-Fi"], "communityRating": 8.0, "officialRating": "R",
+  "genres": ["Sci-Fi"], "communityRating": 8.0, "criticRating": 88, "officialRating": "R",
   "cast": [ { "id": "pe_…", "name": "Ryan Gosling", "role": "K", "imageURL": "…", "placeholder": { "url": "…/tiny.jpg" } } ],
+  "directors": ["…"], "writers": ["…"], "studios": ["…"], "countries": ["…"], "tags": ["…"],
+  "trailers": ["https://…"], "chapters": [ { "start": 0.0, "title": "Intro" } ],
+  "status": "Released", "premiereDate": "2017-10-06", "endDate": "…",
+  "dateAdded": "2026-06-27T12:00:00Z",
+  "externalIds": { "imdb": "tt1856101", "tvdb": "…" },
   "resumePosition": 1342.5,
   "updatedAt": "2026-06-27T12:00:00Z",
-  "extra": { "tagline": "…", "imdbId": "tt…", "anything": [1, 2, 3] }
+  "extra": { "anything": [1, 2, 3] }
 }
 ```
 

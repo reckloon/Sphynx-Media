@@ -613,11 +613,13 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>A single item. <strong>404</strong> <code>not_found</code> if absent. See <a href="#api-item">Item shape</a>.</p>
 
 <h3 id="api-markers">Markers <span class="badge live">bi-directional</span></h3>
-<p>Intro/credit markers are <strong>item-level</strong> (shared across a server's clients) and gated by <code>capabilities.metadata["markers"]</code>. See <a href="#ext-contribute">Extending</a> for the contribution model (e.g. a client bridging TheIntroDB).</p>
+<p>Timeline-segment markers are <strong>item-level</strong> (shared across a server's clients) and gated by <code>capabilities.metadata["markers"]</code>. See <a href="#ext-contribute">Extending</a> for the contribution model (e.g. a client bridging TheIntroDB).</p>
+<p>A marker maps a <strong>segment type</strong> to a <code>{ start, end }</code> window (seconds; <code>end</code> optional for open-ended). The four well-known types — <code>recap</code>, <code>intro</code>, <code>credits</code>, <code>preview</code> — power "Skip Recap / Skip Intro / Next Episode" affordances. The type space is <strong>open</strong>: a server or extension may contribute any segment type (e.g. <code>sponsor</code>), and clients ignore types they don't recognise. On the wire it's a flat object keyed by type.</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}/markers</span><span class="badge auth">markers ≥ read</span></div>
 <pre><code><span class="cmt">// 200</span>
-<span class="key">{ "markers": { "intro":{"start":75,"end":145}, "credits":{"start":9120} },
+<span class="key">{ "markers": { "recap":{"start":0,"end":30}, "intro":{"start":75,"end":145},
+               "credits":{"start":9120}, "preview":{"start":9150,"end":9180} },
   "source":"theintrodb", "confidence":0.95, "authoritative":false,
   "updatedAt":"2026-06-27T12:00:00Z", "stale":false }</span></code></pre>
 <p><strong>404</strong> if the server doesn't offer markers, or none are stored. <code>stale:true</code> means the markers are older than the server's freshness window and a client with a data source should re-fetch and <code>PUT</code> updated ones. Authoritative markers are never stale.</p>
@@ -677,6 +679,15 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/libraries</span></div>
 <p><strong>Body</strong> <code>{ "title":"Movies", "kind":"movies" }</code> (<code>kind</code> defaults to <code>other</code>). <strong>200</strong> → <code>{ "id":"lib_…", "title":"Movies", "kind":"movies" }</code>.</p>
 
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/libraries</span></div>
+<p>List all libraries. <strong>200</strong> → <code>{ "libraries": [ { "id":"lib_…", "title":"Movies", "kind":"movies" }, … ] }</code>.</p>
+
+<div class="ep"><span class="method badge put">PATCH</span><span class="path">/v1/admin/libraries/{libraryId}</span></div>
+<p>Update a library. <strong>Body</strong> (any subset) <code>{ "title":"…", "kind":"…" }</code> → <strong>200</strong> with the updated library.</p>
+
+<div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/libraries/{libraryId}</span></div>
+<p><strong>Cascade.</strong> Deletes the library, every item it holds (the whole tree), and the sources that feed it. <strong>204</strong> on success.</p>
+
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources</span></div>
 <pre><code><span class="key">{ "label":"My CDN", "driver":"http", "baseURL":"https://cdn.example",
   "headers":{ "Authorization":"…" }, "libraryId":"lib_…",
@@ -688,6 +699,15 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
   "secrets": { "username":"alice", "password":"•••" } }</span></code></pre>
 <p>For a <code>local</code> source, set <code>driver</code> to <code>local</code> and <code>config.rootPath</code> to a directory path; the indexer walks that tree, deriving identity from the folder layout (<code>Title (Year)/file</code> for movies, <code>Show (Year)/Season N/file</code> for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated source. <code>.strm</code> files are followed at resolve time to their contained URL.</p>
 <p>The manifest is a simple JSON document the indexer reads (metadata, not media). <strong>TV</strong> is detected from the filename (<code>S01E02</code>, <code>1x05</code>, …): the indexer builds a series → season → episode tree, deduping shared series/seasons, and (when TMDB is configured) identifies and enriches them. Entries may instead carry explicit <code>seriesTitle</code> / <code>season</code> / <code>episode</code> hints. Browse the tree via <code>parent=</code> with <code>seriesId</code>, <code>seasonIndex</code>, <code>episodeIndex</code>, and <code>childCount</code> on each item.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/sources</span></div>
+<p>List all sources (non-secret fields only). <strong>200</strong> → <code>{ "sources": [ { "id":"src_…", "label":"…", "driver":"http", "config":{…} }, … ] }</code>.</p>
+
+<div class="ep"><span class="method badge put">PATCH</span><span class="path">/v1/admin/sources/{sourceId}</span></div>
+<p>Update a source. <strong>Body</strong> (any subset) <code>{ "label":"…", "baseURL":"…", "manifestURL":"…", "libraryId":"…", "headers":{…}, "config":{…}, "secrets":{…} }</code> — given maps replace the stored ones. <strong>200</strong> → the updated source (secrets withheld).</p>
+
+<div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/sources/{sourceId}</span></div>
+<p><strong>Cascade.</strong> Deletes the source, the items it produced, and any series/season containers those items leave empty. <strong>204</strong> on success.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources/{sourceId}/scan</span></div>
 <p>Index one source: fetch its manifest, diff against the catalog, apply adds/updates/removes. <strong>200</strong> → <code>{ "sourceId":"src_…", "scanned":12, "added":3, "updated":1, "removed":0, "enriched":3 }</code>.</p>
@@ -748,6 +768,9 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
   <li><code>type</code> defaults to <code>movie</code>.</li>
 </ul>
 <p><strong>200</strong> → the created item.</p>
+
+<div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/items/{itemId}</span></div>
+<p><strong>Cascade.</strong> Deletes the item and its whole subtree (a series takes its seasons + episodes), then prunes any container the deletion leaves empty up the parent chain. <strong>204</strong> on success. (Note: an item still listed by its source reappears on the next scan — the source is the source of truth.)</p>
 
 <h3 id="api-errors">Errors</h3>
 <p>Every non-2xx response uses this envelope:</p>
@@ -894,7 +917,8 @@ targets: [
 Authorization: Bearer &lt;token&gt;
 Content-Type: application/json
 
-<span class="key">{ "markers": { "intro":{"start":75,"end":145}, "credits":{"start":9120} },
+<span class="key">{ "markers": { "recap":{"start":0,"end":30}, "intro":{"start":75,"end":145},
+               "credits":{"start":9120} },
   "source":"theintrodb", "confidence":0.95 }</span></code></pre>
 <p>Sphynx stores them <strong>item-level</strong>, so every other client on that server now gets the markers — in <code>GET /v1/items/{id}/markers</code> and folded into <code>GET /v1/resolve/{id}</code> — <strong>without</strong> each client having to call TheIntroDB.</p>
 <p>The contribution carries <strong>provenance</strong> (<code>source</code>, <code>confidence</code>, contributing user). Client contributions are best-effort: the server records them but marks them non-<code>authoritative</code>, and <strong>refuses to let a client overwrite authoritative markers</strong> (409 Conflict). Handle <strong>403</strong> (read-only / not granted), <strong>409</strong> (would clobber authoritative), and <strong>404</strong> (not offered) by degrading gracefully.</p>
@@ -998,10 +1022,12 @@ item.markersUpdatedAt = now
 <ul>
   <li><strong>Discovery &amp; auth</strong> — <code>GET /v1/info</code>; password login with short access tokens + rotating refresh tokens; device-scoped sessions.</li>
   <li><strong>Browse</strong> — libraries and items (skeleton/full), cursor pagination, single-item detail.</li>
-  <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles.</li>
+  <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles. A broad canonical field set (tagline, studios, directors/writers, <code>externalIds</code>, premiereDate, …) so clients have what they display.</li>
+  <li><strong>Admin catalog management</strong> — create / list / update / delete libraries, sources, and items, with <strong>cascade</strong> (deleting a library or source removes its items and prunes empty containers).</li>
+  <li><strong>Manual edits</strong> — admin <code>PATCH</code> of item metadata with per-field <strong>locks</strong> that survive every scan and refresh.</li>
   <li><strong>Resolve</strong> — direct playback location + headers, resolved fresh per play and never stored (never proxied; carries an optional expiry only for time-bounded source links).</li>
   <li><strong>Playstate</strong> — start/progress/stop with failed-stop protection, <code>resumePosition</code> folded into browse, and a continue-watching feed.</li>
-  <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable intro/credit markers; an open <code>extra</code> bag.</li>
+  <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable <strong>recap / intro / credits / preview</strong> markers (extensible to any segment type); an open <code>extra</code> bag.</li>
   <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
 </ul>
 
