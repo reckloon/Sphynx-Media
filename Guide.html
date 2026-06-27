@@ -557,11 +557,19 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p><strong>Body</strong> <code>{ "refreshToken":"…", "allDevices":false }</code>. Revokes the presented refresh token's session. <code>allDevices:true</code> revokes every session on the same device id. <strong>204 No Content</strong> on success (idempotent).</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/me</span><span class="badge auth">auth</span></div>
-<p>The authenticated user plus <strong>that user's effective</strong> per-field metadata access. Where <code>/v1/info</code> advertises what the <em>server</em> supports, this reflects what <em>this user</em> may actually do (writes are granted per-user by an admin).</p>
+<p>The authenticated user plus <strong>that user's effective</strong> permissions. Where <code>/v1/info</code> advertises what the <em>server</em> supports, this reflects what <em>this user</em> may actually do (permissions are granted per-user by the admin).</p>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "user": { "id":"u_…", "displayName":"Bob" },
+  "permissions": ["library.read", "metadata.markers.write"],
   "metadata": { "markers":"readwrite", "images":"read" } }</span></code></pre>
-<p>A client should use this (not <code>/v1/info</code>) to decide whether to show a "contribute / fix this" affordance.</p>
+<ul>
+  <li><strong><code>permissions</code></strong> — the user's effective permission keys (see <a href="#api-permissions">Permissions</a>). The admin holds all of them implicitly. Treat unknown keys as opaque and ignore them (forward-compatible).</li>
+  <li><strong><code>metadata</code></strong> — a per-field metadata-access view (server policy narrowed to this user's write permissions), kept for the contribute affordance.</li>
+</ul>
+<p>A client should use this (not <code>/v1/info</code>) to decide which affordances to show (browse, contribute markers, edit metadata, …).</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/password</span><span class="badge auth">auth</span></div>
+<p>Change the authenticated user's <strong>own</strong> password. <strong>Body</strong> <code>{ "currentPassword":"…", "newPassword":"…" }</code>. <strong>204</strong> on success; <strong>401</strong> if the current password is wrong. The presenting session stays valid.</p>
 
 <h3 id="api-browse">Browse</h3>
 
@@ -601,7 +609,7 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <div class="ep"><span class="method badge put">PUT</span><span class="path">/v1/items/{itemId}/markers</span><span class="badge auth">markers == readwrite</span></div>
 <p><strong>Body</strong> <code>{ "markers": {…}, "source":"…", "confidence":0.9 }</code> → <strong>200</strong> with the stored markers info.</p>
 <ul>
-  <li><strong>403</strong> <code>forbidden</code> if the server is read-only for markers, <strong>or the user hasn't been granted the <code>markers</code> write</strong> (writes are per-user; admins always have it). Check <code>GET /v1/auth/me</code>.</li>
+  <li><strong>403</strong> <code>forbidden</code> if the server is read-only for markers, <strong>or the user lacks the <code>metadata.markers.write</code> permission</strong> (permissions are per-user; the admin always has it). Check <code>GET /v1/auth/me</code>.</li>
   <li><strong>409</strong> <code>conflict</code> if authoritative markers exist and the caller isn't admin — a best-effort client contribution may not clobber server-detected/admin data.</li>
 </ul>
 <p>Contributed markers also appear in the <code>/resolve</code> descriptor's <code>markers</code>.</p>
@@ -671,11 +679,28 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/scan</span></div>
 <p>Scan every source. <strong>200</strong> → <code>{ "sources": [ &lt;scan summary&gt;, … ] }</code>.</p>
 
-<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users</span></div>
-<p>Create a user. <strong>Body</strong> <code>{ "username":"bob", "password":"…", "displayName":"Bob", "isAdmin":false, "writeGrants":["markers"] }</code>. <strong>200</strong> → the created user. <strong>409</strong> if the username is taken.</p>
+<h4 id="api-permissions">Permissions</h4>
+<p>Authorization is a <strong>single admin</strong> (the bootstrap account, which holds every permission implicitly and is the only admin) plus an <strong>open per-user permission set</strong> the admin grants. Permissions are string keys, stored uniformly and forward-compatible — unknown keys are tolerated. Well-known keys:</p>
+<table>
+  <tr><th>Key</th><th>Grants</th></tr>
+  <tr><td><code>library.read</code></td><td>Browse libraries + resolve/play their items</td></tr>
+  <tr><td><code>metadata.markers.write</code></td><td>Contribute intro/credit markers</td></tr>
+  <tr><td><code>metadata.images.write</code></td><td>Contribute artwork</td></tr>
+  <tr><td><code>metadata.edit</code></td><td>Edit item metadata and lock fields against auto-refresh</td></tr>
+</table>
+<p>A key may be <strong>scoped to one library</strong> with a <code>:&lt;libraryId&gt;</code> suffix, e.g. <code>library.read:lib_abc</code> grants read for that library only. Each gated action checks the caller's effective permission; the admin always passes.</p>
 
-<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users/{userId}/grants</span></div>
-<p>Set a user's metadata write grants (the fields they may contribute). <strong>Body</strong> <code>{ "writeGrants":["markers"] }</code> → <strong>200</strong> with the updated user. This is how an admin controls <strong>per-user read/write permission</strong>.</p>
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/users</span></div>
+<p>List all accounts. <strong>200</strong> → <code>{ "users": [ { "id":"u_…", "username":"bob", "displayName":"Bob", "isAdmin":false, "permissions":["library.read"] }, … ] }</code>. The admin's <code>permissions</code> reflects the full implicit set.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users</span></div>
+<p>Create a <strong>non-admin</strong> user (there is exactly one admin — any <code>isAdmin</code> in the body is ignored). <strong>Body</strong> <code>{ "username":"bob", "password":"…", "displayName":"Bob", "permissions":["library.read"] }</code>. <code>permissions</code> defaults to <code>["library.read"]</code> when omitted, so a new user can browse and play immediately. <strong>200</strong> → the created user. <strong>409</strong> if the username is taken.</p>
+
+<div class="ep"><span class="method badge put">PUT</span><span class="path">/v1/admin/users/{userId}/permissions</span></div>
+<p>Replace a user's permission set. <strong>Body</strong> <code>{ "permissions":["library.read","metadata.markers.write"] }</code> → <strong>200</strong> with the updated user. This is how the admin controls <strong>per-user access</strong>. Setting the admin's permissions is rejected (it holds all implicitly).</p>
+
+<div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/users/{userId}</span></div>
+<p>Delete a user and revoke all their sessions + per-user state. <strong>204</strong> on success. The admin account cannot be deleted (<strong>403</strong>).</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items/{itemId}/identity</span></div>
 <p>Admin override: pin an item to a specific TMDB id and re-enrich. <strong>Body</strong> <code>{ "tmdbId":"603", "type":"movie" }</code>. <strong>200</strong> → the enriched item.</p>
@@ -808,9 +833,9 @@ targets: [
 
 <h3 id="ext-access">0. The access model</h3>
 <p><code>GET /v1/info</code> advertises a per-field access policy. <code>MetadataAccess</code> is an <strong>open enum</strong>: <code>none</code> | <code>read</code> | <code>readwrite</code> (+ unknown future values). A field <strong>absent</strong> from the map means <code>none</code> — the client may still read whatever the server includes on an item, but there's no contribution endpoint advertised. The reference server sets it from config (<code>SPHYNX_MARKERS_ACCESS</code>).</p>
-<p><code>capabilities.metadata</code> advertises what the <strong>server</strong> supports. Write access is then granted <strong>per user by an admin</strong> (<code>POST /v1/admin/users/{id}/grants</code>), so two users on the same server can have different write permissions. A client learns its <strong>own effective access</strong> from <code>GET /v1/auth/me</code>.</p>
+<p><code>capabilities.metadata</code> advertises what the <strong>server</strong> supports. The write itself is gated by a <strong>per-user permission</strong> the admin grants (e.g. <code>metadata.markers.write</code>), set via <code>PUT /v1/admin/users/{id}/permissions</code>, so two users on the same server can have different write access. A client learns its <strong>own effective permissions + access</strong> from <code>GET /v1/auth/me</code>. See the <a href="#api-permissions">Permissions</a> table for the full model.</p>
 <div class="callout note">
-  <p>A client should <strong>check <code>/v1/auth/me</code> before offering a "fix this"/"contribute" affordance</strong> (not <code>/v1/info</code>), and gracefully degrade when its effective access is <code>read</code>/<code>none</code>. Effective write = server advertises the field <code>readwrite</code> <strong>and</strong> the user is granted it (admins are always granted).</p>
+  <p>A client should <strong>check <code>/v1/auth/me</code> before offering a "fix this"/"contribute" affordance</strong> (not <code>/v1/info</code>), and gracefully degrade when its effective access is <code>read</code>/<code>none</code>. Effective write = server advertises the field <code>readwrite</code> <strong>and</strong> the user holds the field's write permission (the admin always does).</p>
 </div>
 
 <h3 id="ext-read">1. Reading new metadata — no extension needed</h3>
