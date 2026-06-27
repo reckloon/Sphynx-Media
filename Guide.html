@@ -702,6 +702,15 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/users/{userId}</span></div>
 <p>Delete a user and revoke all their sessions + per-user state. <strong>204</strong> on success. The admin account cannot be deleted (<strong>403</strong>).</p>
 
+<div class="ep"><span class="method badge put">PATCH</span><span class="path">/v1/admin/items/{itemId}</span></div>
+<p>Edit an item's metadata and <strong>lock</strong> each edited field against auto-refresh. Gated by the <code>metadata.edit</code> <a href="#api-permissions">permission</a> (honoring per-library scoping), not the admin role — so a non-admin editor can be granted it. Every field is optional; each one <strong>present is written and locked</strong>, so it survives every scan, TTL refresh, and forced enrich.</p>
+<pre><code><span class="key">{ "title":"…", "overview":"…", "year":1999, "runtime":8160,
+  "genres":["…"], "communityRating":8.2, "officialRating":"PG-13",
+  "images":{ "primary":"https://…", "backdrop":"https://…", "thumb":"https://…" },
+  "placeholder":"https://…",
+  "unlock":["overview"], "unlockAll":false }</span></code></pre>
+<p><strong>200</strong> → <code>{ "item": &lt;Item&gt;, "lockedFields":["overview","title"] }</code>. To revert a field to automatic TMDB data, <code>unlock</code> it (or <code>unlockAll</code>) and re-enrich.</p>
+
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/items/{itemId}/identity</span></div>
 <p>Admin override: pin an item to a specific TMDB id and re-enrich. <strong>Body</strong> <code>{ "tmdbId":"603", "type":"movie" }</code>. <strong>200</strong> → the enriched item.</p>
 
