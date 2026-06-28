@@ -246,6 +246,8 @@
         <li><a href="#ext-serverwrite">Server-side write</a></li>
         <li><a href="#ext-freshness">Freshness &amp; expiry</a></li>
         <li><a href="#ext-drivers">Source drivers</a></li>
+        <li><a href="#ext-transcode">Transcoding &amp; subtitles</a></li>
+        <li><a href="#ext-client">Co-watch / SharePlay</a></li>
       </ul>
     </li>
     <li><a href="#roadmap">Roadmap &amp; Coming Soon</a></li>
@@ -908,7 +910,7 @@ targets: [
 <!-- ========================= EXTENDING ========================= -->
 <section id="extending">
 <h2>Extending Sphynx</h2>
-<p>Sphynx is designed so that <strong>metadata can grow without breaking anyone</strong>. There are three ways the system extends, in order of how often you'll reach for them — plus the source-driver framework for new storage backends.</p>
+<p>Sphynx is designed so that <strong>capabilities can grow without breaking anyone</strong>. The system extends along three planes: <strong>metadata</strong> (read new fields, client-contribute, or have the server write them itself), the <strong>resolve descriptor</strong> (new storage backends via drivers, plus resolve-time transforms like transcoding and external subtitles), and purely <strong>client-side</strong> features the server stays deliberately thin under (co-watch / SharePlay). They're laid out below roughly in the order you'll reach for them.</p>
 <p>The throughline: <strong>the protocol's canonical fields are neutral and optional, and everything else is open.</strong> A server serves whatever metadata it has; a client consumes what it understands and ignores the rest.</p>
 
 <h3 id="ext-access">0. The access model</h3>
@@ -1037,6 +1039,66 @@ item.markersUpdatedAt = now
   <li><strong>Prefer signed URLs.</strong> S3/CDN signed URLs leak no credentials and expire via <code>ttl</code> — the safest handoff.</li>
   <li><strong>SMB/FTP hand the share password to the client</strong> (inherent to those protocols). That suits a trusted, single-admin deployment, gated by the user's play permission. For users who shouldn't hold the credential, serve that content from a signed-URL or HTTP backend instead — the server will never proxy as an alternative.</li>
 </ul>
+
+<h3 id="ext-transcode">6. Resolve-time extensions — transcoding &amp; external subtitles</h3>
+<p>§1–§3 grow an item's <em>metadata</em>. The other extension plane is the <strong>resolve descriptor</strong> — the per-play handoff (<a href="#api-resolve"><code>GET /v1/resolve/{id}</code></a>) carries <code>tracks</code>, <code>candidates</code>, <code>container</code>, and <code>headers</code> alongside the <code>url</code>. These are the seams for changing <em>how</em> a player gets bytes, while the iron rule holds: <strong>no bytes ever transit the Sphynx server.</strong></p>
+
+<h4>Worked example: a transcoder — without becoming a byte proxy</h4>
+<p>A transcoder looks like it violates Sphynx's premise (it touches bytes). It doesn't — as long as <strong>Sphynx points at a transcoder rather than being one</strong>. Run the packager as a separate service (your own ffmpeg/remux endpoint, a CDN's just-in-time packager, or a sidecar) and write a <strong>driver</strong> — or wrap an existing one — whose <code>resolve()</code> returns the <em>packager's</em> URL instead of the origin's:</p>
+<pre><code><span class="cmt">// A transcode driver wrapping a backing driver's location.</span>
+<span class="kw">struct</span> TranscodeDriver: SourceDriver {
+    <span class="kw">let</span> id = <span class="str">"transcode"</span>
+    <span class="kw">let</span> backing: <span class="kw">any</span> SourceDriver         <span class="cmt">// the real storage backend</span>
+    <span class="kw">let</span> profile: String                  <span class="cmt">// from the source's config</span>
+
+    <span class="kw">func</span> list() <span class="kw">async throws</span> -> [SourceEntry] { <span class="kw">try await</span> backing.list() }
+
+    <span class="kw">func</span> resolve(_ request: ResolveRequest) <span class="kw">async throws</span> -> ResolvedLocation {
+        <span class="kw">let</span> origin = <span class="kw">try await</span> backing.resolve(request)       <span class="cmt">// where the real file lives</span>
+        <span class="kw">let</span> packaged = packagerURL(for: origin.url, profile: profile)
+        <span class="kw">return</span> ResolvedLocation(url: packaged, headers: [:], container: <span class="str">"m3u8"</span>,
+                                ttl: <span class="num">3600</span>, terminal: <span class="kw">true</span>, candidates: <span class="kw">nil</span>)  <span class="cmt">// signed, expiring HLS</span>
+    }
+}</code></pre>
+<p>The client streams HLS/DASH straight from the packager: bytes flow <strong>client ← packager</strong>, never through Sphynx. The descriptor already carries what a player needs — <code>container</code> (the rendition's format), <code>ttl</code> (a signed/expiring packager link), and <code>tracks</code>, where <code>copyableAudio</code> is precisely the "this audio can be <em>copied</em>, not transcoded" hint and <code>preferredAudio</code>/<code>preferredSubtitle</code> select renditions source-relative.</p>
+<div class="callout soon">
+  <p><strong>Ranked renditions ride <code>candidates</code></strong> <span class="badge soon">planned</span>. Once a server advertises <code>capabilities.candidates</code>, <code>resolve()</code> can return the <strong>direct original first and a transcoded fallback second</strong> (<code>[{ url, headers, priority }]</code>) — a client attempts direct play, then drops to the transcoded variant only if its player can't handle the source. The shape is defined in the protocol but not yet emitted by the reference server; until then a transcode driver just returns the packaged URL as the primary <code>url</code>.</p>
+</div>
+
+<h4>Worked example: a subtitle fetcher</h4>
+<p>Subtitles come in two shapes, and Sphynx already has a home for each:</p>
+<ul>
+  <li><strong>Embedded</strong> (a subtitle stream inside the media file) — no fetch needed; <code>resolve()</code> points the player at it with <code>tracks.preferredSubtitle</code> (a source-relative index).</li>
+  <li><strong>External sidecar</strong> (fetched from OpenSubtitles, a studio feed, …) — a <strong>server-side self-write extension</strong> (the <a href="#ext-serverwrite">§3</a> pattern). The fetcher runs server-side and stores the sidecar URLs on the item's open <code>extra</code> bag; the client side-loads them. Because only the server can call the subtitle source, the server owns the refresh (the <a href="#ext-freshness">§4</a> <em>server-owned</em> freshness rule).</li>
+</ul>
+<pre><code><span class="cmt">// Self-write: a server extension attaches fetched sidecar subtitles.</span>
+<span class="kw">var</span> item = <span class="kw">try await</span> catalog.item(id: itemId)!
+item.extra[<span class="str">"subtitles"</span>] = [
+  [<span class="str">"lang"</span>:<span class="str">"en"</span>, <span class="str">"format"</span>:<span class="str">"vtt"</span>, <span class="str">"url"</span>:<span class="str">"https://subs.example/abc.en.vtt"</span>, <span class="str">"forced"</span>:<span class="kw">false</span>],
+  [<span class="str">"lang"</span>:<span class="str">"es"</span>, <span class="str">"format"</span>:<span class="str">"vtt"</span>, <span class="str">"url"</span>:<span class="str">"https://subs.example/abc.es.vtt"</span>]
+]
+<span class="kw">try await</span> catalog.updateItem(item)   <span class="cmt">// shared with every client; client renders extra.subtitles</span></code></pre>
+<p>If sidecar subtitles become common enough to standardise, promote them from <code>extra.subtitles</code> to a canonical optional field via the <a href="#ext-serverwrite">§3</a> "new server-written field, end to end" recipe, so every client models them identically; until then <code>extra</code> ships them with <strong>no protocol change</strong>. And if a subtitle source is <em>client-only</em> (its terms forbid server-side calls — like TheIntroDB for markers), invert it: fetch in the client and <a href="#ext-contribute">contribute</a>, exactly as in §2.</p>
+
+<h3 id="ext-client">7. Client-side extensions — co-watch / SharePlay</h3>
+<p>Everything above lives on the server. Some features are purely a <strong>client</strong> concern, and Sphynx is deliberately thin beneath them. A synchronised <strong>watch party</strong> — Apple's SharePlay, or a cross-platform clone — is the clearest example.</p>
+<p><strong>What the protocol already gives you</strong> — the shared <em>addressing</em> layer that makes co-watch possible at all:</p>
+<ul>
+  <li><strong>A stable item id</strong> that means the same title to every participant on a server, so a party agrees on "what are we watching" by passing one id.</li>
+  <li><strong>Independent resolve</strong> — each participant calls <code>GET /v1/resolve/{id}</code> for itself at play time and gets an equivalent direct location (its own authenticated handoff; no one shares another's credentials). Everyone streams the same content.</li>
+  <li><strong>Per-user playstate</strong> — each viewer's own resume position, already folded into browse.</li>
+</ul>
+<p><strong>What it does <em>not</em> give you</strong>: a real-time channel. There is no websocket, no server-pushed broadcast, no "session/party" object — playstate is per-user POSTs, not a fan-out. So the live sync of <em>play / pause / seek</em> is <strong>out of band</strong>, owned by the client:</p>
+<ul>
+  <li><strong>On Apple platforms — ride SharePlay directly.</strong> Put the Sphynx <code>{ serverId, itemId }</code> in a <code>GroupActivity</code>; each participant's app authenticates to that server and resolves the item locally, and <code>GroupSession</code>'s coordinator keeps play/pause/seek in lockstep over Apple's transport. Sphynx never sees the session — it just answers each participant's resolve.</li>
+  <li><strong>A cross-platform clone</strong> — carry the same <code>{ serverId, itemId, positionSeconds, paused }</code> tuple over your own small sync channel (a WebSocket relay, or a WebRTC data channel between participants). Resolve still happens per client; only the transport differs from SharePlay.</li>
+</ul>
+<div class="callout note">
+  <p><strong>Why thin is right here.</strong> Co-watch sync is latency-sensitive and platform-specific, and participants already stream bytes <em>peer-to-CDN</em>, not through Sphynx. Pushing sync into the server would buy little and pin clients to one transport. The protocol's job is to make every participant resolve the <em>same bytes</em> from one id — which it does today.</p>
+</div>
+<div class="callout soon">
+  <p><strong>A future server seam</strong> <span class="badge soon">sketch — not on the roadmap</span>. If a deployment wants server-mediated parties (a shared queue + presence for clients with no peer transport), the natural shape is an advertised capability — say <code>capabilities.sessions</code> — exposing a session object (create / join, broadcast position) over websockets, gated by the same per-user permissions. It is <strong>not implemented</strong>; it's noted here only as where such a feature would attach without disturbing the rest of the wire.</p>
+</div>
 </section>
 
 <!-- ========================= ROADMAP ========================= -->
