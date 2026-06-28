@@ -1512,10 +1512,28 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Per-user playstate</strong> — each viewer's own resume position, already folded into browse.</li>
 </ul>
 <p><strong>The real-time channel it <em>does</em> give you</strong>: the additive <a href="#api-events">event stream</a> (<code>GET /v1/events</code>, SSE) is a server→client push channel — playstate, per-user state, markers, and library nudges, access-filtered per subscriber. It's deliberately <em>one-way and not sub-second</em>: ideal for <strong>now-playing / presence</strong> ("what's everyone in this house watching"), keeping a shared <strong>Continue Watching</strong> rail live across a user's devices, and reacting to library changes — but <strong>not</strong> for the tight <em>play / pause / seek</em> lockstep of a watch party. That sync stays <strong>out of band</strong>, owned by the client:</p>
-<ul>
-  <li><strong>On Apple platforms — ride SharePlay directly.</strong> Put the Sphynx <code>{ serverId, itemId }</code> in a <code>GroupActivity</code>; each participant's app authenticates to that server and resolves the item locally, and <code>GroupSession</code>'s coordinator keeps play/pause/seek in lockstep over Apple's transport. Sphynx never sees the session — it just answers each participant's resolve. <em>Companion</em> UI (a synced "continue watching", or a "now playing" badge on the host's other devices) can still ride <code>/v1/events</code> while the playhead rides SharePlay.</li>
-  <li><strong>A cross-platform clone</strong> — carry the same <code>{ serverId, itemId, positionSeconds, paused }</code> tuple over your own small sync channel (a WebSocket relay, or a WebRTC data channel between participants). Resolve still happens per client; only the transport differs from SharePlay.</li>
-</ul>
+<p>There are <strong>two ways to implement it, and they work very differently</strong>. Pick by platform; the only thing they share is Sphynx addressing (same <code>itemId</code>, each participant resolves for itself).</p>
+
+<h4>Approach A — Apple platforms: ride SharePlay (Apple syncs the playhead; you write no sync code)</h4>
+<p>On Apple platforms the playhead lockstep is <strong>not yours to build</strong> — <code>AVPlaybackCoordinator</code> owns it over the FaceTime real-time channel. Sphynx never sees the session.</p>
+<ol>
+  <li>Define a <code>GroupActivity</code> whose payload is the Sphynx <code>{ serverId, itemId }</code> (plus title/artwork for the SharePlay UI). Activating it from a FaceTime call or AirDrop starts the session.</li>
+  <li>On each participant's device the app authenticates to <em>that</em> server and calls <code>GET /v1/resolve/{itemId}</code> <strong>for itself</strong> — its own credentials, its own direct location. Nobody shares another's resolve, and bytes flow participant→CDN as usual.</li>
+  <li>Bind the player to the session: <code>player.playbackCoordinator.coordinatePlayback(with: groupSession)</code>. Apple now keeps <strong>play / pause / seek / rate</strong> in lockstep automatically.</li>
+  <li>Optional companion UI (a "now playing" badge, a synced Continue Watching rail) can still ride <code>/v1/events</code> — but the playhead rides SharePlay, not the event stream.</li>
+</ol>
+<p><strong>Net:</strong> you implement <em>no clock and no sync loop</em>; the server only answers each resolve. This is the path you're taking.</p>
+
+<h4>Approach B — Cross-platform party: you own the sync (do <em>not</em> stream position)</h4>
+<p>Off Apple, there's no coordinator, so you build it — but the trick to "instant, no delay" is that you <strong>do not relay a position tuple continuously</strong> (that's laggy and jittery, and clients fight each other). You sync on <strong>sparse events + a shared clock</strong> and let each client <strong>predict the timeline locally</strong>. This is what <code>AVPlaybackCoordinator</code> does internally — you're re-creating it.</p>
+<ol>
+  <li><strong>Shared addressing</strong> — same as Approach A: everyone agrees on <code>{ serverId, itemId }</code> and each client resolves independently. Bytes still go peer→CDN, never through your sync channel.</li>
+  <li><strong>Shared clock</strong> (this is what kills the delay) — each client estimates its offset to a common reference with an NTP-style ping (a few round-trips over your channel), so everyone agrees on "session&nbsp;time".</li>
+  <li><strong>Anchored transport events</strong> — when a participant controls playback, broadcast <em>one</em> event, not a stream: <code>{ action: play|pause|seek|rate, position, atSessionTime, rate }</code>. Each client schedules it for <code>atSessionTime</code> on the shared clock, so a pause lands on the same wall-clock instant everywhere regardless of who has 20&nbsp;ms vs 120&nbsp;ms of latency.</li>
+  <li><strong>Local prediction + drift correction</strong> — between events each client computes <code>expected = anchorPos + (sessionNow − anchorTime)·rate</code> and nudges <em>itself</em> back onto the line (a micro-seek if far off, or a tiny ±2% rate tweak to glide in).</li>
+  <li><strong>State on join</strong> — a late joiner pulls the current anchor so it starts already in sync.</li>
+</ol>
+<p>Carry those events over a transport <strong>you own</strong> — a small WebSocket relay or a WebRTC data channel between participants. The events are sparse (one per user action), so the channel is cheap. Realistic result: <strong>sub-100&nbsp;ms</strong> perceptual sync; literally zero is impossible over the open internet (SharePlay gets tighter only by piggybacking FaceTime's real-time channel).</p>
 <div class="callout note">
   <p><strong>Why this split is right.</strong> Co-watch <em>playhead</em> sync is latency-sensitive and platform-specific, and participants already stream bytes <em>peer-to-CDN</em>, not through Sphynx — so the tight loop belongs on a peer transport (SharePlay / WebRTC), not a server fan-out. The event stream covers the rest: the <em>liveness</em> a server is well-placed to broadcast (state changed, library changed) without pinning clients to one transport or becoming a byte path.</p>
 </div>
