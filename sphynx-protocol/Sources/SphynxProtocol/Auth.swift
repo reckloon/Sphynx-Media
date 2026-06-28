@@ -89,12 +89,17 @@ public struct TokenResponse: Codable, Hashable, Sendable {
     public var refreshToken: String
     /// Lifetime of the access token, in **seconds** (wire unit is Double).
     public var expiresIn: Double
+    /// Lifetime of the **refresh** token, in **seconds** (wire unit is Double).
+    /// Parallels `expiresIn` so a client can pre-empt a forced re-login. Optional
+    /// for back-compat; absent on servers that don't advertise it.
+    public var refreshExpiresIn: Double?
     public var user: User
 
-    public init(accessToken: String, refreshToken: String, expiresIn: Double, user: User) {
+    public init(accessToken: String, refreshToken: String, expiresIn: Double, refreshExpiresIn: Double? = nil, user: User) {
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.expiresIn = expiresIn
+        self.refreshExpiresIn = refreshExpiresIn
         self.user = user
     }
 }

@@ -19,6 +19,7 @@ struct AuthTypesTests {
         let user = User(id: "u_1", displayName: "Mike", avatarURL: "https://x/y.png")
         try assertRoundTrips(user)
         try assertRoundTrips(TokenResponse(accessToken: "at", refreshToken: "rt", expiresIn: 3600, user: user))
+        try assertRoundTrips(TokenResponse(accessToken: "at", refreshToken: "rt", expiresIn: 3600, refreshExpiresIn: 2_592_000, user: user))
         try assertRoundTrips(MeResponse(user: user, metadata: ["markers": .readWrite, "images": .read]))
     }
 
@@ -26,6 +27,12 @@ struct AuthTypesTests {
     func omitsNilFields() throws {
         let json = String(data: try JSONEncoder().encode(User(id: "u", displayName: "M")), encoding: .utf8)!
         #expect(!json.contains("avatarURL"))
+        // refreshExpiresIn is optional and omitted when nil.
+        let tokenJSON = String(data: try JSONEncoder().encode(
+            TokenResponse(accessToken: "at", refreshToken: "rt", expiresIn: 3600,
+                          user: User(id: "u", displayName: "M"))
+        ), encoding: .utf8)!
+        #expect(!tokenJSON.contains("refreshExpiresIn"))
     }
 }
 
