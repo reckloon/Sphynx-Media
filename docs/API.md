@@ -1020,6 +1020,19 @@ They are server-specific (not part of the wire protocol).
 
 - **`GET /v1/admin/status`** → an activity snapshot (current parse/enrich activity
   and recent counters).
+- **`GET /v1/admin/overview`** → catalog coverage for the always-visible dashboard
+  panel: items **in source** (from the last scan) vs **indexed** (in the DB) vs
+  **enriched**, both as overall totals and broken down per library and per source:
+  ```json
+  { "inSource": 120, "indexed": 118, "enriched": 90,
+    "libraries": [ { "id": "lib_…", "title": "Movies", "kind": "movies",
+                     "indexed": 60, "enriched": 55 } ],
+    "sources":   [ { "id": "src_…", "label": "NAS", "driver": "smb",
+                     "libraryId": "lib_…", "lastScannedAt": 1.7e9,
+                     "inSource": 60, "lastScanAt": "…", "indexed": 58, "enriched": 50 } ] }
+  ```
+  `inSource` / `lastScanAt` reflect the most recent scan this process has observed
+  (omitted for a source not scanned since startup).
 - **`GET /v1/admin/logs?after=<seq>&limit=<n>&level=<level>`** → recent diagnostics
   log lines: `{ "lines": [ … ], "latestSeq": <n> }`. `after` pages by sequence
   (default-ish `limit` 200, max 1000); `level` filters by log level.
