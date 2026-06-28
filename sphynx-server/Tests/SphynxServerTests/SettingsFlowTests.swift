@@ -55,8 +55,11 @@ struct SettingsFlowTests {
                 #expect(response.status == .ok)
                 let body = String(buffer: response.body)
                 #expect(body.contains("<!DOCTYPE html>"))
-                #expect(body.contains("Runtime settings"))
-                #expect(body.contains("/v1/admin/settings"))  // wired to the API
+                #expect(body.contains("Libraries"))            // tab present
+                #expect(body.contains("Sources"))              // tab present
+                #expect(body.contains("/v1/admin/settings"))   // settings API
+                #expect(body.contains("/v1/admin/sources"))    // sources API
+                #expect(body.contains("libraryMap"))           // maps movie+tv libraries
             }
         }
     }
