@@ -999,7 +999,23 @@ directory path; the indexer walks that tree, deriving each item's identity from
 the folder layout (`Title (Year)/file` for movies, `Show (Year)/Season N/file`
 for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated
 source. `.strm` files are followed at resolve time to their contained URL — bytes
-never pass through the server. See the
+never pass through the server.
+
+> **The `local` driver does not serve files — it is for testing a library on the
+> same machine only.** Sphynx is metadata-only: `resolve` hands the client a
+> *location* and never streams bytes (see [Resolve](#resolve)). A plain media file
+> under a `local` source resolves to a **`file://` path**, which is reachable only
+> by a player running on the server host itself. To serve a local media folder to
+> other devices, run a file-serving service over it — a Samba/SMB share, a WebDAV
+> server, or any HTTP file server — and use the matching **`smb`** / **`webdav`** /
+> **`http`** driver, so `resolve` returns a network-reachable URL that the file
+> server (not Sphynx) actually serves. (`local` is still useful with `.strm` files,
+> which resolve to whatever URL they contain.)
+
+A single library can be fed by **any number of sources, of any mix of drivers** —
+each source just routes its items to a `libraryId` (or per-category via
+`libraryMap`), and nothing requires those to be distinct. Point several sources at
+the same library to merge them onto one shelf. See the
 [guide → Source drivers](https://reckloon.github.io/Sphynx-Media/#ext-drivers) for
 the full driver list and how to add a backend.
 

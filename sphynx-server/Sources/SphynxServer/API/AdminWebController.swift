@@ -224,7 +224,7 @@ enum AdminWebController {
             <div class="group-title" style="margin:0;">Storage sources</div>
             <button id="scan-all-btn" class="mini secondary">Scan all now</button>
           </div>
-          <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, map it to a library, then scan. A source can feed a Movies library and a TV library at once.</p>
+          <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, map it to a library, then scan. You can add several sources — any mix of drivers — to the same library, and a single source can feed a Movies and a TV library at once. (The <strong>Local</strong> driver is for testing on this machine only; Sphynx doesn't serve files — use SMB/WebDAV/HTTP to stream to other devices.)</p>
           <div class="subtabs" id="stor-subtabs">
             <button class="subtab active" data-drv="local">Local</button>
             <button class="subtab" data-drv="http">HTTP</button>
@@ -241,6 +241,7 @@ enum AdminWebController {
               <label for="local-label">Name</label><input id="local-label" placeholder="My media drive">
               <label for="local-rootpath">Folder path on the server</label><input id="local-rootpath" placeholder="/srv/media">
               <p class="hint">An absolute path the server can read, e.g. <code>/srv/media</code>.</p>
+              <p class="hint">⚠️ <strong>Local is for testing on this machine only — Sphynx doesn't serve the files.</strong> They resolve to a <code>file://</code> path that only plays on the server host. To stream to phones, TVs, or other devices, run an SMB share, WebDAV, or an HTTP file server over your folder and add it with that driver instead.</p>
               <div class="row">
                 <div><label for="local-lib-movie">Movies library</label><select id="local-lib-movie" class="lib-movie"></select></div>
                 <div><label for="local-lib-tv">TV library</label><select id="local-lib-tv" class="lib-tv"></select></div>
