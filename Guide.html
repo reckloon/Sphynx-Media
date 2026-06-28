@@ -405,8 +405,9 @@
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/login</span><span class="badge auth">unauthenticated</span></div>
 <p><strong>Body</strong> <code>{ "username":"…", "password":"…" }</code>. Optional header <code>X-Sphynx-Device</code>.</p>
 <pre><code><span class="cmt">// 200</span>
-<span class="key">{ "accessToken":"…", "refreshToken":"…", "expiresIn":3600,
+<span class="key">{ "accessToken":"…", "refreshToken":"…", "expiresIn":3600, "refreshExpiresIn":2592000,
   "user": { "id":"u_…", "displayName":"admin" } }</span></code></pre>
+<p><code>expiresIn</code> is the <strong>access</strong>-token lifetime (seconds); the optional <code>refreshExpiresIn</code> is the <strong>refresh</strong>-token lifetime, so a client can pre-empt a forced re-login. Both <code>login</code> and <code>refresh</code> return them.</p>
 <p><strong>401</strong> <code>unauthorized</code> — invalid username or password.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/refresh</span></div>
@@ -522,8 +523,11 @@
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/playstate?items=&lt;id,id,…&gt;</span></div>
 <p>Batch read. <strong>200</strong> → <code>{ "states": { "it_1": { "position":…, "updatedAt":… } } }</code>. Items with no stored state are omitted.</p>
 
+<div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/playstate/{itemId}</span></div>
+<p><strong>Clear resume / remove from Continue Watching.</strong> Deletes the caller's stored playstate for the item, so its <code>resumePosition</code> reads back as 0 and it drops out of <code>/v1/home/continue</code>. <strong>204</strong>; idempotent. Only ever affects the caller's own row.</p>
+
 <div class="callout note">
-  <p><code>resumePosition</code> is also folded into item responses (browse list + single item) for the authenticated user, so a "continue watching" UI needs no extra call.</p>
+  <p><code>resumePosition</code> is folded into item responses for the authenticated user as a <strong>convenience snapshot</strong> — but it does <strong>not</strong> move <code>updatedAt</code>, so a cached value can be stale. <code>/v1/playstate</code> is the authoritative source: read it (single or batch) when you need the current position (e.g. to resume playback), and use the folded <code>resumePosition</code> for display hints only.</p>
 </div>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home</span><span class="badge auth">auth</span></div>
@@ -541,6 +545,9 @@
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/people/{personId}/items</span><span class="badge auth">auth</span></div>
 <p>A person's <strong>filmography</strong>: the distinct movies and series the person is credited in the cast of (the inverse of an item's <code>cast</code> array), for a person-detail screen. <code>personId</code> is a cast-entry id of the form <code>pe_&lt;tmdbId&gt;</code>. Returns the standard <code>ItemsResponse</code> with <code>images.primary</code> and the normal projection, cursor-paginated and gated by the same per-library read permissions; sorted <strong>newest-first</strong> by premiere/production date then title. The lookup is <strong>cast-only</strong> (crew aren't stored with person ids). A well-formed id always returns <strong>200</strong> with a possibly-empty list (the server keeps no person registry); <strong>404</strong> is reserved for a malformed id.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/changes</span><span class="badge auth">auth</span></div>
+<p><strong>Incremental sync</strong> without re-listing the library. Params: <code>since</code> (epoch seconds <em>or</em> an RFC 3339 timestamp; default <code>0</code> = full sync), plus <code>cursor</code>/<code>limit</code>/<code>detail</code>. <strong>200</strong> → <code>{ "changes":[…items…], "tombstones":[{ "id", "deletedAt" }], "until":"…", "nextCursor"? }</code>. <code>changes</code> are items whose client-rendered data changed after <code>since</code> (same notion as <code>updatedAt</code> — <strong>not</strong> playstate), in change-time order, <strong>permission-filtered</strong> to readable libraries. <code>tombstones</code> are deletions in the window (id-only, returned in full, not permission-filtered — the item is gone, so nothing to leak); drop those ids from the cache. <strong>The loop:</strong> start <code>since=0</code>, drain all pages of a window via <code>nextCursor</code> with the same <code>since</code>, then store <code>until</code> and pass it as the next <code>since</code> — <code>until</code> carries sub-second precision so the loop is gap-free.</p>
 
 <h3 id="api-events">Events <span class="badge live">server-sent</span></h3>
 <p>An <strong>additive</strong> server→client stream of live updates over <a href="https://developer.mozilla.org/docs/Web/API/Server-sent_events">Server-Sent Events</a>. It exists so a client can keep UI fresh — continue-watching, now-playing, watched/favorite sync, a "library changed" nudge — <strong>without polling</strong>, and it never replaces the access-controlled REST endpoints. Advertised by <code>capabilities.events</code>; a client that ignores it (or a server that doesn't offer it) keeps working by polling.</p>
@@ -577,6 +584,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <p>Every non-2xx response uses this envelope:</p>
 <pre><code><span class="key">{ "error": { "code":"unauthorized", "message":"Token expired.", "retryable":false } }</span></code></pre>
 <p>Clients branch on <code>code</code>, not <code>message</code>. Codes in use: <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>no_media_source</code>, <code>rate_limited</code>, <code>server_error</code>, <code>unavailable</code>, and the open values <code>bad_request</code> and <code>conflict</code>. <strong>Unknown codes must be tolerated.</strong></p>
+<p>The optional <code>error.retryAfter</code> (seconds) is a <strong>backoff hint</strong> — set only where the server knows one (<code>rate_limited</code> / HTTP 429, <code>unavailable</code> / HTTP 503), and omitted otherwise. When present, the same value is also sent as the standard HTTP <code>Retry-After</code> header. Prefer honoring it over guessing; treat its absence as "no specific guidance".</p>
 
 <h3 id="api-item">Item shape</h3>
 <p>All fields except <code>id</code>, <code>title</code>, <code>type</code> are optional; the server sends what it has. The canonical set is deliberately broad — matching what mainstream clients display — so a client can rely on these names; anything a field-rich server adds beyond them rides in <code>extra</code>. A <em>skeleton</em> item carries the tile fields (images, placeholder, year, <code>dateAdded</code>) and omits the heavier enrichment (overview, genres, ratings, cast, studios, …).</p>
@@ -1391,6 +1399,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Resolve</strong> — direct playback location + headers, resolved fresh per play and never stored (never proxied; carries an optional expiry only for time-bounded source links).</li>
   <li><strong>Playstate &amp; per-user state</strong> — start/progress/stop with failed-stop protection; watched / favorite / play-count / last-played; browse sort (name/added/rating) + genre/unwatched filter.</li>
   <li><strong>Typed home feed</strong> — <code>GET /v1/home</code> returns ordered <strong>shelves</strong>, each tagged with a <code>kind</code> and a tile <code>aspect</code> (portrait/landscape) so the client knows how to lay a row out. <strong>Continue Watching is unified</strong>: the next unwatched episode of a show you've started is merged <em>into</em> it alongside in-progress items — one row, never a separate "Next Up". Plus Recently Added and Favorites.</li>
+  <li><strong>Incremental sync</strong> — <code>GET /v1/changes?since=</code> returns changed items + <strong>deletion tombstones</strong> so a client syncs deltas instead of re-listing; plus a <code>DELETE /v1/playstate/{id}</code> clear-resume action, an advertised refresh-token lifetime (<code>refreshExpiresIn</code>), and a <code>Retry-After</code>/<code>error.retryAfter</code> backoff hint on rate-limited errors.</li>
   <li><strong>Live updates</strong> — an additive server→client <a href="#api-events">event stream</a> (<code>GET /v1/events</code>, SSE) for playstate, per-user state, markers, and library changes, access-filtered per subscriber; clients opt in via <code>capabilities.events</code> and otherwise poll.</li>
   <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable <strong>recap / intro / credits / preview</strong> markers (extensible to any segment type); an open <code>extra</code> bag.</li>
   <li><strong>Extras, collections &amp; people</strong> — bonus content (trailers, featurettes, deleted scenes, behind-the-scenes) classified as its own item types and <strong>nested under its movie or show</strong> via a generic <code>parentId</code>; <strong>collections / box sets</strong> created from TMDB and browsed via <code>items?parent=</code>; a <strong>person filmography</strong> endpoint (<code>GET /v1/people/{id}/items</code>, newest-first across movies and TV). Plus artwork &amp; metadata fills: <code>logo</code>/<code>banner</code>, <code>trailers</code>, <code>tags</code>, <code>sortTitle</code>.</li>
@@ -1408,17 +1417,12 @@ item.extra[<span class="str">"subtitles"</span>] = [
 <ul>
   <li><strong>Richer track &amp; subtitle info in resolve.</strong> Language, codec, and human label on audio/subtitle tracks, plus external/sidecar subtitle URLs — enough to render an "Audio: English / Subtitles: Spanish" picker without probing the container.</li>
   <li><strong>Multiple versions &amp; editions.</strong> A user-choosable model for "4K vs 1080p" or "Director's Cut vs Theatrical," distinct from the existing ranked fallback <code>candidates</code>.</li>
-  <li><strong>Changes feed &amp; deletion tombstones.</strong> <code>GET /v1/changes?since=</code> with tombstones, so a client syncs incrementally instead of re-listing the whole library to detect a removal.</li>
 </ul>
 
 <h4>Medium impact</h4>
 <ul>
   <li><strong>TV-friendly login</strong> — a device-code / QR / token-paste flow, so signing in on an Apple TV doesn't mean typing a password with the remote.</li>
-  <li><strong>Advertised refresh-token lifetime</strong> — so a client can pre-empt a forced re-login instead of failing one day.</li>
   <li><strong>Typed browse sort &amp; filter</strong> — modeling the sort/filter query the server already honors, plus a <code>totalCount</code> and an echoed page size.</li>
-  <li><strong>Rate-limit timing</strong> — a <code>Retry-After</code> / backoff hint on errors, so clients back off instead of guessing.</li>
-  <li><strong>Clear-resume action</strong> — explicitly reset resume or remove an item from Continue Watching, short of a stop at position 0.</li>
-  <li><strong>Playstate coordination</strong> — spelling out the cached-item vs <code>/v1/playstate</code> source-of-truth rule directly in the types.</li>
 </ul>
 
 <h4>Lower priority / likely by-design</h4>

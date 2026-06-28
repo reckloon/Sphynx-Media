@@ -130,6 +130,10 @@ Built spine-first. Working today:
 - **Live updates** — an additive server→client SSE event stream (`GET /v1/events`)
   for playstate, per-user state, markers, and library changes; clients opt in via
   `capabilities.events` and otherwise poll.
+- **Incremental sync & client hints** — `GET /v1/changes?since=` (changed items +
+  deletion tombstones); a `DELETE /v1/playstate/{id}` clear-resume action; an
+  advertised refresh-token lifetime (`refreshExpiresIn`); and a `Retry-After` /
+  `error.retryAfter` backoff hint on rate-limited errors.
 
 ### Roadmap
 
@@ -138,11 +142,9 @@ rely on (the content-model breadth track — extras, collections, people — has
 landed; see Features above). In priority order:
 
 - **High** — track languages/labels + external subtitles in resolve; multiple
-  versions/editions; a `GET /v1/changes?since=` delta feed with deletion tombstones.
-- **Medium** — TV-friendly login (device-code / QR); advertised refresh-token
-  lifetime; a typed browse sort/filter contract (+ `totalCount`); rate-limit
-  backoff hints; a clear-resume action; the playstate source-of-truth rule in the
-  types.
+  versions/editions.
+- **Medium** — TV-friendly login (device-code / QR); a typed browse sort/filter
+  contract (+ `totalCount`).
 - **Lower / by-design** — typed search shape; a server-mediated co-watch/party
   channel (the one-way SSE event stream already ships — see Features above; only a
   bidirectional party channel is unbuilt); marker DELETE + per-segment provenance;

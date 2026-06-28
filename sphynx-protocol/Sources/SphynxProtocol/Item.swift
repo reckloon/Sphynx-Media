@@ -182,6 +182,14 @@ public struct Item: Codable, Hashable, Sendable {
 
     /// Per-user state, folded in when known. Position in **seconds**; absent or 0
     /// means "from start".
+    ///
+    /// **Source-of-truth note:** this is a *convenience snapshot* taken when the item
+    /// was projected — it does **not** move `updatedAt` (which deliberately excludes
+    /// playstate), so a cached `Item.resumePosition` can be stale. The authoritative
+    /// resume value lives in `/v1/playstate`; a client that needs the current
+    /// position (e.g. resuming playback) should read `GET /v1/playstate/{itemId}` (or
+    /// the batch form) rather than trust a cached item. Use `resumePosition` for
+    /// display hints, `/v1/playstate` for the truth.
     public var resumePosition: Double?
     /// Per-user: the user has marked this watched. Absent ⇒ unknown / unwatched.
     public var watched: Bool?

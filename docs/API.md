@@ -93,9 +93,14 @@ Optional header `X-Sphynx-Device`.
   "accessToken": "…",
   "refreshToken": "…",
   "expiresIn": 3600,
+  "refreshExpiresIn": 2592000,
   "user": { "id": "u_…", "displayName": "admin" }
 }
 ```
+`expiresIn` is the **access**-token lifetime in seconds; `refreshExpiresIn`
+(optional) is the **refresh**-token lifetime, so a client can pre-empt a forced
+re-login instead of failing on first use. Both `login` and `refresh` return them.
+
 **401** `unauthorized` — invalid username or password.
 
 ### `POST /v1/auth/refresh`
@@ -230,6 +235,44 @@ ordering, so both backends present a filmography identically.
 
 ---
 
+## Changes (incremental sync)
+
+### `GET /v1/changes` — auth required
+
+Incremental sync without re-listing the library. Returns the items that changed
+since a timestamp, plus **tombstones** for deletions.
+
+| Param | Default | Meaning |
+|-------|---------|---------|
+| `since` | `0` (full sync) | Epoch seconds **or** an RFC 3339 timestamp — the `until` from a previous call |
+| `cursor` | — | Opaque pagination cursor |
+| `limit` | `50` | Page size |
+| `detail` | `skeleton` | `skeleton` or `full` |
+
+**200**
+```json
+{
+  "changes": [ { "id": "it_…", "type": "movie", "title": "…" } ],
+  "tombstones": [ { "id": "it_…", "deletedAt": "2026-06-28T12:00:00.000Z" } ],
+  "until": "2026-06-28T12:00:01.234Z",
+  "nextCursor": "b2Zmc2V0OjUw"
+}
+```
+
+- `changes` are items whose **client-rendered** data changed after `since` (the same
+  `updatedAt` notion — title/images/enrichment/markers; **not** per-user playstate),
+  in change-time order, **permission-filtered** to libraries the caller can read.
+- `tombstones` are deletions in the same window (`{ id, deletedAt }`), returned in
+  full (not paginated). They're **id-only and not permission-filtered** — the item
+  is already gone, so there's nothing to leak, and a client must see every deletion
+  to stay consistent. Drop that id from your local cache.
+- **The sync loop:** start at `since=0`; drain all pages of a window by following
+  `nextCursor` while keeping the **same** `since`; then store `until` and pass it as
+  the next `since`. `until` carries sub-second precision, so the loop is gap-free and
+  never re-delivers boundary items.
+
+---
+
 ## Markers (bi-directional)
 
 Timeline-segment markers are **item-level** (shared across a server's clients) and
@@ -336,8 +379,18 @@ No stored state → `{ "position": 0, … }` ("from start").
 Batch read. **200** → `{ "states": { "it_1": { "position": …, "updatedAt": … } } }`.
 Items with no stored state are omitted.
 
+### `DELETE /v1/playstate/{itemId}`
+**Clear resume / remove from Continue Watching.** Deletes the caller's stored
+playstate for the item, so its `resumePosition` reads back as 0 and it drops out of
+`GET /v1/home/continue`. **204 No Content**; idempotent (deleting when nothing is
+stored is still 204). Only ever affects the caller's own row.
+
 > `resumePosition` is also folded into item responses (browse list + single item)
-> for the authenticated user, so a "continue watching" UI needs no extra call.
+> for the authenticated user as a convenience snapshot — but it does **not** move
+> `Item.updatedAt`, so a cached value can be stale. `/v1/playstate` is the
+> authoritative source; read it (single or batch) when you need the current
+> position (e.g. to resume playback), and use the folded `resumePosition` for
+> display hints only.
 
 ## Home feed
 
@@ -734,6 +787,16 @@ Clients branch on `code`, not `message`. Codes in use:
 `unauthorized`, `forbidden`, `not_found`, `no_media_source`, `rate_limited`,
 `server_error`, `unavailable`, and the open values `bad_request` and `conflict`.
 Unknown codes must be tolerated.
+
+`error.retryAfter` (optional, seconds) is a **backoff hint** the client SHOULD wait
+before retrying. It's set only where the server knows one — currently `rate_limited`
+(HTTP 429) and `unavailable` (HTTP 503) — and omitted otherwise. When present, the
+same value is also sent as the standard HTTP `Retry-After` header (integer seconds).
+Prefer honoring it over guessing; treat its absence as "no specific guidance".
+
+```json
+{ "error": { "code": "rate_limited", "message": "Slow down.", "retryable": true, "retryAfter": 5 } }
+```
 
 ---
 
