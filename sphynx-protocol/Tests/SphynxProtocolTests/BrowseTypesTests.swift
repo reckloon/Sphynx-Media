@@ -95,4 +95,22 @@ struct BrowseTypesTests {
         let decoded = try JSONDecoder().decode(ShelfKind.self, from: Data("\"nextUp\"".utf8))
         #expect(decoded == .unknown("nextUp"))
     }
+
+    @Test("Changes response round-trips, with tombstones and an optional cursor")
+    func changes() throws {
+        let response = ChangesResponse(
+            changes: [Item(id: "it_1", type: .movie, title: "Heat"),
+                      Item(id: "it_2", type: .episode, title: "Pilot")],
+            tombstones: [Tombstone(id: "it_gone", deletedAt: "2026-06-27T12:00:00Z")],
+            until: "2026-06-27T12:34:56Z",
+            nextCursor: "b2Zmc2V0OjUw"
+        )
+        try assertRoundTrips(response)
+        // Empty window with no further pages.
+        try assertRoundTrips(ChangesResponse(changes: [], tombstones: [], until: "2026-06-27T12:34:56Z"))
+        // Absent nextCursor is omitted on the wire.
+        let json = String(data: try JSONEncoder().encode(
+            ChangesResponse(changes: [], tombstones: [], until: "2026-06-27T12:34:56Z")), encoding: .utf8)!
+        #expect(!json.contains("nextCursor"))
+    }
 }

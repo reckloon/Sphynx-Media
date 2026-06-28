@@ -167,6 +167,20 @@ struct PlaystateRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var updatedAt: Double
 }
 
+/// A deletion tombstone for the incremental changes feed: one row per removed
+/// item id, with the time it was deleted. Re-adding an item clears its tombstone.
+struct TombstoneRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "tombstone"
+
+    var itemId: String
+    var deletedAt: Double
+
+    /// Projection into the protocol's `Tombstone` (RFC3339 deletion time).
+    func toProtocol() -> Tombstone {
+        Tombstone(id: itemId, deletedAt: ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: deletedAt)))
+    }
+}
+
 /// A cast member as persisted (JSON in `item.castJSON`).
 struct StoredCast: Codable, Sendable {
     var id: String
