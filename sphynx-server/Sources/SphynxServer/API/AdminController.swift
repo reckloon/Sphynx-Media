@@ -36,6 +36,7 @@ struct AdminController: Sendable {
         admin.post("sources/:sourceId/scan", use: scanSource)
         admin.post("scan", use: scanAll)
         admin.post("items", use: createItem)
+        admin.get("items/:itemId", use: getItem)
         admin.patch("items/:itemId", use: editItem)
         admin.delete("items/:itemId", use: deleteItem)
         admin.post("items/:itemId/identity", use: setIdentity)
@@ -46,6 +47,7 @@ struct AdminController: Sendable {
         admin.post("users", use: createUser)
         admin.delete("users/:userId", use: deleteUser)
         admin.put("users/:userId/permissions", use: setPermissions)
+        admin.put("users/:userId/password", use: resetPassword)
     }
 
     @Sendable
@@ -104,6 +106,18 @@ struct AdminController: Sendable {
             throw SphynxError.badRequest("Missing user id")
         }
         try await auth.deleteUser(userId: userId)
+        return Response(status: .noContent)
+    }
+
+    /// Admin reset of another user's password (no current password required).
+    @Sendable
+    func resetPassword(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        guard let userId = context.parameters.get("userId") else {
+            throw SphynxError.badRequest("Missing user id")
+        }
+        let body = try await request.decode(as: ResetPasswordRequest.self, context: context)
+        try await auth.adminSetPassword(userId: userId, newPassword: body.newPassword)
         return Response(status: .noContent)
     }
 
@@ -360,6 +374,24 @@ struct AdminController: Sendable {
     /// item's library), so a non-admin editor can be granted it. A locked field
     /// survives every scan, TTL refresh, and forced enrich; `unlock`/`unlockAll`
     /// re-enables auto-refresh for those fields.
+    /// Read one item with its current lock state, for the admin correction UI.
+    /// Gated by `metadata.edit` for the item's library (admins always pass).
+    @Sendable
+    func getItem(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemResponse {
+        let identity = try context.requireIdentity()
+        guard let itemId = context.parameters.get("itemId") else {
+            throw SphynxError.badRequest("Missing item id")
+        }
+        guard let item = try await catalog.item(id: itemId) else {
+            throw SphynxError.notFound("No item '\(itemId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to edit metadata")
+        }
+        return AdminItemResponse(item: item.toProtocol(full: true), lockedFields: item.lockedFields().sorted())
+    }
+
     @Sendable
     func editItem(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemResponse {
         let identity = try context.requireIdentity()
@@ -671,6 +703,10 @@ struct CreateUserRequest: Codable, Sendable {
 
 struct SetPermissionsRequest: Codable, Sendable {
     var permissions: [String]
+}
+
+struct ResetPasswordRequest: Codable, Sendable {
+    var newPassword: String
 }
 
 struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
