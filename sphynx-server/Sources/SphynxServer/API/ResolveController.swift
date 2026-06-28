@@ -16,11 +16,16 @@ struct ResolveController: Sendable {
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
         }
-        // Resolving hands back a playback URL, so it requires read access to the
-        // item's library (per-library scoping honored).
-        if !identity.isAdmin, let item = try await catalog.item(id: itemId) {
+        // Resolving hands back a playback URL + headers (credentials), so it
+        // requires read access to the item's owning library — and an item that
+        // belongs to no library is admin-only (fail closed; never leak to a
+        // regular user holding only global library.read).
+        if !identity.isAdmin {
+            guard let item = try await catalog.item(id: itemId) else {
+                throw SphynxError.notFound("No item '\(itemId)'")
+            }
             let libraryId = try await catalog.owningLibraryId(of: item)
-            guard identity.has(Permissions.libraryRead, inLibrary: libraryId) else {
+            guard identity.canReadLibrary(libraryId) else {
                 throw SphynxError.forbidden("You don't have permission to play this item")
             }
         }

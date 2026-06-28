@@ -54,7 +54,9 @@ struct ServerConfiguration: Sendable {
             version: env["SPHYNX_VERSION"] ?? "1.0",
             databasePath: env["SPHYNX_DB_PATH"] ?? "data/sphynx.sqlite",
             adminUsername: env["SPHYNX_ADMIN_USERNAME"] ?? "admin",
-            adminPassword: env["SPHYNX_ADMIN_PASSWORD"] ?? "changeme",
+            // No default: an unset password makes the bootstrap generate a strong
+            // random one (printed once to the log) rather than a known credential.
+            adminPassword: env["SPHYNX_ADMIN_PASSWORD"] ?? "",
             accessTokenTTL: env["SPHYNX_ACCESS_TTL"].flatMap(Double.init) ?? 3600,
             refreshTokenTTL: env["SPHYNX_REFRESH_TTL"].flatMap(Double.init) ?? 2_592_000,
             tmdbAPIKey: env["SPHYNX_TMDB_API_KEY"] ?? "",

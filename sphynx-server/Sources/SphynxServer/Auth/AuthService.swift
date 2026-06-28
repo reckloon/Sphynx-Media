@@ -18,11 +18,17 @@ struct AuthService: Sendable {
     // MARK: Bootstrap
 
     /// Create the admin account on first run, when no users exist yet.
+    ///
+    /// There is **no default password**: if none was provided, a strong random one
+    /// is generated and printed to the log exactly once, so a fresh server is never
+    /// reachable with a known credential.
     func bootstrapAdminIfNeeded(username: String, password: String, logger: Logger) async throws {
         let userCount = try await db.writer.read { db in try UserRecord.fetchCount(db) }
         guard userCount == 0 else { return }
 
-        let hash = try await hasher.hash(password)
+        let generated = password.isEmpty
+        let effectivePassword = generated ? Tokens.newToken() : password
+        let hash = try await hasher.hash(effectivePassword)
         let user = UserRecord(
             id: Tokens.newID("u_"),
             username: username,
@@ -33,7 +39,18 @@ struct AuthService: Sendable {
             createdAt: Date().timeIntervalSince1970
         )
         try await db.writer.write { db in try user.insert(db) }
-        logger.warning("Bootstrapped admin account '\(username)'. Change its password via SPHYNX_ADMIN_PASSWORD.")
+        if generated {
+            logger.warning("""
+            No SPHYNX_ADMIN_PASSWORD set — generated a random password for admin account '\(username)':
+
+                \(effectivePassword)
+
+            Save it now; it is shown only once. Set SPHYNX_ADMIN_PASSWORD to choose your own, \
+            or change it later via POST /v1/auth/password.
+            """)
+        } else {
+            logger.warning("Bootstrapped admin account '\(username)' from SPHYNX_ADMIN_PASSWORD.")
+        }
     }
 
     // MARK: Login / refresh / logout

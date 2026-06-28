@@ -22,6 +22,17 @@ struct AuthIdentity: Sendable {
         return false
     }
 
+    /// Whether the user may read items in `libraryId`. A **nil** library (an item
+    /// that belongs to no library) is **admin-only** — never readable by a
+    /// non-admin. This is the fail-*closed* default: an ungoverned item must not
+    /// leak (its browse metadata or, via resolve, its playback URL + headers) to
+    /// a regular user just because they hold global `library.read`.
+    func canReadLibrary(_ libraryId: String?) -> Bool {
+        if isAdmin { return true }
+        guard let libraryId else { return false }
+        return has(Permissions.libraryRead, inLibrary: libraryId)
+    }
+
     /// Effective write permission for a metadata field given the server's policy:
     /// the server must advertise the field as `readwrite` AND the user must hold
     /// the field's write permission (admins always do).

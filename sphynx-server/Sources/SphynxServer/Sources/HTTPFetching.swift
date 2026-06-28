@@ -11,17 +11,20 @@ protocol HTTPFetching: Sendable {
     func getData(url: String, headers: [String: String]) async throws -> Data
 }
 
-/// Production fetcher. Reads `file://` URLs straight off disk (cross-platform,
-/// no network) and everything else via URLSession. Uses a continuation around
+/// Production fetcher for metadata documents. Restricted to **http/https** —
+/// `file://` (arbitrary local-file disclosure) and every other scheme
+/// (`gopher://`, `ftp://`, `data:`, …, the classic SSRF amplifiers) are rejected.
+/// Manifest URLs are admin-configured; a self-hosted server may legitimately point
+/// at an internal/LAN origin, so private addresses are not blocked here — isolate
+/// the server at the network layer if that matters. Uses a continuation around
 /// `dataTask` so it works identically on macOS and Linux.
 struct URLSessionFetcher: HTTPFetching {
     func getData(url: String, headers: [String: String]) async throws -> Data {
-        if url.hasPrefix("file://") {
-            let path = String(url.dropFirst("file://".count))
-            return try Data(contentsOf: URL(fileURLWithPath: path))
-        }
         guard let parsed = URL(string: url) else {
             throw SphynxError.badRequest("Invalid URL '\(url)'")
+        }
+        guard let scheme = parsed.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            throw SphynxError.badRequest("Only http/https URLs are allowed")
         }
         var request = URLRequest(url: parsed)
         for (key, value) in headers {

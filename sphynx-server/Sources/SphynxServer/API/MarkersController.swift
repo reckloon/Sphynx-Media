@@ -88,9 +88,7 @@ struct MarkersController: Sendable {
     /// Markers belong to an item, so reading or contributing them requires read
     /// access to that item's library (per-library scoping honored).
     private func requireLibraryRead(_ item: ItemRecord, _ identity: AuthIdentity) async throws {
-        if identity.isAdmin { return }
-        let libraryId = try await catalog.owningLibraryId(of: item)
-        guard identity.has(Permissions.libraryRead, inLibrary: libraryId) else {
+        guard identity.canReadLibrary(try await catalog.owningLibraryId(of: item)) else {
             throw SphynxError.forbidden("You don't have permission to view this item")
         }
     }

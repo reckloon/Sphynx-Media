@@ -15,6 +15,21 @@ struct FreshnessTests {
         ) { try $0.decoded(TokenResponse.self).accessToken }
     }
 
+    /// An item inside a library — a non-admin gated by `library.read` can only
+    /// reach (and contribute markers to) items that belong to a library.
+    private func itemInLibrary(_ client: any TestClientProtocol, _ admin: String, _ title: String) async throws -> Item {
+        let library: LibraryResponse = try await client.execute(
+            uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+            body: try jsonBody(CreateLibraryRequest(title: "Lib \(title)", kind: "movies"))
+        ) { try $0.decoded() }
+        return try await client.execute(
+            uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
+            body: try jsonBody(CreateItemRequest(type: "movie", title: title, sourceId: nil,
+                sourceKey: "https://cdn/\(title).mkv", container: nil, tmdbId: nil,
+                libraryId: library.id, parentId: nil, year: nil, extra: nil))
+        ) { try $0.decoded() }
+    }
+
     @Test("a non-authoritative client marker is reported stale past the window")
     func clientMarkerGoesStale() async throws {
         // staleAfter = 0 → any client marker is immediately stale.
@@ -29,10 +44,7 @@ struct FreshnessTests {
             _ = bob
             let bobToken = try await login(client, "bob", "pw")
 
-            let item: Item = try await client.execute(
-                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateItemRequest(type: "movie", title: "X", sourceId: nil, sourceKey: "https://cdn/x.mkv", container: nil, tmdbId: nil, libraryId: nil, parentId: nil, year: nil, extra: nil))
-            ) { try $0.decoded() }
+            let item = try await itemInLibrary(client, admin, "X")
 
             // Bob contributes (non-authoritative).
             try await client.execute(
@@ -83,10 +95,7 @@ struct FreshnessTests {
             ) { try $0.decoded() }
             _ = bob
             let bobToken = try await login(client, "bob", "pw")
-            let item: Item = try await client.execute(
-                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateItemRequest(type: "movie", title: "Z", sourceId: nil, sourceKey: "https://cdn/z.mkv", container: nil, tmdbId: nil, libraryId: nil, parentId: nil, year: nil, extra: nil))
-            ) { try $0.decoded() }
+            let item = try await itemInLibrary(client, admin, "Z")
             try await client.execute(
                 uri: "/v1/items/\(item.id)/markers", method: .put, headers: jsonHeaders(bearer: bobToken),
                 body: try jsonBody(MarkerContribution(markers: Markers(intro: Marker(start: 1, end: 2))))

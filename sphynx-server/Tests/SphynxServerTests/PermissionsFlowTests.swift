@@ -26,12 +26,19 @@ struct PermissionsFlowTests {
         ) { #expect($0.status == .ok); return try $0.decoded() }
     }
 
+    /// Create an item **inside a library** — items with no owning library are
+    /// admin-only (fail-closed), so a non-admin gated by `library.read` needs the
+    /// item to live in a library for the grant to apply.
     private func createItem(_ client: any TestClientProtocol, admin: String, title: String) async throws -> Item {
-        try await client.execute(
+        let library: LibraryResponse = try await client.execute(
+            uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+            body: try jsonBody(CreateLibraryRequest(title: "Lib \(title)", kind: "movies"))
+        ) { try $0.decoded() }
+        return try await client.execute(
             uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
             body: try jsonBody(CreateItemRequest(type: "movie", title: title, sourceId: nil,
                 sourceKey: "https://cdn/\(title).mkv", container: "mkv", tmdbId: nil,
-                libraryId: nil, parentId: nil, year: nil, extra: nil))
+                libraryId: library.id, parentId: nil, year: nil, extra: nil))
         ) { try $0.decoded() }
     }
 

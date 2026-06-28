@@ -57,7 +57,7 @@ struct BrowseController: Sendable {
         // Only libraries this user may read (admins and globally-granted users
         // see all; library-scoped users see only their libraries).
         let records = try await catalog.libraries()
-            .filter { identity.has(Permissions.libraryRead, inLibrary: $0.id) }
+            .filter { identity.canReadLibrary($0.id) }
         return LibrariesResponse(libraries: records.map { $0.toProtocol() })
     }
 
@@ -86,7 +86,7 @@ struct BrowseController: Sendable {
             libraryId = nil
             records = []
         }
-        guard identity.has(Permissions.libraryRead, inLibrary: libraryId) else {
+        guard identity.canReadLibrary(libraryId) else {
             throw SphynxError.forbidden("You don't have permission to browse this library")
         }
 
@@ -133,7 +133,7 @@ struct BrowseController: Sendable {
     private func canRead(_ record: ItemRecord, _ identity: AuthIdentity) async throws -> Bool {
         if identity.isAdmin { return true }
         let libraryId = try await catalog.owningLibraryId(of: record)
-        return identity.has(Permissions.libraryRead, inLibrary: libraryId)
+        return identity.canReadLibrary(libraryId)
     }
 }
 

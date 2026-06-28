@@ -73,7 +73,14 @@ struct LocalDriver: SourceDriver {
     }
 
     func resolve(_ request: ResolveRequest) async throws -> ResolvedLocation {
-        let fileURL = URL(fileURLWithPath: root).appendingPathComponent(request.key)
+        // Contain the resolved path within the source root: canonicalize `..`
+        // segments and reject any key that escapes (path traversal). The key may
+        // be an admin-supplied item `sourceKey`, so this isn't only driver-internal.
+        let rootURL = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL
+        let fileURL = rootURL.appendingPathComponent(request.key).standardizedFileURL
+        guard fileURL.path == rootURL.path || fileURL.path.hasPrefix(rootURL.path + "/") else {
+            throw SphynxError.noMediaSource("Path escapes the source root")
+        }
 
         // A `.strm` file is a pointer: its contents are the real source URL,
         // read fresh at play time (we never persist the resolved URL).
