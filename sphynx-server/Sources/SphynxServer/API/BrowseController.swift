@@ -10,20 +10,58 @@ struct BrowseController: Sendable {
     let catalog: Catalog
     let playstate: PlaystateService
     let userState: UserStateService
+    let home: HomeService
+
+    /// Default number of items per shelf on the aggregated home feed.
+    private static let shelfLimit = 20
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.get("libraries", use: libraries)
         group.get("items", use: items)
         group.get("items/:itemId", use: item)
+        group.get("home", use: homeFeed)
         group.get("home/continue", use: continueWatching)
         group.get("home/recent", use: recentlyAdded)
         group.get("home/favorites", use: favorites)
     }
 
-    /// §7 "continue watching": the user's in-progress items, most-recent first,
-    /// each with `resumePosition` folded in. The server just exposes the data
-    /// (ordered, paginated) — the client owns presentation and what counts as
-    /// "finished" (it has each item's runtime). Cursor-paginated.
+    /// §7 the **typed home feed**: the ordered shelves that make up a user's home
+    /// screen, each tagged with its `kind` and tile `aspect` so layout (and
+    /// cropping) is contract, not guesswork. Empty shelves are omitted. Shelves
+    /// are not individually paginated here — fetch a full row via its own endpoint
+    /// (`/home/continue`, `/home/recent`, `/home/favorites`) with a cursor.
+    @Sendable
+    func homeFeed(_ request: Request, context: SphynxRequestContext) async throws -> HomeResponse {
+        let identity = try context.requireIdentity()
+        let full = (try request.uri.decodeQuery(as: DetailQuery.self, context: context)).detail == "full"
+        let n = Self.shelfLimit
+
+        var shelves: [Shelf] = []
+        // Continue Watching is landscape (backdrops/episode stills) — this is the
+        // aspect the cropping bug needed stated explicitly. It carries next-up too.
+        let (cont, _) = try await continuePage(identity, full: full, limit: n, offset: 0)
+        if !cont.isEmpty {
+            shelves.append(Shelf(id: "continue", title: "Continue Watching",
+                                 kind: .continueWatching, aspect: .landscape, items: cont))
+        }
+        let (recent, _) = try await recentPage(identity, full: full, limit: n, offset: 0)
+        if !recent.isEmpty {
+            shelves.append(Shelf(id: "recent", title: "Recently Added",
+                                 kind: .recentlyAdded, aspect: .portrait, items: recent))
+        }
+        let (favs, _) = try await favoritesPage(identity, full: full, limit: n, offset: 0)
+        if !favs.isEmpty {
+            shelves.append(Shelf(id: "favorites", title: "Favorites",
+                                 kind: .favorites, aspect: .portrait, items: favs))
+        }
+        return HomeResponse(shelves: shelves)
+    }
+
+    /// §7 "continue watching": the user's in-progress items **plus** the next
+    /// unwatched episode of each show they've started — one unified, recency-ordered
+    /// list (never a separate "Next Up"). `resumePosition` is folded in (0 for a
+    /// next-up episode). The client owns presentation and what counts as "finished".
+    /// Cursor-paginated.
     @Sendable
     func continueWatching(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
         let identity = try context.requireIdentity()
@@ -32,28 +70,34 @@ struct BrowseController: Sendable {
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
 
-        let recent = try await playstate.recentlyPlayed(userId: identity.userId, limit: limit + 1, offset: offset)
-        let hasMore = recent.count > limit
-        let page = hasMore ? Array(recent.prefix(limit)) : recent
-
-        // Resolve to items, preserving recency order; skip any since deleted or
-        // the user may no longer read (per-library scoping).
-        let byId = try await catalog.items(ids: page.map(\.itemId))
-        var items: [Item] = []
-        for state in page {
-            guard let record = byId[state.itemId],
-                  try await canRead(record, identity) else { continue }
-            var item = record.toProtocol(full: full)
-            item.resumePosition = state.position
-            items.append(item)
-        }
-        let states = try await userState.states(userId: identity.userId, itemIds: items.map(\.id))
-        items = items.map { var i = $0; UserStateService.fold(states[i.id], into: &i); return i }
-
+        let (items, hasMore) = try await continuePage(identity, full: full, limit: limit, offset: offset)
         return ItemsResponse(
             items: items,
             nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
         )
+    }
+
+    /// Build one page of the unified Continue Watching list (resume + next-up),
+    /// filtered to items the user may read, with resume + per-user state folded in.
+    private func continuePage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
+        let entries = try await home.continueWatching(userId: identity.userId)
+        // Permission filter (per-library scoping) preserving recency order.
+        var readable: [HomeService.Entry] = []
+        for entry in entries where try await canRead(entry.record, identity) {
+            readable.append(entry)
+        }
+        let hasMore = readable.count > offset + limit
+        let page = Array(readable.dropFirst(offset).prefix(limit))
+
+        var items = page.map { entry -> Item in
+            var item = entry.record.toProtocol(full: full)
+            if entry.position > 0 { item.resumePosition = entry.position }
+            return item
+        }
+        let states = try await userState.states(userId: identity.userId, itemIds: items.map(\.id))
+        items = items.map { var i = $0; UserStateService.fold(states[i.id], into: &i); return i }
+        return (items, hasMore)
     }
 
     @Sendable
@@ -124,10 +168,14 @@ struct BrowseController: Sendable {
     func recentlyAdded(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
         let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
-        let full = query.detail == "full"
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
+        let (items, hasMore) = try await recentPage(identity, full: query.detail == "full", limit: limit, offset: offset)
+        return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
+    }
 
+    private func recentPage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
         let records = try await catalog.recentItems(limit: limit + 1, offset: offset)
         let hasMore = records.count > limit
         let page = hasMore ? Array(records.prefix(limit)) : records
@@ -136,10 +184,7 @@ struct BrowseController: Sendable {
         for record in page where try await canRead(record, identity) {
             items.append(record.toProtocol(full: full))
         }
-        return ItemsResponse(
-            items: try await foldUserData(items, userId: identity.userId),
-            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
-        )
+        return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
 
     /// The user's favourites, most-recently-played first.
@@ -147,10 +192,14 @@ struct BrowseController: Sendable {
     func favorites(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
         let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
-        let full = query.detail == "full"
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
+        let (items, hasMore) = try await favoritesPage(identity, full: query.detail == "full", limit: limit, offset: offset)
+        return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
+    }
 
+    private func favoritesPage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
         let ids = try await userState.favoriteItemIds(userId: identity.userId, limit: limit, offset: offset)
         let hasMore = ids.count > limit
         let page = hasMore ? Array(ids.prefix(limit)) : ids
@@ -161,10 +210,7 @@ struct BrowseController: Sendable {
             guard let record = byId[id], try await canRead(record, identity) else { continue }
             items.append(record.toProtocol(full: full))
         }
-        return ItemsResponse(
-            items: try await foldUserData(items, userId: identity.userId),
-            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
-        )
+        return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
 
     /// Fold the user's resume position + watched/favorite/play-count onto a page.

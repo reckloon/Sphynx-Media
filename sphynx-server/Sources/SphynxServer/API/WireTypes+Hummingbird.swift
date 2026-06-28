@@ -18,6 +18,7 @@ extension Item: @retroactive ResponseEncodable {}
 extension ResolveDescriptor: @retroactive ResponseEncodable {}
 extension LibrariesResponse: @retroactive ResponseEncodable {}
 extension ItemsResponse: @retroactive ResponseEncodable {}
+extension HomeResponse: @retroactive ResponseEncodable {}
 extension PlaystateResponse: @retroactive ResponseEncodable {}
 extension PlaystateBatchResponse: @retroactive ResponseEncodable {}
 extension MarkersInfo: @retroactive ResponseEncodable {}

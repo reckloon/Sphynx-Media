@@ -35,4 +35,25 @@ struct BrowseTypesTests {
         let json = String(data: try JSONEncoder().encode(ItemsResponse(items: [])), encoding: .utf8)!
         #expect(!json.contains("nextCursor"))
     }
+
+    @Test("Home response round-trips with typed shelves + aspect")
+    func home() throws {
+        let response = HomeResponse(shelves: [
+            Shelf(id: "continue", title: "Continue Watching", kind: .continueWatching, aspect: .landscape,
+                  items: [Item(id: "it_e2", type: .episode, title: "Two")]),
+            Shelf(id: "recent", title: "Recently Added", kind: .recentlyAdded, aspect: .portrait,
+                  items: [Item(id: "it_m", type: .movie, title: "Heat")]),
+        ])
+        try assertRoundTrips(response)
+    }
+
+    @Test("Continue Watching is unified: a separate Next Up kind decodes only as unknown")
+    func noNextUpKind() throws {
+        // There is deliberately no `.nextUp` case — next-up lives in continueWatching.
+        #expect(ShelfKind(rawValue: "nextUp") == nil)
+        #expect(ShelfKind(rawValue: "continueWatching") == .continueWatching)
+        // An unknown kind still decodes (forward-compat) rather than throwing.
+        let decoded = try JSONDecoder().decode(ShelfKind.self, from: Data("\"nextUp\"".utf8))
+        #expect(decoded == .unknown("nextUp"))
+    }
 }

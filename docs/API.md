@@ -280,11 +280,39 @@ Items with no stored state are omitted.
 > `resumePosition` is also folded into item responses (browse list + single item)
 > for the authenticated user, so a "continue watching" UI needs no extra call.
 
+### `GET /v1/home` — auth required
+
+The **typed home feed**: the ordered shelves that make up the user's home screen.
+**200** → `{ "shelves": [ { "id", "title", "kind", "aspect", "items": [...] } ] }`.
+
+Each shelf carries a `kind` (open enum: `continueWatching`, `recentlyAdded`,
+`favorites`) and an `aspect` (`portrait` | `landscape` | `square`) telling the
+client the tile shape — so which rows are landscape is **contract, not
+convention**. `continueWatching` is `landscape` (backdrops / episode stills);
+the rest are `portrait`. Empty shelves are omitted. Each shelf shows a capped
+preview (20 items); page a full row via the per-row endpoints below.
+
+> **Continue Watching is unified — there is no separate "Next Up".** The next
+> unwatched episode of a show you're partway through is merged *into*
+> `continueWatching` alongside in-progress movies and episodes, as one
+> recency-ordered list. There is deliberately **no `nextUp` shelf kind**, and a
+> client must not expect one to appear. Render a single "Continue Watching" /
+> "Up Next" row.
+
 ### `GET /v1/home/continue` — auth required
 
-The user's in-progress items (stored position > 0), **most-recently-played
-first**, each with `resumePosition` folded in. Cursor-paginated; `detail`
-selects skeleton/full. Returns the same `ItemsResponse` shape as `/v1/items`.
+The full, paginated **Continue Watching** row: the user's in-progress items
+(stored position > 0) **plus the next unwatched episode** of each show they've
+started — one unified list, **most-recently-played first**. `resumePosition` is
+folded in (`0` for a next-up episode — a fresh start, not a resume).
+Cursor-paginated; `detail` selects skeleton/full. Returns the same
+`ItemsResponse` shape as `/v1/items`.
+
+Next-up rules: a show with an **in-progress** episode is represented by that
+episode (resume wins — its next-up is suppressed); a show whose latest watched
+episode is finished is represented by its **next regular-season episode**
+(specials, season 0, don't generate a next-up). A finished movie does not
+reappear.
 
 The server only stores and exposes the data (per-user position + `updatedAt`,
 ordered by recency) — **the client owns presentation and policy**: it has each
