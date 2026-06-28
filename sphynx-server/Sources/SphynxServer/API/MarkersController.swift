@@ -17,6 +17,9 @@ struct MarkersController: Sendable {
     let policy: AccessPolicy
     /// Age after which non-authoritative markers are reported `stale` (seconds).
     let staleAfter: Double
+    /// Live updates: a marker contribution publishes a library-scoped event
+    /// (markers are item-level, shared across the server's clients).
+    let events: EventBus
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.get("items/:itemId/markers", use: read)
@@ -68,6 +71,13 @@ struct MarkersController: Sendable {
         item.markersAuthoritative = identity.isAdmin
         item.markersUpdatedAt = now
         try await catalog.updateItem(item)
+
+        // Markers are shared item-level data: notify everyone who can read the
+        // item's library so their UI refreshes (each re-fetches via the
+        // access-controlled markers endpoint).
+        await events.publish(
+            .markers(itemId: item.id, libraryId: try await catalog.owningLibraryId(of: item), ts: now),
+            to: .library(try await catalog.owningLibraryId(of: item)))
 
         guard let info = item.markersInfo(staleAfter: staleAfter) else {
             throw SphynxError.serverError("Failed to store markers")

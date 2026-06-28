@@ -19,4 +19,13 @@ services:
       SPHYNX_HOST: "0.0.0.0"
       SPHYNX_PORT: "8080"
       SPHYNX_SERVER_NAME: "Sphynx (Docker)"
+      # Keep the SQLite DB on the mounted volume below, NOT in the container's
+      # throwaway layer — otherwise the catalog + admin account are lost whenever
+      # the container is rebuilt/recreated.
+      SPHYNX_DB_PATH: "/data/sphynx.sqlite"
+    volumes:
+      - sphynx-data:/data
     restart: unless-stopped
+
+volumes:
+  sphynx-data:

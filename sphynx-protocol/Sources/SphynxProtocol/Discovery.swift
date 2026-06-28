@@ -48,6 +48,12 @@ public struct Capabilities: Codable, Hashable, Sendable {
     public var playstate: Bool
     /// Does `/resolve` return ranked fallbacks?
     public var candidates: Bool
+    /// Does the server expose the additive server→client event stream
+    /// (`GET /v1/events`, Server-Sent Events)? Absent ⇒ `false`: clients fall
+    /// back to polling. The stream is a live-update convenience (continue-watching,
+    /// now-playing, watched/favorite sync, "library changed" nudges) and never a
+    /// substitute for the access-controlled REST endpoints.
+    public var events: Bool
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
@@ -61,12 +67,14 @@ public struct Capabilities: Codable, Hashable, Sendable {
         search: Bool = false,
         playstate: Bool = false,
         candidates: Bool = false,
+        events: Bool = false,
         metadata: [String: MetadataAccess] = [:],
         playstateReportInterval: Double? = nil
     ) {
         self.search = search
         self.playstate = playstate
         self.candidates = candidates
+        self.events = events
         self.metadata = metadata
         self.playstateReportInterval = playstateReportInterval
     }
@@ -76,6 +84,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.search = try container.decodeIfPresent(Bool.self, forKey: .search) ?? false
         self.playstate = try container.decodeIfPresent(Bool.self, forKey: .playstate) ?? false
         self.candidates = try container.decodeIfPresent(Bool.self, forKey: .candidates) ?? false
+        self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
         self.playstateReportInterval = try container.decodeIfPresent(Double.self, forKey: .playstateReportInterval)
     }
@@ -86,7 +95,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, metadata, playstateReportInterval
+        case search, playstate, candidates, events, metadata, playstateReportInterval
     }
 }
 
