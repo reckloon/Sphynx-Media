@@ -222,6 +222,17 @@ collection then appears at the library's top level; its members are browsed with
 existing `GET /v1/items?parent=<collectionId>`. No new endpoint — a collection is
 just another container. Libraries may use the `boxSets`/`collection` kinds.
 
+**Grouping threshold.** Whether a collection actually surfaces as a box-set tile is
+governed **server-side** by the owning library's `collectionThreshold` (set via the
+admin API; see *Admin → libraries*). A collection appears at the top level only when
+it has at least `collectionThreshold` present members; below that, the tile is hidden
+and its member movies are listed individually at the top level instead. The default
+is `1` (any non-empty collection groups). Raising it ungroups small box sets with no
+re-indexing — the `collectionId`/`parentId` links are untouched, so the collection is
+still directly browsable via `?parent=<collectionId>`. Clients do nothing here: they
+render whatever the top-level browse returns. The threshold is **not** carried on the
+wire `Library` object — grouping is resolved before items are projected.
+
 ### `GET /v1/people/{personId}/items` — auth required
 
 A person's filmography: the distinct movies and series the person is **credited in
@@ -604,16 +615,20 @@ on it), set in the GUI instead of (or in addition to) the environment.
 ### `POST /v1/admin/libraries`
 
 **Body** `{ "title": "Movies", "kind": "movies" }` (`kind` defaults to `other`).
-**200** → `{ "id": "lib_…", "title": "Movies", "kind": "movies" }`.
+**200** → `{ "id": "lib_…", "title": "Movies", "kind": "movies", "collectionThreshold": 1 }`.
+New libraries start at `collectionThreshold: 1`.
 
 ### `GET /v1/admin/libraries`
 
-List all libraries. **200** → `{ "libraries": [ { "id": "lib_…", "title": "…", "kind": "…" }, … ] }`.
+List all libraries. **200** → `{ "libraries": [ { "id": "lib_…", "title": "…", "kind": "…", "collectionThreshold": 1 }, … ] }`.
 
 ### `PATCH /v1/admin/libraries/{libraryId}`
 
-Update a library. **Body** (any subset) `{ "title": "…", "kind": "…" }` → **200**
-with the updated library.
+Update a library. **Body** (any subset) `{ "title": "…", "kind": "…", "collectionThreshold": 2 }`
+→ **200** with the updated library. `collectionThreshold` is the minimum number of
+present members a collection needs to surface as a box-set tile at this library's top
+level (see *Collections / box sets*); it is clamped to `>= 0`, and `1` (the default)
+groups any non-empty collection.
 
 ### `DELETE /v1/admin/libraries/{libraryId}`
 

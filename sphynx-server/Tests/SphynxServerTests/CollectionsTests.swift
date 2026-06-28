@@ -111,6 +111,35 @@ struct CollectionsTests {
         }
     }
 
+    @Test("collectionThreshold ungroups a small box set; its members surface at top level")
+    func collectionThresholdUngroupsSmallSets() async throws {
+        try await loginCreateScan { client, token, libraryId in
+            // Default threshold (1): the 2-member saga groups into one tile.
+            let grouped: ItemsResponse = try await client.execute(
+                uri: "/v1/items?parent=\(libraryId)", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(grouped.items.contains { $0.type == .collection })
+            #expect(grouped.items.filter { $0.type == .movie }.isEmpty)
+
+            // Raise the bar above this saga's size: a collection now needs 3 present
+            // members to group, so the 2-member saga ungroups.
+            _ = try await client.execute(
+                uri: "/v1/admin/libraries/\(libraryId)", method: .patch, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(UpdateLibraryRequest(title: nil, kind: nil, collectionThreshold: 3))
+            ) { try $0.decoded(LibraryResponse.self) }
+
+            let ungrouped: ItemsResponse = try await client.execute(
+                uri: "/v1/items?parent=\(libraryId)", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            // The collection tile is hidden; both member movies appear at top level.
+            #expect(ungrouped.items.filter { $0.type == .collection }.isEmpty)
+            #expect(Set(ungrouped.items.filter { $0.type == .movie }.map(\.title))
+                == ["Glass Horizon", "Glass Horizon Reckoning"])
+            // The membership links are untouched — the collection is still browsable directly.
+            #expect(ungrouped.items.allSatisfy { $0.collectionId == nil ? true : $0.collectionTitle == "The Glass Horizon Saga" })
+        }
+    }
+
     @Test("metadata fills: logo, banner, trailers, tags, sortTitle on detail=full")
     func metadataFillsProject() async throws {
         try await loginCreateScan { client, token, libraryId in

@@ -57,6 +57,12 @@ struct LibraryRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var title: String
     var kind: String
     var createdAt: Double
+    /// Minimum number of present members a collection must have to be shown as a
+    /// box-set tile at this library's top level. Below it, the collection is hidden
+    /// and its members appear individually. `1` (the default) groups any collection
+    /// with at least one member — the historical behavior. Server-internal: the
+    /// grouping is resolved before items reach the wire, so it isn't on `Library`.
+    var collectionThreshold: Int = 1
 
     func toProtocol() -> Library {
         Library(id: id, title: title, kind: LibraryKind(rawValue: kind) ?? .unknown(kind))

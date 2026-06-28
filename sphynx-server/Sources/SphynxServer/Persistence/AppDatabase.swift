@@ -320,6 +320,16 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m20_library_collection_threshold") { db in
+            // Per-library "group movies into collections" knob: the minimum number
+            // of present members a collection needs to surface as a box-set tile.
+            // Existing libraries default to 1 (group any non-empty collection — the
+            // prior behavior).
+            try db.alter(table: "library") { t in
+                t.add(column: "collectionThreshold", .integer).notNull().defaults(to: 1)
+            }
+        }
+
         return migrator
     }
 }

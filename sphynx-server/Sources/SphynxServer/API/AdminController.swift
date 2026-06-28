@@ -101,7 +101,7 @@ struct AdminController: Sendable {
         guard !body.title.isEmpty else { throw SphynxError.badRequest("title is required") }
         let record = try await catalog.createLibrary(title: body.title, kind: body.kind ?? "other")
         await notifyLibrariesChanged([record.id], action: "added")
-        return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
+        return LibraryResponse(record)
     }
 
     /// Current persisted runtime settings (stored values, falling back to what the
@@ -171,9 +171,7 @@ struct AdminController: Sendable {
     func listLibraries(_ request: Request, context: SphynxRequestContext) async throws -> AdminLibrariesResponse {
         try requireAdmin(context)
         let records = try await catalog.libraries()
-        return AdminLibrariesResponse(libraries: records.map {
-            LibraryResponse(id: $0.id, title: $0.title, kind: $0.kind)
-        })
+        return AdminLibrariesResponse(libraries: records.map(LibraryResponse.init))
     }
 
     @Sendable
@@ -183,9 +181,12 @@ struct AdminController: Sendable {
             throw SphynxError.badRequest("Missing library id")
         }
         let body = try await request.decode(as: UpdateLibraryRequest.self, context: context)
-        let record = try await catalog.updateLibrary(id: libraryId, title: body.title, kind: body.kind)
+        let record = try await catalog.updateLibrary(
+            id: libraryId, title: body.title, kind: body.kind,
+            collectionThreshold: body.collectionThreshold
+        )
         await notifyLibrariesChanged([record.id], action: "updated")
-        return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
+        return LibraryResponse(record)
     }
 
     /// Delete a library, cascading to its items + the sources that feed it.
@@ -486,6 +487,16 @@ struct LibraryResponse: Codable, Sendable, ResponseEncodable {
     var id: String
     var title: String
     var kind: String
+    /// Minimum present members for a collection to group into a box-set tile (see
+    /// `LibraryRecord.collectionThreshold`). `1` groups any non-empty collection.
+    var collectionThreshold: Int
+
+    init(_ record: LibraryRecord) {
+        self.id = record.id
+        self.title = record.title
+        self.kind = record.kind
+        self.collectionThreshold = record.collectionThreshold
+    }
 }
 
 /// The runtime-tunable settings (the ones configured via the API/GUI rather than
@@ -543,6 +554,10 @@ struct TMDBKeyUpdate: Codable, Sendable {
 struct UpdateLibraryRequest: Codable, Sendable {
     var title: String?
     var kind: String?
+    /// Minimum present members for a collection to group into a box-set tile.
+    /// `1` groups any non-empty collection; raise it to ungroup small box sets.
+    /// Clamped to `>= 0`.
+    var collectionThreshold: Int?
 }
 
 struct AdminLibrariesResponse: Codable, Sendable, ResponseEncodable {
