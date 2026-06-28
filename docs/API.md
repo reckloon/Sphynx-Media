@@ -860,6 +860,32 @@ never pass through the server. See the
 [guide → Source drivers](https://reckloon.github.io/Sphynx-Media/#ext-drivers) for
 the full driver list and how to add a backend.
 
+For a **`torbox`** source (the [TorBox](https://torbox.app) debrid cloud), set
+`driver` to `torbox` and put your API key in `secrets.apiKey`. Listing reads your
+*ready* torrents, usenet, and web downloads (`mylist`); playback mints a
+short-lived direct CDN link (`requestdl`) — there are no `.strm` files, no mount,
+and no second database. The catalog is the index, refreshed on the source's own
+`refreshInterval` like any other driver.
+
+```json
+{ "label": "TorBox", "driver": "torbox", "libraryMap": { "movie": "lib_films", "tv": "lib_shows" },
+  "config":  { "categories": "torrents,usenet,webdl", "linkTTL": "3600" },
+  "secrets": { "apiKey": "•••" } }
+```
+
+Optional `config`: **`categories`** (comma list, subset of
+`torrents,usenet,webdl`; default all three), **`linkTTL`** (seconds a minted link
+is treated as valid before the client re-resolves; default `3600`), and
+**`baseURL`** (API root override; default `https://api.torbox.app/v1/api`).
+
+> **Rate limits.** Every TorBox endpoint allows **300 requests/min per API
+> token**. This driver stays well under it: a scan costs one `mylist` call per
+> enabled category (≤ 3, paginated only past 1 000 items), and a playback costs
+> one `requestdl`. It deliberately does **not** call TorBox's metadata-search
+> endpoint (the heavily-throttled, 429-prone one) — Sphynx does its own TMDB
+> enrichment. No minimum refresh interval is imposed, keeping parity with the
+> other drivers; the shared fetcher still backs off and retries on 429/5xx.
+
 ### `GET /v1/admin/sources`
 
 List all sources (non-secret fields only). **200** →
@@ -1314,9 +1340,10 @@ Defined in the protocol but not yet implemented by the reference server:
 non-goal rather than a to-do — see [Search — optional](#search--optional). And
 `criticRating` is left for a critic-source extension — see [Item shape](#item-shape).)
 
-All five source drivers now both resolve **and** list: `local`, `http`
+All six source drivers now both resolve **and** list: `local`, `http`
 (JSON manifest), `webdav` (`PROPFIND` over the built-in HTTP client), `smb` (via
-`smbclient`), and `ftp` (via `curl`). SMB/FTP listing needs `smbclient`/`curl` on
-the server's `PATH`; resolve/playback work without them. Configure sources in the
+`smbclient`), `ftp` (via `curl`), and `torbox` (the TorBox debrid API). SMB/FTP
+listing needs `smbclient`/`curl` on the server's `PATH`; resolve/playback work
+without them. Configure sources in the
 web admin's **Libraries → Storage sources** (one connection form per driver) or via
 `POST /v1/admin/sources`.

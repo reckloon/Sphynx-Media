@@ -61,6 +61,7 @@ struct DriverFactory: Sendable {
         WebDAVDriver.registration,
         SMBDriver.registration,
         FTPDriver.registration,
+        TorBoxDriver.registration,
     ]
 
     /// The driver kinds this factory recognises.

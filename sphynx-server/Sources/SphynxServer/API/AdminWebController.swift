@@ -231,6 +231,7 @@ enum AdminWebController {
             <button class="subtab" data-drv="webdav">WebDAV</button>
             <button class="subtab" data-drv="smb">SMB</button>
             <button class="subtab" data-drv="ftp">FTP</button>
+            <button class="subtab" data-drv="torbox">TorBox</button>
           </div>
 
           <div class="stor-panel" data-drvpanel="local">
@@ -329,6 +330,26 @@ enum AdminWebController {
               </div>
               <label for="ftp-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="ftp-refresh" type="number" min="0" value="0">
               <button data-add="ftp">Add source</button><div id="ftp-msg" class="msg"></div>
+            </div>
+          </div>
+
+          <div class="stor-panel" data-drvpanel="torbox" hidden>
+            <div id="src-list-torbox"></div>
+            <div class="addbox">
+              <div class="group-title">Add a TorBox cloud</div>
+              <p class="hint" style="margin-top:0;">Streams your <a href="https://torbox.app" target="_blank" rel="noopener">TorBox</a> torrents, usenet, and web downloads directly — no <code>.strm</code> files or mount. Get your API key from TorBox → Settings.</p>
+              <label for="torbox-label">Name</label><input id="torbox-label" placeholder="TorBox">
+              <label for="torbox-apikey">API key</label><input id="torbox-apikey" type="password" autocomplete="new-password" placeholder="from torbox.app/settings">
+              <label for="torbox-categories">Categories <span class="muted">(optional)</span></label><input id="torbox-categories" placeholder="torrents,usenet,webdl">
+              <p class="hint">Which buckets to index — any of <code>torrents</code>, <code>usenet</code>, <code>webdl</code>. Blank indexes all three.</p>
+              <label for="torbox-linkttl">Link freshness seconds <span class="muted">(optional)</span></label><input id="torbox-linkttl" type="number" min="0" placeholder="3600">
+              <div class="row">
+                <div><label for="torbox-lib-movie">Movies library</label><select id="torbox-lib-movie" class="lib-movie"></select></div>
+                <div><label for="torbox-lib-tv">TV library</label><select id="torbox-lib-tv" class="lib-tv"></select></div>
+              </div>
+              <label for="torbox-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="torbox-refresh" type="number" min="0" value="0">
+              <p class="hint">TorBox allows 300 requests/min per token; even frequent refreshes stay well under it.</p>
+              <button data-add="torbox">Add source</button><div id="torbox-msg" class="msg"></div>
             </div>
           </div>
         </div>
@@ -645,7 +666,7 @@ enum AdminWebController {
   }
 
   // ---- storage sources (per-driver) ----
-  var STORAGE_DRIVERS = ['local', 'http', 'webdav', 'smb', 'ftp'];
+  var STORAGE_DRIVERS = ['local', 'http', 'webdav', 'smb', 'ftp', 'torbox'];
   var storActive = 'local';
   function libraryMapFor(driver) {
     var map = {};
@@ -664,6 +685,7 @@ enum AdminWebController {
     else if (driver === 'webdav') { body.config = { baseURL: val('baseurl') }; var secrets = {}; if (val('username')) secrets.username = val('username'); if (val('password')) { if (val('username')) secrets.password = val('password'); else secrets.token = val('password'); } if (Object.keys(secrets).length) body.secrets = secrets; }
     else if (driver === 'smb') { body.config = { host: val('host'), share: val('share') }; var s = {}; if (val('username')) s.username = val('username'); if (val('password')) s.password = val('password'); if (Object.keys(s).length) body.secrets = s; }
     else if (driver === 'ftp') { var cfg = { host: val('host') }; if (val('port')) cfg.port = Number(val('port')); body.config = cfg; var f = {}; if (val('username')) f.username = val('username'); if (val('password')) f.password = val('password'); if (Object.keys(f).length) body.secrets = f; }
+    else if (driver === 'torbox') { if (!val('apikey')) { msg(driver + '-msg', 'API key is required.'); return null; } var tc = {}; if (val('categories')) tc.categories = val('categories'); if (val('linkttl')) tc.linkTTL = val('linkttl'); if (Object.keys(tc).length) body.config = tc; body.secrets = { apiKey: val('apikey') }; }
     var map = libraryMapFor(driver); if (map) body.libraryMap = map;
     var refresh = val('refresh'); if (refresh !== '') body.refreshInterval = Math.max(0, Math.round(Number(refresh) * 60));
     return body;

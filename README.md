@@ -142,7 +142,7 @@ Below it you'll see five tabs:
 
 - **Libraries** — the shelves your media gets sorted onto (Movies, TV Shows, …),
   *and* the storage sources that feed them (where your files live + a **Scan**
-  button). One clean connection form per driver: local, http, webdav, smb, ftp.
+  button). One clean connection form per driver: local, http, webdav, smb, ftp, torbox.
 - **Users** — accounts for each person who'll use a player app, with a permission
   editor (global or per-library) and per-user password resets.
 - **Items** — fix a title's metadata by hand: edit its name, year, poster, etc.
@@ -181,7 +181,9 @@ just "here's where my files are and how to reach them." Fill in:
 
 - **Label** — any name you'll recognize ("My NAS", "Cloud bucket").
 - **Driver** — how Sphynx reaches the files. Pick **HTTP** for media at web URLs,
-  or **Local** for a folder on the server's disk.
+  **Local** for a folder on the server's disk, or **TorBox** to stream your
+  [TorBox](https://torbox.app) cloud (torrents/usenet/web downloads) — paste your
+  API key, no `.strm` files or mount needed.
 - **Base URL** *(HTTP)* or **Root path** *(Local)* — the web address or folder
   your media sits under.
 - **Manifest URL** *(HTTP)* — a small list of what to index (see the note below).
