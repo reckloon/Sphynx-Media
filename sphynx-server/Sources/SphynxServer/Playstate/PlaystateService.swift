@@ -85,6 +85,16 @@ struct PlaystateService: Sendable {
         }
     }
 
+    /// Reset the caller's **entire** watch history: delete every stored resume
+    /// row, across all devices. Returns the number removed. Row-scoped to the
+    /// user; idempotent. Powers the self-service "reset watch history" action.
+    @discardableResult
+    func clearAll(userId: String) async throws -> Int {
+        try await db.writer.write { db in
+            try PlaystateRecord.filter(Column("userId") == userId).deleteAll(db)
+        }
+    }
+
     /// Purge playstate entries last updated before `cutoff` (epoch seconds).
     /// Returns the number removed. Used by the maintenance pass for retention.
     @discardableResult

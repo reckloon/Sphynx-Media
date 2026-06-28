@@ -14,6 +14,8 @@ struct AuthService: Sendable {
     let hasher: PasswordHasher
     let accessTokenTTL: Double
     let refreshTokenTTL: Double
+    /// On-disk store for server-hosted profile pictures.
+    let avatars: AvatarStore
 
     // MARK: Bootstrap
 
@@ -215,9 +217,13 @@ struct AuthService: Sendable {
             }
             try SessionRecord.filter(Column("userId") == userId).deleteAll(db)
             try PlaystateRecord.filter(Column("userId") == userId).deleteAll(db)
+            // Also purge per-item state (watched/favorite/play-count) so a deleted
+            // account leaves nothing behind.
+            try UserStateRecord.filter(Column("userId") == userId).deleteAll(db)
             try UserRecord.deleteOne(db, key: userId)
             return nil
         }
+        if outcome == nil { avatars.delete(userId: userId) }
         if let outcome { throw outcome }
     }
 
@@ -237,6 +243,54 @@ struct AuthService: Sendable {
             _ = try UserRecord.filter(Column("id") == userId)
                 .updateAll(db, Column("passwordHash").set(to: hash))
         }
+    }
+
+    // MARK: Self-service profile
+
+    /// Update a user's own profile. Only non-nil fields change. A provided
+    /// `displayName` must be non-empty. Returns the updated record.
+    func updateProfile(userId: String, displayName: String?) async throws -> UserRecord {
+        if let displayName, displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw SphynxError.badRequest("displayName must not be empty")
+        }
+        let result: UserRecord? = try await db.writer.write { db in
+            guard var user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else { return nil }
+            if let displayName { user.displayName = displayName }
+            try user.update(db)
+            return user
+        }
+        guard let result else { throw SphynxError.notFound("No user '\(userId)'") }
+        return result
+    }
+
+    /// Store an uploaded avatar image for a user and point `avatarURL` at the
+    /// server-hosted file. The bytes are validated (real image, size cap) by
+    /// `AvatarStore`. A cache-busting `?v=` is appended so clients refetch when the
+    /// image changes even though the path is stable. Returns the updated record.
+    func setAvatar(userId: String, data: Data) async throws -> UserRecord {
+        try avatars.write(userId: userId, data: data)
+        let url = "/v1/users/\(userId)/avatar?v=\(Int(Date().timeIntervalSince1970))"
+        let result: UserRecord? = try await db.writer.write { db in
+            guard var user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else { return nil }
+            user.avatarURL = url
+            try user.update(db)
+            return user
+        }
+        guard let result else { throw SphynxError.notFound("No user '\(userId)'") }
+        return result
+    }
+
+    /// Remove a user's avatar (file + `avatarURL`). Idempotent.
+    func clearAvatar(userId: String) async throws -> UserRecord {
+        avatars.delete(userId: userId)
+        let result: UserRecord? = try await db.writer.write { db in
+            guard var user = try UserRecord.filter(Column("id") == userId).fetchOne(db) else { return nil }
+            user.avatarURL = nil
+            try user.update(db)
+            return user
+        }
+        guard let result else { throw SphynxError.notFound("No user '\(userId)'") }
+        return result
     }
 
     // MARK: Helpers

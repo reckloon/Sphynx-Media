@@ -66,6 +66,20 @@ public struct PlaystateResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// `DELETE /v1/playstate` resets the caller's **entire** watch history across
+/// every device: all stored resume positions are deleted and per-item state
+/// (watched flag, play count, last-played) is cleared, so nothing the user has
+/// watched lingers. Row-scoped to the caller; idempotent. Returns the number of
+/// rows removed.
+public struct PlaystateResetResponse: Codable, Hashable, Sendable {
+    /// How many history rows were removed (resume + per-item-state rows).
+    public var cleared: Int
+
+    public init(cleared: Int) {
+        self.cleared = cleared
+    }
+}
+
 /// Batch resume read for `GET /v1/playstate?items=<id,id,…>` (§7), keyed by
 /// item id. Items with no stored state are simply absent.
 public struct PlaystateBatchResponse: Codable, Hashable, Sendable {

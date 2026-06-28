@@ -149,12 +149,45 @@ may actually do (permissions are granted per-user by the admin).
   unknown keys as opaque and ignore them (forward-compatible).
 - **`metadata`** — a per-field metadata-access view (server policy narrowed to
   this user's write permissions), kept for the contribute affordance.
-- **`user.avatarURL`** — the `User` object carries an optional `avatarURL` in the
-  protocol, but the **reference server never populates it** (always omitted).
-  Reserved for a future build; clients tolerate its absence.
+- **`user.avatarURL`** — the `User` object carries an optional `avatarURL`. When
+  the user has uploaded a profile picture it is a server-relative path
+  (`/v1/users/<id>/avatar?v=…`); otherwise it is omitted. Clients tolerate its
+  absence and resolve the path against the server base URL.
 
 A client should use this (not `/v1/info`) to decide which affordances to show
 (browse, contribute markers, edit metadata, …).
+
+### `PATCH /v1/auth/me` — auth required
+
+Update the authenticated user's **own** profile. **Body** (only the provided
+fields change):
+```json
+{ "displayName": "Bob B." }
+```
+`displayName`, when present, must be non-empty (**400** otherwise). Returns the
+refreshed `MeResponse` (same shape as `GET /v1/auth/me`).
+
+### `PUT /v1/auth/me/avatar` — auth required
+
+Upload (or replace) the authenticated user's profile picture. The request body is
+the **raw image bytes** (not JSON); send `Content-Type: image/png`, `image/jpeg`,
+or `image/webp`. The image type is validated from the bytes (the declared
+content-type is not trusted) and the size is capped (`avatarMaxBytes` setting,
+default 2 MB).
+
+Returns the refreshed `MeResponse`, now with `user.avatarURL` set. **400** if the
+bytes are not a supported image or exceed the size cap.
+
+### `DELETE /v1/auth/me/avatar` — auth required
+
+Remove the authenticated user's profile picture. Idempotent. Returns the
+refreshed `MeResponse` with `user.avatarURL` omitted.
+
+### `GET /v1/users/{userId}/avatar` — auth required
+
+Stream a user's hosted profile picture (the bytes, with the stored image
+`Content-Type`). Any authenticated user may load any user's avatar, so clients can
+render other members' pictures. **404** if that user has no avatar.
 
 ### `POST /v1/auth/password` — auth required
 
@@ -470,6 +503,16 @@ Items with no stored state are omitted.
 playstate for the item, so its `resumePosition` reads back as 0 and it drops out of
 `GET /v1/home/continue`. **204 No Content**; idempotent (deleting when nothing is
 stored is still 204). Only ever affects the caller's own row.
+
+### `DELETE /v1/playstate`
+**Reset the caller's entire watch history (cross-device).** Clears **all** stored
+resume positions **and** per-item state (watched flag, play count, last-played) for
+the authenticated user across every device — a clean slate. Only ever affects the
+caller's own rows; idempotent. **200** →
+```json
+{ "cleared": 12 }
+```
+where `cleared` is the number of history rows removed (resume + per-item-state).
 
 > `resumePosition` is also folded into item responses (browse list + single item)
 > for the authenticated user as a convenience snapshot — but it does **not** move

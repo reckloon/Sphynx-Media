@@ -46,7 +46,9 @@ swift test
 ## Status
 
 The wire contract as built today: discovery (`ServerInfo`, `Capabilities`), auth +
-per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`), the
+per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`,
+self-service `ProfileUpdateRequest` + server-hosted avatars, `PlaystateResetResponse`
+for a full watch-history reset), the
 `Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
 one-of, cast, TV positioning, `parentId`/`collectionId`, open `extra`), browse +
 pagination, the typed home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`),

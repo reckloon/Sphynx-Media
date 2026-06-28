@@ -1,6 +1,21 @@
+import Foundation
 import Hummingbird
 import Logging
 import ServiceLifecycle
+
+/// Where hosted avatar images live: an `avatars/` directory beside the database
+/// file, so they share the server's data directory. An in-memory database (tests)
+/// gets a unique temp directory instead.
+func avatarDirectory(for databasePath: String) -> URL {
+    if databasePath == ":memory:" {
+        return URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sphynx-avatars-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    }
+    let dbURL = URL(fileURLWithPath: databasePath)
+    let dir = dbURL.deletingLastPathComponent()
+    return (dir.path.isEmpty ? URL(fileURLWithPath: ".") : dir)
+        .appendingPathComponent("avatars", isDirectory: true)
+}
 
 /// Bootstraps the logging system once per process so that, alongside normal
 /// stdout output, every record is mirrored into `LogStore` for the web admin
@@ -95,7 +110,9 @@ func buildApplication(
         db: database,
         hasher: PasswordHasher(),
         accessTokenTTL: configuration.accessTokenTTL,
-        refreshTokenTTL: configuration.refreshTokenTTL
+        refreshTokenTTL: configuration.refreshTokenTTL,
+        avatars: AvatarStore(directory: avatarDirectory(for: configuration.databasePath),
+                             maxBytes: configuration.avatarMaxBytes)
     )
     try await auth.bootstrapAdminIfNeeded(
         username: configuration.adminUsername,
