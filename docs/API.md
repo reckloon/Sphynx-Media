@@ -31,7 +31,9 @@ the full narrative — protocol, server design, and extending — is the
 > matching **end-user self-service page is served at `GET /user`**, where any
 > signed-in user manages their own display name, profile picture, password, and
 > watch-history reset (it drives only the self-service `/v1/auth/*` and
-> `/v1/playstate` endpoints — no admin rights).
+> `/v1/playstate` endpoints — no admin rights). A user granted `metadata.edit`
+> also gets a **Library correction** section there, since item correction is
+> permission-gated rather than admin-only.
 
 ### `GET /v1/info` — unauthenticated
 
@@ -1171,9 +1173,24 @@ own via `POST /v1/auth/password`).
 Delete a user and revoke all their sessions + per-user state. **204** on success.
 The admin account cannot be deleted (**403**).
 
+### `GET /v1/admin/items?parent=<id>` — `metadata.edit`
+
+Browse the catalog as a **raw file hierarchy** for the correction UI: the direct
+children of `parent`, where `parent` is a **library id** (→ its top level) or an
+**item id** (→ that container's children). **200** → `{ "items": [ <Item>, … ] }`
+(full projection, so each carries `type`, `images`, `childCount`).
+
+Unlike the player-facing [`GET /v1/items`](#get-v1items--auth-required), this applies
+**no collection grouping** — a collection appears as its own openable row and its
+member movies appear individually, a 1-to-1 reflection of the indexed source tree.
+It reads the catalog only (no driver/CDN traffic). Gated by `metadata.edit` for the
+resolved library (admins always pass), so a non-admin editor can use it — this is
+what powers the **Library correction** section of the `/user` page as well as the
+admin **Items** tab. `limit` defaults to 250 (max 500).
+
 ### `GET /v1/admin/items/{itemId}` — `metadata.edit`
 
-Read one item with its current **lock state**, for the admin correction UI. **200**
+Read one item with its current **lock state**, for the correction UI. **200**
 → `{ "item": { … }, "lockedFields": ["title", "overview"] }`. Gated by
 `metadata.edit` for the item's library (admins always pass). The wire `Item` itself
 carries no lock info, so this is how a UI knows which fields are pinned.
@@ -1277,7 +1294,11 @@ They are server-specific (not part of the wire protocol).
 - **`GET /v1/admin/db/query?table=<name>&limit=<n>&offset=<n>`** → a read-only page of
   one table: `{ "table", "columns", "rows", "total", "limit", "offset", "redactedColumns" }`.
   The table name is whitelisted against the real schema (no SQL injection) and
-  secret columns (credentials) are redacted. `limit` max 200.
+  secret columns (credentials) are redacted. `limit` max 200. Optional search
+  filters — applied only when the table has the matching column, with bound
+  parameters: **`tmdbId=<id>`** (exact match on the `tmdbId` column) and
+  **`name=<text>`** (case-insensitive substring of the `title` column); both narrow
+  `total` and the returned rows.
 
 ### Extensions — admin-only
 

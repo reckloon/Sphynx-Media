@@ -36,6 +36,7 @@ struct AdminController: Sendable {
         admin.post("sources/:sourceId/scan", use: scanSource)
         admin.post("scan", use: scanAll)
         admin.post("items", use: createItem)
+        admin.get("items", use: listItems)
         admin.get("items/:itemId", use: getItem)
         admin.patch("items/:itemId", use: editItem)
         admin.delete("items/:itemId", use: deleteItem)
@@ -158,6 +159,7 @@ struct AdminController: Sendable {
         if let v = body.accessTokenTTL { updates[SettingKey.accessTokenTTL.rawValue] = String(try requirePositive(v, "accessTokenTTL")) }
         if let v = body.refreshTokenTTL { updates[SettingKey.refreshTokenTTL.rawValue] = String(try requirePositive(v, "refreshTokenTTL")) }
         if let v = body.enrichmentTTL { updates[SettingKey.enrichmentTTL.rawValue] = String(try requirePositive(v, "enrichmentTTL")) }
+        if let v = body.metadataLanguage { updates[SettingKey.metadataLanguage.rawValue] = v.trimmingCharacters(in: .whitespaces) }
         if let v = body.markersAccess {
             guard ["none", "read", "readwrite"].contains(v) else {
                 throw SphynxError.badRequest("markersAccess must be none | read | readwrite")
@@ -400,6 +402,38 @@ struct AdminController: Sendable {
     /// item's library), so a non-admin editor can be granted it. A locked field
     /// survives every scan, TTL refresh, and forced enrich; `unlock`/`unlockAll`
     /// re-enables auto-refresh for those fields.
+    /// Browse the catalog as a **raw file hierarchy** for the correction UI: the
+    /// direct children of `parent` (a library id → its ungrouped top level; an item
+    /// id → that container's children). No collection grouping, so movies show
+    /// individually and collections appear as openable folders — a 1-to-1 reflection
+    /// of the indexed source tree that touches no driver/CDN (it reads the catalog).
+    /// Gated by `metadata.edit` for the resolved library (admins always pass), so a
+    /// non-admin editor can use it too.
+    @Sendable
+    func listItems(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemsResponse {
+        let identity = try context.requireIdentity()
+        let query = try request.uri.decodeQuery(as: AdminItemsQuery.self, context: context)
+        guard let parent = query.parent, !parent.isEmpty else {
+            throw SphynxError.badRequest("query parameter 'parent' is required")
+        }
+        let limit = min(max(query.limit ?? 250, 1), 500)
+        let records: [ItemRecord]
+        let libraryId: String?
+        if try await catalog.library(id: parent) != nil {
+            libraryId = parent
+            records = try await catalog.rawTopLevel(libraryId: parent, limit: limit, offset: 0)
+        } else if let parentItem = try await catalog.item(id: parent) {
+            libraryId = try await catalog.owningLibraryId(of: parentItem)
+            records = try await catalog.childItems(parentId: parent, limit: limit, offset: 0)
+        } else {
+            throw SphynxError.notFound("No library or item '\(parent)'")
+        }
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to edit metadata here")
+        }
+        return AdminItemsResponse(items: records.prefix(limit).map { $0.toProtocol(full: true) })
+    }
+
     /// Read one item with its current lock state, for the admin correction UI.
     /// Gated by `metadata.edit` for the item's library (admins always pass).
     @Sendable
@@ -578,6 +612,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
     var accessTokenTTL: Double
     var refreshTokenTTL: Double
     var enrichmentTTL: Double
+    var metadataLanguage: String
     var markersAccess: String
     var markersStaleAfter: Double
     var playstateRetention: Double
@@ -593,6 +628,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
         self.accessTokenTTL = c.accessTokenTTL
         self.refreshTokenTTL = c.refreshTokenTTL
         self.enrichmentTTL = c.enrichmentTTL
+        self.metadataLanguage = c.metadataLanguage
         self.markersAccess = c.markersAccess
         self.markersStaleAfter = c.markersStaleAfter
         self.playstateRetention = c.playstateRetention
@@ -611,6 +647,7 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var accessTokenTTL: Double?
     var refreshTokenTTL: Double?
     var enrichmentTTL: Double?
+    var metadataLanguage: String?
     var markersAccess: String?
     var markersStaleAfter: Double?
     var playstateRetention: Double?
@@ -745,6 +782,16 @@ struct SetPermissionsRequest: Codable, Sendable {
 
 struct ResetPasswordRequest: Codable, Sendable {
     var newPassword: String
+}
+
+struct AdminItemsQuery: Codable, Sendable {
+    var parent: String?
+    var limit: Int?
+}
+
+/// The raw (ungrouped) children for the item-correction browser.
+struct AdminItemsResponse: Codable, Sendable, ResponseEncodable {
+    var items: [Item]
 }
 
 struct AdminUserResponse: Codable, Sendable, ResponseEncodable {

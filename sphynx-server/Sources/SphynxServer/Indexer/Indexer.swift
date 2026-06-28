@@ -458,6 +458,11 @@ struct Indexer: Sendable {
     /// any field the admin has locked so manual edits survive re-enrichment.
     private func apply(_ fields: EnrichedFields, to record: inout ItemRecord, now: Double) {
         let locked = record.lockedFields()
+        // Normalise the series title to TMDB's name in the server's metadata
+        // language (episode names follow from the localized season fetch).
+        if !locked.contains(LockableField.title), let title = fields.title, !title.isEmpty {
+            record.title = title
+        }
         if !locked.contains(LockableField.overview) { record.overview = fields.overview }
         if !locked.contains(LockableField.year), let year = fields.year { record.year = year }
         if !locked.contains(LockableField.genres) {

@@ -117,10 +117,27 @@ struct DiagnosticsController: Sendable {
             }
             let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(\"\(table)\")")
                 .compactMap { $0["name"] as String? }
-            let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \"\(table)\"") ?? 0
+
+            // Optional search filters. Each clause is added only when the table has
+            // the column (whitelisted against the real schema above) and the values
+            // are bound parameters — never interpolated — so this stays injection-safe.
+            var clauses: [String] = []
+            var filterArgs: [DatabaseValueConvertible] = []
+            if let tmdbId = query.tmdbId, !tmdbId.isEmpty, columns.contains("tmdbId") {
+                clauses.append("tmdbId = ?"); filterArgs.append(tmdbId)
+            }
+            if let name = query.name, !name.isEmpty, columns.contains("title") {
+                clauses.append("title LIKE ? COLLATE NOCASE"); filterArgs.append("%\(name)%")
+            }
+            let whereSQL = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
+
+            let total = try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM \"\(table)\"\(whereSQL)",
+                arguments: StatementArguments(filterArgs)
+            ) ?? 0
             let rows = try Row.fetchAll(
-                db, sql: "SELECT * FROM \"\(table)\" LIMIT ? OFFSET ?",
-                arguments: [limit, offset]
+                db, sql: "SELECT * FROM \"\(table)\"\(whereSQL) LIMIT ? OFFSET ?",
+                arguments: StatementArguments(filterArgs + [limit, offset])
             )
             let redacted = columns.filter { Self.redactedColumns.contains($0) }
             let data: [[String?]] = rows.map { row in
@@ -186,6 +203,11 @@ struct DBQuery: Codable, Sendable {
     var table: String?
     var limit: Int?
     var offset: Int?
+    /// Optional filters (applied only when the table has the matching column):
+    /// `tmdbId` exact-matches the `tmdbId` column; `name` is a case-insensitive
+    /// substring match on `title`.
+    var tmdbId: String?
+    var name: String?
 }
 
 struct DBTableInfo: Codable, Sendable {

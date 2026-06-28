@@ -156,7 +156,7 @@ func buildApplication(
     // Identification + enrichment are available only when TMDB is configured
     // (an injected client for tests, or a real client from the API key).
     let tmdb: (any TMDBClient)? = tmdbClient
-        ?? (tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: tmdbAPIKey, fetcher: fetcher))
+        ?? (tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: tmdbAPIKey, language: configuration.metadataLanguage, fetcher: fetcher))
     let enrichment: EnrichmentService? = tmdb.map { client in
         EnrichmentService(
             catalog: catalog,

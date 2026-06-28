@@ -31,6 +31,13 @@ struct ServerConfiguration: Sendable {
     /// before the maintenance pass re-fetches it, in seconds. Default 90 days.
     var enrichmentTTL: Double
 
+    /// TMDB metadata language as an ISO `language-COUNTRY` tag (e.g. `en-US`,
+    /// `ru-RU`). Drives the language of enriched titles, overviews, and episode
+    /// names — so the display title is normalised to the server's declared
+    /// language during enrichment, regardless of how the source named the file.
+    /// Runtime-tunable via Settings. Default `en-US`.
+    var metadataLanguage: String = "en-US"
+
     /// Client access to intro/credit markers: "none" | "read" | "readwrite".
     /// Default allows contributions (e.g. a client bridging TheIntroDB).
     var markersAccess: String
@@ -89,6 +96,7 @@ struct ServerConfiguration: Sendable {
             refreshTokenTTL: env["SPHYNX_REFRESH_TTL"].flatMap(Double.init) ?? 2_592_000,
             tmdbAPIKey: env["SPHYNX_TMDB_API_KEY"] ?? "",
             enrichmentTTL: env["SPHYNX_ENRICH_TTL"].flatMap(Double.init) ?? 7_776_000,       // 90 days
+            metadataLanguage: env["SPHYNX_METADATA_LANGUAGE"] ?? "en-US",
             markersAccess: env["SPHYNX_MARKERS_ACCESS"] ?? "readwrite",
             markersStaleAfter: env["SPHYNX_MARKERS_STALE_AFTER"].flatMap(Double.init) ?? 604_800,    // 7 days
             playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days

@@ -171,19 +171,29 @@ enum PathParser {
         // skipping generic library roots and any nested extras buckets. Cleaned via
         // the same series logic so a `Title (Year)` folder yields title + year.
         var parsed: (title: String, year: Int?)?
+        var parentRaw: String?
         if bucketIndex - 1 >= 0 {
             for candidate in dirs[0...(bucketIndex - 1)].reversed()
             where !isGenericBucket(candidate) && extrasBucket(candidate) == nil {
                 let clean = cleanSeriesName(candidate)
-                if !clean.title.isEmpty { parsed = clean; break }
+                if !clean.title.isEmpty { parsed = clean; parentRaw = candidate; break }
             }
         }
         guard let parent = parsed, !parent.title.isEmpty else { return nil }
 
+        // A parent folder carrying season/series markers (`… Season 1-8 S01-S08`), or
+        // a clip whose own name has an episode marker (`Deleted Scenes/S01E21 …`),
+        // belongs to a SHOW — not a movie. Drop the year so the caller nests the clip
+        // under the series, never a phantom movie parent. (A movie's extras folder
+        // never carries a season marker, so real movie extras keep their year.)
+        let isShowPack = (parentRaw.map { seasonFolderKind($0) != nil } ?? false)
+            || episodeMarker(in: stem) != nil
+        let parentYear = isShowPack ? nil : parent.year
+
         // The clip's own name (cleaned of release junk); nil → caller uses the stem.
         let file = FilenameParser.parse(stem)
         let title = file.title.isEmpty ? nil : file.title
-        return .extras(bucket: bucket, parentTitle: parent.title, parentYear: parent.year, title: title)
+        return .extras(bucket: bucket, parentTitle: parent.title, parentYear: parentYear, title: title)
     }
 
     /// Plausible upper bound for a year token (next calendar year).

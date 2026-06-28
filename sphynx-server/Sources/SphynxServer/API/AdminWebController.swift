@@ -113,6 +113,8 @@ enum AdminWebController {
   /* ---- item correction ---- */
   .crumbs { font-size:13px; color:var(--muted); margin-bottom:10px; }
   .crumbs a { color:var(--accent); cursor:pointer; text-decoration:none; }
+  .it-row { display:flex; align-items:center; gap:11px; min-width:0; }
+  .it-thumb { width:34px; height:50px; object-fit:cover; border-radius:4px; background:var(--bg); border:1px solid var(--line); flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; font-size:18px; }
   .lockrow label { display:flex; align-items:center; justify-content:space-between; }
   .lockbadge { font-size:11px; color:var(--warn); }
   /* ---- diagnostics: database + logs ---- */
@@ -440,6 +442,24 @@ enum AdminWebController {
         <label for="tmdb-key">TMDB API key <span id="tmdb-status" class="muted"></span></label>
         <input id="tmdb-key" type="password" placeholder="Paste your TMDB v3 API key" autocomplete="off">
         <p class="hint">Identifies titles and fetches posters, overviews, and cast. <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free key →</a> Leave blank to keep the current key; saving applies on the next restart.</p>
+        <label for="metadataLanguage">Metadata language</label>
+        <select id="metadataLanguage">
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="es-ES">Español</option>
+          <option value="es-MX">Español (México)</option>
+          <option value="fr-FR">Français</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="it-IT">Italiano</option>
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="ru-RU">Русский</option>
+          <option value="uk-UA">Українська</option>
+          <option value="ja-JP">日本語</option>
+          <option value="ko-KR">한국어</option>
+          <option value="zh-CN">中文 (简体)</option>
+          <option value="zh-TW">中文 (繁體)</option>
+        </select>
+        <p class="hint">Titles, overviews, and episode names are normalised to this language during enrichment — so a foreign-named release (e.g. <code>Бэтмен</code>) shows in your language regardless of how the file was named. Manually-edited titles 🔒 are never overwritten. Applies on the next scan/refresh.</p>
         <button id="save-btn">Save settings</button>
         <div id="save-msg" class="msg"></div>
         <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
@@ -459,7 +479,11 @@ enum AdminWebController {
             <p class="hint" style="margin-top:0;">Read-only. Sensitive columns (password &amp; token hashes, source secrets, request headers) are redacted 🔒.</p>
             <div class="tablist" id="db-tables"><div class="empty">Loading tables…</div></div>
             <div id="db-view" hidden>
-              <div class="toolbar"><strong id="db-title"></strong><span class="hint" id="db-count" style="margin:0;"></span><span class="spacer"></span><button class="mini secondary" id="db-refresh">Refresh</button></div>
+              <div class="toolbar"><strong id="db-title"></strong><span class="hint" id="db-count" style="margin:0;"></span><span class="spacer"></span>
+                <input id="db-search-tmdb" placeholder="TMDB id" style="width:auto;" inputmode="numeric">
+                <input id="db-search-name" placeholder="Name contains…" style="width:auto;">
+                <button class="mini secondary" id="db-search-clear">Clear</button>
+                <button class="mini secondary" id="db-refresh">Refresh</button></div>
               <div class="tablebox"><table class="db"><thead id="db-head"></thead><tbody id="db-body"></tbody></table></div>
               <div class="pager"><button class="mini secondary" id="db-prev">‹ Prev</button><span id="db-range"></span><button class="mini secondary" id="db-next">Next ›</button></div>
             </div>
@@ -588,7 +612,7 @@ enum AdminWebController {
   }
 
   // ---- settings ----
-  var sfields = ['serverName', 'serverID', 'accessTokenTTL', 'refreshTokenTTL', 'enrichmentTTL', 'markersAccess', 'markersStaleAfter', 'playstateRetention', 'maintenanceInterval', 'avatarMaxBytes'];
+  var sfields = ['serverName', 'serverID', 'accessTokenTTL', 'refreshTokenTTL', 'enrichmentTTL', 'metadataLanguage', 'markersAccess', 'markersStaleAfter', 'playstateRetention', 'maintenanceInterval', 'avatarMaxBytes'];
   var snumbers = ['accessTokenTTL', 'refreshTokenTTL', 'enrichmentTTL', 'markersStaleAfter', 'playstateRetention', 'maintenanceInterval'];
   function loadSettings() {
     api('/v1/admin/settings', 'GET').then(function (res) {
@@ -837,20 +861,36 @@ enum AdminWebController {
   var itOriginal = {};  // loaded field values, so Save only locks what changed
   function enterItems() { refreshLibPickers(); }
   $('#it-lib').onchange = function () { itNav = []; var id = $('#it-lib').value; if (id) { itNav.push({ id: id, title: $('#it-lib').selectedOptions[0].textContent }); loadItemList(); } else { $('#it-list').innerHTML = '<div class="empty">Pick a library to browse its titles.</div>'; $('#it-crumbs').innerHTML = ''; } };
+  // Renders the raw, ungrouped catalog hierarchy (a 1-to-1 view of the indexed
+  // source tree) — collections are openable folders, movies appear individually.
+  function itemRow(it) {
+    var isTV = it.type === 'series' || it.type === 'episode' || it.type === 'season';
+    var container = it.type === 'collection' || it.type === 'series' || it.type === 'season' || (it.childCount && it.childCount > 0);
+    var poster = (it.images && it.images.primary)
+      ? '<img class="it-thumb" loading="lazy" src="' + esc(it.images.primary) + '" alt="">'
+      : '<span class="it-thumb">' + (container ? '📁' : '🎞️') + '</span>';
+    var open = container ? '<button class="mini secondary" data-open="' + esc(it.id) + '" data-title="' + esc(it.title) + '">Open</button>' : '';
+    var sub = it.childCount ? (it.childCount + ' inside') : (it.year ? String(it.year) : '');
+    return '<div class="item"><span class="it-row">' + poster +
+      '<span><span class="chip ' + (isTV ? 'tv' : 'movie') + '">' + esc(it.type || 'item') + '</span> ' + esc(it.title) +
+      (sub ? ' <span class="meta">' + esc(sub) + '</span>' : '') + '</span></span>' +
+      '<span class="acts">' + open + '<button class="mini" data-fix="' + esc(it.id) + '">Fix</button></span></div>';
+  }
   function loadItemList() {
     var top = itNav[itNav.length - 1];
     if (!top) return;
-    $('#it-crumbs').innerHTML = itNav.map(function (n, i) { return '<a data-crumb="' + i + '">' + esc(n.title) + '</a>'; }).join(' › ');
-    api('/v1/items?parent=' + encodeURIComponent(top.id) + '&limit=200', 'GET').then(function (res) { return res.ok ? res.json() : { items: [] }; }).then(function (d) {
+    var up = itNav.length > 1 ? '<a data-up="1">⬆ Up</a> · ' : '';
+    $('#it-crumbs').innerHTML = up + itNav.map(function (n, i) { return '<a data-crumb="' + i + '">' + esc(n.title) + '</a>'; }).join(' › ');
+    api('/v1/admin/items?parent=' + encodeURIComponent(top.id) + '&limit=500', 'GET').then(function (res) { return res.ok ? res.json() : { items: [] }; }).then(function (d) {
       var items = d.items || [];
-      $('#it-list').innerHTML = items.length ? items.map(function (it) {
-        var container = (it.childCount && it.childCount > 0) || it.type === 'series' || it.type === 'season';
-        var open = container ? '<button class="mini secondary" data-open="' + esc(it.id) + '" data-title="' + esc(it.title) + '">Open</button>' : '';
-        return '<div class="item"><span><span class="chip ' + (it.type === 'series' || it.type === 'episode' || it.type === 'season' ? 'tv' : 'movie') + '">' + esc(it.type || 'item') + '</span> ' + esc(it.title) + (it.year ? ' <span class="meta">' + it.year + '</span>' : '') + '</span><span class="acts">' + open + '<button class="mini" data-fix="' + esc(it.id) + '">Fix</button></span></div>';
-      }).join('') : '<div class="empty">No titles here.</div>';
+      $('#it-list').innerHTML = items.length ? items.map(itemRow).join('') : '<div class="empty">Nothing here.</div>';
     });
   }
-  $('#it-crumbs').onclick = function (e) { var i = e.target.getAttribute('data-crumb'); if (i == null) return; itNav = itNav.slice(0, Number(i) + 1); closeEditor(); loadItemList(); };
+  $('#it-crumbs').onclick = function (e) {
+    if (e.target.getAttribute('data-up') != null) { if (itNav.length > 1) { itNav.pop(); closeEditor(); loadItemList(); } return; }
+    var i = e.target.getAttribute('data-crumb'); if (i == null) return;
+    itNav = itNav.slice(0, Number(i) + 1); closeEditor(); loadItemList();
+  };
   $('#it-list').onclick = function (e) {
     var open = e.target.getAttribute('data-open');
     if (open) { itNav.push({ id: open, title: e.target.getAttribute('data-title') }); closeEditor(); loadItemList(); return; }
@@ -962,10 +1002,14 @@ enum AdminWebController {
       if (dbState.table) loadDbRows();
     });
   }
-  function openTable(name) { dbState.table = name; dbState.offset = 0; loadDbRows(); Array.prototype.forEach.call(document.querySelectorAll('#db-tables .tab'), function (b) { b.classList.toggle('active', b.dataset.table === name); }); }
+  function openTable(name) { dbState.table = name; dbState.offset = 0; $('#db-search-tmdb').value = ''; $('#db-search-name').value = ''; loadDbRows(); Array.prototype.forEach.call(document.querySelectorAll('#db-tables .tab'), function (b) { b.classList.toggle('active', b.dataset.table === name); }); }
   function loadDbRows() {
     if (!dbState.table) return;
-    var q = '/v1/admin/db/query?table=' + encodeURIComponent(dbState.table) + '&limit=' + dbState.limit + '&offset=' + dbState.offset;
+    var tmdb = ($('#db-search-tmdb').value || '').trim();
+    var name = ($('#db-search-name').value || '').trim();
+    var q = '/v1/admin/db/query?table=' + encodeURIComponent(dbState.table) + '&limit=' + dbState.limit + '&offset=' + dbState.offset
+      + (tmdb ? '&tmdbId=' + encodeURIComponent(tmdb) : '')
+      + (name ? '&name=' + encodeURIComponent(name) : '');
     api(q, 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (d) {
       if (!d) return;
       dbState.total = d.total; $('#db-view').hidden = false; $('#db-title').textContent = d.table;
@@ -981,6 +1025,10 @@ enum AdminWebController {
   $('#db-prev').onclick = function () { dbState.offset = Math.max(0, dbState.offset - dbState.limit); loadDbRows(); };
   $('#db-next').onclick = function () { if (dbState.offset + dbState.limit < dbState.total) { dbState.offset += dbState.limit; loadDbRows(); } };
   $('#db-refresh').onclick = function () { loadDbTables(); };
+  var dbSearch = function () { dbState.offset = 0; loadDbRows(); };
+  $('#db-search-tmdb').addEventListener('input', dbSearch);
+  $('#db-search-name').addEventListener('input', dbSearch);
+  $('#db-search-clear').onclick = function () { $('#db-search-tmdb').value = ''; $('#db-search-name').value = ''; dbSearch(); };
 
   // ---- diagnostics: logs ----
   var logState = { after: 0, paused: false };

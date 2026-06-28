@@ -420,6 +420,21 @@ struct Catalog: Sendable {
         }
     }
 
+    /// A library's top level **without** collection grouping — the raw file-tree
+    /// view used by the admin item-correction browser. Unlike `topLevelItems`,
+    /// this never hides a collection's members behind a box-set tile: collection
+    /// containers appear as their own (openable) rows and standalone movies appear
+    /// individually, so what you browse maps 1-to-1 onto the indexed source tree.
+    func rawTopLevel(libraryId: String, limit: Int, offset: Int) async throws -> [ItemRecord] {
+        try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("libraryId") == libraryId && Column("parentId") == nil)
+                .order(Column("sortTitle"), Column("title"), Column("id"))
+                .limit(limit + 1, offset: offset)
+                .fetchAll(db)
+        }
+    }
+
     /// Every episode of a series (across all its seasons), ordered by
     /// (season, episode) then insertion — the natural play order. Used to compute
     /// "next up" (the next unwatched episode) for the unified Continue Watching row.

@@ -188,6 +188,11 @@ struct EnrichmentService: Sendable {
     private func apply(_ fields: EnrichedFields, to item: inout ItemRecord) {
         // Manual edits win: never overwrite a field the admin has locked.
         let locked = item.lockedFields()
+        // Normalise the display title to TMDB's name in the server's metadata
+        // language (so a foreign-named release shows in the declared language).
+        if !locked.contains(LockableField.title), let title = fields.title, !title.isEmpty {
+            item.title = title
+        }
         if !locked.contains(LockableField.overview) { item.overview = fields.overview }
         if !locked.contains(LockableField.year), let year = fields.year { item.year = year }
         if !locked.contains(LockableField.runtime) { item.runtime = fields.runtimeSeconds }

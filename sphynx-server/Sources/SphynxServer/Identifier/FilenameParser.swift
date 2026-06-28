@@ -38,7 +38,7 @@ enum FilenameParser {
     static func parse(_ key: String) -> Parsed {
         // Last path component, extension stripped.
         let lastComponent = key.split(separator: "/").last.map(String.init) ?? key
-        var noExtension = stripExtension(lastComponent)
+        var noExtension = stripSiteTag(stripExtension(lastComponent))
 
         // Drop leading `[group]` release/fansub tags (`[pcela] Suzume (2022)…`) so
         // the tag never leaks into the title as a bogus first word. Only *leading*
@@ -86,6 +86,29 @@ enum FilenameParser {
 
         let title = kept.joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return Parsed(title: title.isEmpty ? noExtension : title, year: year)
+    }
+
+    /// Drop a leading tracker/site tag a scene release often prepends —
+    /// `www.UIndex.org    -    Planes 2013 …` or `[ www.Tracker.to ] Movie …` —
+    /// so the domain never becomes the title. Fires only when the tag is clearly a
+    /// site reference (a `www.` prefix or a bracketed `host.tld`) and real content
+    /// follows, so an ordinary title that merely contains a dot is left untouched.
+    static func stripSiteTag(_ name: String) -> String {
+        let patterns = [
+            // `www.host.tld` optionally bracketed, then separators: `www.X.org - `.
+            #"^\s*[\[(]?\s*www\.[a-z0-9.-]+?\.[a-z]{2,6}\s*[\])]?\s*[-–—_:.|]*\s*"#,
+            // `[host.tld]` / `(host.tld)` — a bracketed bare domain tag.
+            #"^\s*[\[(]\s*[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}\s*[\])]\s*[-–—_:.|]*\s*"#,
+        ]
+        var result = name
+        for pattern in patterns {
+            if let r = result.range(of: pattern, options: [.regularExpression, .caseInsensitive]),
+               r.lowerBound == result.startIndex, r.upperBound < result.endIndex {
+                let stripped = String(result[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                if !stripped.isEmpty { result = stripped }
+            }
+        }
+        return result
     }
 
     private static func stripExtension(_ name: String) -> String {
