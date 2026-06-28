@@ -1,3 +1,4 @@
+import Foundation
 import Hummingbird
 import SphynxProtocol
 
@@ -7,6 +8,8 @@ import SphynxProtocol
 struct UserStateController: Sendable {
     let catalog: Catalog
     let userState: UserStateService
+    /// Live updates: a state change publishes a per-subject event.
+    let events: EventBus
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.put("items/:itemId/state", use: setState)
@@ -30,6 +33,10 @@ struct UserStateController: Sendable {
             userId: identity.userId, itemId: itemId,
             watched: body.watched, isFavorite: body.isFavorite
         )
+        await events.publish(
+            .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
+                           playCount: state.playCount, ts: Date().timeIntervalSince1970),
+            to: .user(identity.userId))
         var item = record.toProtocol(full: false)
         UserStateService.fold(state, into: &item)
         return item

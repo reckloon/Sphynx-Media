@@ -8,6 +8,8 @@ struct PlaystateController: Sendable {
     let playstate: PlaystateService
     /// Per-user item state — a successful stop bumps play count + last-played.
     let userState: UserStateService
+    /// Live updates: progress/stop publish a per-subject playstate event.
+    let events: EventBus
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.post("playstate/:itemId/start", use: start)
@@ -22,6 +24,8 @@ struct PlaystateController: Sendable {
         let (userId, itemId) = try subjectAndItem(context)
         let body = try await request.decode(as: PlaystateStartBody.self, context: context)
         try await playstate.start(userId: userId, itemId: itemId, position: body.position)
+        await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
+                             to: .user(userId))
         return Response(status: .noContent)
     }
 
@@ -30,6 +34,8 @@ struct PlaystateController: Sendable {
         let (userId, itemId) = try subjectAndItem(context)
         let body = try await request.decode(as: PlaystateProgressBody.self, context: context)
         try await playstate.progress(userId: userId, itemId: itemId, position: body.position)
+        await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
+                             to: .user(userId))
         return Response(status: .noContent)
     }
 
@@ -39,12 +45,20 @@ struct PlaystateController: Sendable {
         let body = try await request.decode(as: PlaystateStopBody.self, context: context)
         // A failed stop must not clobber a good resume point — handled in the service.
         try await playstate.stop(userId: userId, itemId: itemId, position: body.position, failed: body.failed)
+        await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
+                             to: .user(userId))
         // A real (non-failed) stop counts as a play: bump count + last-played.
         if !body.failed {
-            try await userState.recordPlay(userId: userId, itemId: itemId)
+            let state = try await userState.recordPlay(userId: userId, itemId: itemId)
+            await events.publish(
+                .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
+                               playCount: state.playCount, ts: Self.now()),
+                to: .user(userId))
         }
         return Response(status: .noContent)
     }
+
+    private static func now() -> Double { Date().timeIntervalSince1970 }
 
     @Sendable
     func get(_ request: Request, context: SphynxRequestContext) async throws -> PlaystateResponse {

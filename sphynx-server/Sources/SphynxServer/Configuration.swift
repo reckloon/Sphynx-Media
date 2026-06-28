@@ -49,6 +49,11 @@ struct ServerConfiguration: Sendable {
     /// never polls.
     var playstateReportInterval: Double = 5
 
+    /// Heartbeat cadence for the `GET /v1/events` SSE stream, seconds. A comment
+    /// ping is sent this often to keep proxies from idling the connection and to
+    /// detect a vanished client. Startup-only. Default 15.
+    var eventsHeartbeat: Double = 15
+
     static func fromEnvironment() -> ServerConfiguration {
         let env = ProcessInfo.processInfo.environment
         return ServerConfiguration(
@@ -70,7 +75,8 @@ struct ServerConfiguration: Sendable {
             markersStaleAfter: env["SPHYNX_MARKERS_STALE_AFTER"].flatMap(Double.init) ?? 604_800,    // 7 days
             playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days
             maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
-            playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5
+            playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5,
+            eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15
         )
     }
 }

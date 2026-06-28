@@ -15,6 +15,9 @@ struct AdminController: Sendable {
     let settings: SettingsStore
     /// The effective configuration this process booted with (for GET fallback).
     let configuration: ServerConfiguration
+    /// Live updates: scans + library edits publish library-scoped `library` events
+    /// nudging clients to refresh "recently added" / library views.
+    let events: EventBus
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let admin = group.group("admin")
@@ -95,6 +98,7 @@ struct AdminController: Sendable {
         let body = try await request.decode(as: CreateLibraryRequest.self, context: context)
         guard !body.title.isEmpty else { throw SphynxError.badRequest("title is required") }
         let record = try await catalog.createLibrary(title: body.title, kind: body.kind ?? "other")
+        await notifyLibrariesChanged([record.id], action: "added")
         return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
     }
 
@@ -150,6 +154,7 @@ struct AdminController: Sendable {
         }
         let body = try await request.decode(as: UpdateLibraryRequest.self, context: context)
         let record = try await catalog.updateLibrary(id: libraryId, title: body.title, kind: body.kind)
+        await notifyLibrariesChanged([record.id], action: "updated")
         return LibraryResponse(id: record.id, title: record.title, kind: record.kind)
     }
 
@@ -161,6 +166,7 @@ struct AdminController: Sendable {
             throw SphynxError.badRequest("Missing library id")
         }
         try await catalog.deleteLibrary(id: libraryId)
+        await notifyLibrariesChanged([libraryId], action: "removed")
         return Response(status: .noContent)
     }
 
@@ -255,13 +261,30 @@ struct AdminController: Sendable {
         guard let sourceId = context.parameters.get("sourceId") else {
             throw SphynxError.badRequest("Missing source id")
         }
-        return try await indexer.scan(sourceId: sourceId)
+        let summary = try await indexer.scan(sourceId: sourceId)
+        if let source = try await catalog.source(id: sourceId) {
+            await notifyLibrariesChanged(source.feedsLibraries(), action: "scanned")
+        }
+        return summary
     }
 
     @Sendable
     func scanAll(_ request: Request, context: SphynxRequestContext) async throws -> IndexAllSummary {
         try requireAdmin(context)
-        return IndexAllSummary(sources: try await indexer.scanAll())
+        let summary = IndexAllSummary(sources: try await indexer.scanAll())
+        var libs: Set<String> = []
+        for source in try await catalog.sources() { libs.formUnion(source.feedsLibraries()) }
+        await notifyLibrariesChanged(libs, action: "scanned")
+        return summary
+    }
+
+    /// Emit a `library` event per affected library so clients refresh their views.
+    private func notifyLibrariesChanged(_ libraryIds: Set<String>, action: String) async {
+        let now = Date().timeIntervalSince1970
+        for libraryId in libraryIds {
+            await events.publish(.library(libraryId: libraryId, action: action, ts: now),
+                                 to: .library(libraryId))
+        }
     }
 
     @Sendable

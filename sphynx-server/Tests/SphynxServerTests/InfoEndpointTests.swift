@@ -18,6 +18,9 @@ struct InfoEndpointTests {
                 #expect(info.serverName == "Test Library")
                 #expect(info.id == "srv_test")
                 #expect(info.protocols == ["v1"])
+                // The additive event stream is advertised so clients can opt in.
+                #expect(info.capabilities.events == true)
+                #expect(info.capabilities.playstate == true)
             }
         }
     }

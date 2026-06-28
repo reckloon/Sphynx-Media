@@ -42,6 +42,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "search": false,
     "playstate": true,
     "candidates": false,
+    "events": true,
     "metadata": { "markers": "readwrite", "images": "read" },
     "playstateReportInterval": 5
   }
@@ -52,6 +53,8 @@ cadence: a client that reports progress periodically SHOULD `POST` to
 `/v1/playstate/{id}/progress` this often (default ~5s if absent). **Push-only** —
 the server stores what the client sends and never polls the client. Reporting is
 optional for the client; progress reports don't bump `Item.updatedAt`.
+`events` advertises the additive server→client event stream (see [Events](#events-serversent)).
+Absent ⇒ `false`: the client falls back to polling.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
@@ -313,6 +316,63 @@ here.
 
 ---
 
+## Events (server-sent)
+
+### `GET /v1/events` — auth required
+
+An **additive** server→client event stream over [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
+(`Content-Type: text/event-stream`). Purely a live-update convenience: it lets a
+client keep UI fresh (continue-watching, now-playing, watched/favorite sync)
+without polling, and never replaces the access-controlled REST endpoints. Advertised
+by `capabilities.events`; a client that ignores it (or a server that doesn't offer
+it) keeps working by polling.
+
+The connection is scoped to the authenticated subject, and **each event is
+filtered by access**: per-user events (`playstate`, `useritemstate`) go only to the
+subject's own connections; item/library events (`markers`, `library`) reach only
+connections that may read that library (a `null` library is admin-only — the same
+fail-closed rule as item reads). The server sends a comment heartbeat (`: ping`)
+roughly every 15s (`SPHYNX_EVENTS_HEARTBEAT`) to keep the connection warm; clients
+reconnect with the browser `EventSource` default behaviour.
+
+Each non-comment frame is `event: <type>` + a one-line JSON `data:` payload with a
+stable `type` discriminator and `ts` (epoch seconds). Unknown `type`s and unknown
+fields are ignorable, so new event kinds are forward-compatible. Nil fields are
+omitted.
+
+```
+: connected
+
+event: playstate
+data: {"type":"playstate","itemId":"it_42","position":531.0,"ts":1719536400.12}
+
+event: useritemstate
+data: {"type":"useritemstate","itemId":"it_42","watched":true,"isFavorite":false,"playCount":3,"ts":1719536402.55}
+
+event: markers
+data: {"type":"markers","itemId":"it_42","libraryId":"lib_tv","ts":1719536410.0}
+
+event: library
+data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.0}
+
+: ping
+```
+
+| `type` | Audience | Emitted when | Key fields |
+|---|---|---|---|
+| `playstate` | subject | `start` / `progress` / `stop` reported | `itemId`, `position` |
+| `useritemstate` | subject | watched/favorite set, or a play recorded on stop | `itemId`, `watched`, `isFavorite`, `playCount` |
+| `markers` | library readers | a marker contribution is stored | `itemId`, `libraryId` |
+| `library` | library readers | a scan completes, or a library is added/updated/removed | `libraryId`, `action` (`scanned` \| `added` \| `updated` \| `removed`) |
+| `heartbeat` | — | keep-alive | sent as an SSE comment, not a `data:` frame |
+
+`markers` / `library` are **nudges**: on receipt a client re-fetches via the normal
+access-controlled endpoint (e.g. `GET /v1/home/recent`, `GET /v1/items/{id}/markers`)
+rather than trusting the event as data. The stream is a transport for *liveness*,
+not a second source of truth.
+
+---
+
 ## Admin (server-specific, not part of the wire protocol)
 
 Catalog setup, indexing, manual entry, and server settings. **Auth required**, and
@@ -437,7 +497,8 @@ library → series → seasons → episodes — with `seriesId`, `seasonIndex`,
 
 Index one source: fetch its manifest, diff against the catalog, apply
 adds/updates/removes. **200** →
-`{ "sourceId": "src_…", "scanned": 12, "added": 3, "updated": 1, "removed": 0 }`.
+`{ "sourceId": "src_…", "scanned": 12, "added": 3, "updated": 1, "removed": 0, "enriched": 3 }`
+(`enriched` is the count identified+enriched during the scan; `0` when TMDB isn't configured).
 
 ### `POST /v1/admin/scan`
 

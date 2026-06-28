@@ -26,6 +26,7 @@ struct InfoController: Sendable {
                 search: false,
                 playstate: true,
                 candidates: false,
+                events: true,
                 metadata: policy.advertised,
                 playstateReportInterval: configuration.playstateReportInterval
             )

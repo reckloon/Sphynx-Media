@@ -56,7 +56,22 @@ struct ForwardCompatTests {
         #expect(caps.search == true)
         #expect(caps.playstate == false)
         #expect(caps.candidates == false)
+        // A server that predates the event stream omits the key ⇒ client polls.
+        #expect(caps.events == false)
         #expect(caps.metadata.isEmpty)
+    }
+
+    @Test("The events capability round-trips and is read when advertised")
+    func eventsCapabilityRoundTrips() throws {
+        let caps = Capabilities(playstate: true, events: true)
+        let data = try JSONEncoder().encode(caps)
+        let decoded = try JSONDecoder().decode(Capabilities.self, from: data)
+        #expect(decoded.events == true)
+        #expect(decoded.playstate == true)
+
+        // And it decodes from a raw server payload.
+        let json = #"{ "playstate": true, "events": true }"#.data(using: .utf8)!
+        #expect(try JSONDecoder().decode(Capabilities.self, from: json).events == true)
     }
 
     @Test("Unknown enum string values decode without throwing")

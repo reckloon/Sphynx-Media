@@ -24,13 +24,16 @@ struct UserStateService: Sendable {
     }
 
     /// Record a completed play: bump the play count and last-played time.
-    func recordPlay(userId: String, itemId: String, at now: Double = Date().timeIntervalSince1970) async throws {
+    /// Returns the resulting state.
+    @discardableResult
+    func recordPlay(userId: String, itemId: String, at now: Double = Date().timeIntervalSince1970) async throws -> UserStateRecord {
         try await db.writer.write { db in
             var record = try Self.fetch(db, userId: userId, itemId: itemId)
                 ?? UserStateRecord.empty(userId: userId, itemId: itemId)
             record.playCount += 1
             record.lastPlayedAt = now
             try record.save(db)
+            return record
         }
     }
 
