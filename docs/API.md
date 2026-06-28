@@ -27,7 +27,11 @@ the full narrative — protocol, server design, and extending — is the
 ## Discovery
 
 > The built-in web admin UI is served at **`GET /admin`** (an HTML page, outside
-> the `/v1` API surface) — not part of the JSON protocol described here.
+> the `/v1` API surface) — not part of the JSON protocol described here. A
+> matching **end-user self-service page is served at `GET /user`**, where any
+> signed-in user manages their own display name, profile picture, password, and
+> watch-history reset (it drives only the self-service `/v1/auth/*` and
+> `/v1/playstate` endpoints — no admin rights).
 
 ### `GET /v1/info` — unauthenticated
 

@@ -62,6 +62,7 @@ func buildRouter(
     InfoController(configuration: configuration, policy: policy).addRoutes(to: publicV1)
     authController.addRoutes(to: publicV1)
     AdminWebController.addRoutes(to: router)
+    UserWebController.addRoutes(to: router)
 
     // Secured surface: everything else requires a valid bearer token.
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
