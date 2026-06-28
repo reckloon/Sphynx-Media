@@ -14,6 +14,10 @@ struct Indexer: Sendable {
     /// Present when TMDB is configured; TV identify + enrich during reconcile.
     let tv: TVEnricher?
 
+    /// Container/leaf types enriched inline during reconcile (not via the movie
+    /// pass). Used to exclude them from the post-reconcile `EnrichmentService` loop.
+    static let tvTypes: Set<String> = ["series", "season", "episode"]
+
     /// Scan one source, reporting scan activity to the diagnostics center (the web
     /// admin Activity tab) and ensuring the in-flight flag is cleared even on error.
     func scan(sourceId: String) async throws -> IndexSummary {
@@ -61,8 +65,20 @@ struct Indexer: Sendable {
         var touchedContainers: Set<String> = []
 
         var added = 0, updated = 0
+        var tvEnriched = 0
 
         // --- nested helpers (capture the caches above) ---
+
+        // Report one TV row (series/season/episode) enriched during reconcile to
+        // the diagnostics center, so the Activity tab counts TV work instead of
+        // only movies. TV enriches inline here (not via EnrichmentService), so
+        // without this it never registers as "enriched" and later shows "skipped".
+        func noteTVEnriched(_ record: ItemRecord) async {
+            tvEnriched += 1
+            let token = await DiagnosticsCenter.shared.begin(
+                itemId: record.id, title: record.title, kind: "tv")
+            await DiagnosticsCenter.shared.finish(token, result: .enriched)
+        }
 
         func cachedSeason(tmdbId: Int, season: Int) async -> TMDBSeasonDetails? {
             let key = "\(tmdbId)|\(season)"
@@ -98,6 +114,7 @@ struct Indexer: Sendable {
                     apply(fields, to: &record, now: now)
                 }
                 changed = true
+                await noteTVEnriched(record)
             }
             if changed {
                 record.updatedAt = now
@@ -142,6 +159,7 @@ struct Indexer: Sendable {
                 record.enrichedAt = now
                 record.updatedAt = now
                 try await catalog.updateItem(record)
+                await noteTVEnriched(record)
             }
             seasonCache[cacheKey] = record
             return record
@@ -210,6 +228,7 @@ struct Indexer: Sendable {
                 if let current = existingByKey.removeValue(forKey: entry.key) {
                     var record = current
                     var changed = false
+                    var didEnrich = false
                     if record.parentId != season.id || record.seasonIndex != ep.season || record.episodeIndex != ep.episode {
                         record.parentId = season.id
                         record.seriesId = series.id
@@ -221,12 +240,14 @@ struct Indexer: Sendable {
                     if record.primaryImage == nil, let episodeMeta {
                         applyEpisode(&record, episodeMeta)
                         changed = true
+                        didEnrich = true
                     }
                     if changed {
                         record.updatedAt = now
                         try await catalog.updateItem(record)
                         updated += 1
                     }
+                    if didEnrich { await noteTVEnriched(record) }
                 } else {
                     var record = try await catalog.createItem(
                         type: "episode", title: episodeTitle, sourceId: source.id, sourceKey: entry.key,
@@ -239,6 +260,7 @@ struct Indexer: Sendable {
                         applyEpisode(&record, episodeMeta)
                         record.updatedAt = now
                         try await catalog.updateItem(record)
+                        await noteTVEnriched(record)
                     }
                     added += 1
                 }
@@ -323,10 +345,14 @@ struct Indexer: Sendable {
             try await catalog.setChildCount(itemId: containerId, count: count)
         }
 
-        // Movie identify + enrich (best-effort; skips fresh and non-movie items).
-        var enriched = 0
+        // Movie identify + enrich (best-effort). TV (series/season/episode) is
+        // already enriched inline above and reported via `noteTVEnriched`, so it's
+        // excluded here — otherwise the movie pass re-touches every fresh TV row and
+        // reports a spurious `.skipped`, drowning the Activity tab in skips.
+        var enriched = tvEnriched
         if let enrichment {
             let candidates = try await catalog.itemsBySource(sourceId: sourceId)
+                .filter { !Self.tvTypes.contains($0.type) }
             await DiagnosticsCenter.shared.enqueue(candidates.count)
             for item in candidates where await enrichment.process(item, force: false) {
                 enriched += 1

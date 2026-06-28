@@ -220,6 +220,49 @@ resolves to a movie, a bare `Title/` folder to a show). Extras don't appear in a
 library's top-level grid; a client lists a title's extras with
 `GET /v1/items?parent=<parentId>` (alongside a show's seasons).
 
+#### How clients should implement extras
+
+The contract is deliberately narrow: **the server classifies, the client presents.**
+The server guarantees two things — every extra carries an extras `type` (`trailer` /
+`featurette` / `deletedScene` / `behindTheScenes`), and every extra hangs off its
+title via `parentId`. It does **not** dictate layout. How extras are surfaced is
+entirely a client decision; the same catalog can be rendered three different ways by
+three different clients without any server change.
+
+To consume them:
+
+1. Browse a title's children with `GET /v1/items?parent=<movieId|seriesId>`. The
+   response mixes the title's structural children (a show's `season` rows) with its
+   extras (`trailer` / `featurette` / `deletedScene` / `behindTheScenes` rows).
+2. **Partition by `type`.** Pull the four extras types out of the listing and group
+   them by `type` — that grouping is the basis for every presentation below. Treat
+   any `type` you don't recognize as a generic extra (the set is open and may grow);
+   never assume the list is exhaustive.
+3. Play an extra exactly like any leaf item — `GET /v1/resolve/<id>` returns its
+   direct URL. Extras carry no TMDB id and only the metadata parsed from their
+   filename (`title`, `container`), so render them as simple clips, not rich tiles.
+
+Presentation is open — common, equally-valid patterns a client may choose:
+
+- **A "Bonus / Extras" shelf** on the title's detail screen, optionally sub-grouped
+  into "Trailers", "Deleted Scenes", "Featurettes", "Behind the Scenes" by `type`.
+  This is the most common layout and the recommended default.
+- **A pseudo-season per category.** A client may present each extras `type` as if it
+  were a season of the show — e.g. a "Deleted Scenes" row or a "Featurettes" row
+  shown next to *Season 1*, *Season 2*, … — by synthesizing those groupings client-side
+  from the `type` partition. Note this is a **client-side rendering choice only**: the
+  server never emits a `season`-typed container for extras, and the extras' real
+  `parentId` is the title, not a season. (A genuine `season` with `seasonIndex: 0` —
+  *Specials* — is different: those are real aired episodes the server enriches from
+  TMDB, not bonus clips. Don't conflate the two.)
+- **A dedicated "Extras" library/view.** A client may instead collect extras across
+  titles into their own top-level section. Build it by walking each title's children
+  and bucketing the extras client-side; the server exposes no separate extras library
+  or endpoint, so this view is composed entirely on the client.
+
+In short: rely on `type` + `parentId`; choose whatever of the above (or another
+layout) fits your UI. The server will not change shape underneath you.
+
 ### Collections / box sets
 
 When a movie belongs to a TMDB collection, the server creates (or reuses, deduped

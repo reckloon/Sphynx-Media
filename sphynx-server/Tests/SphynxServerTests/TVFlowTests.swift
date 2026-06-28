@@ -73,6 +73,9 @@ struct TVFlowTests {
             ) { try $0.decoded() }
             #expect(summary.scanned == 2)
             #expect(summary.added == 2)
+            // TV enrichment is counted (and reported to the Activity tab): the
+            // series, its season, and both episodes — not just movies.
+            #expect(summary.enriched == 4)
 
             // Top level of the library → one series, enriched.
             let top: ItemsResponse = try await client.execute(

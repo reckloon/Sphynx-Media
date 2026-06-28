@@ -480,6 +480,16 @@
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}?detail=full</span><span class="badge auth">auth</span></div>
 <p>A single item. <strong>404</strong> <code>not_found</code> if absent. See <a href="#api-item">Item shape</a>.</p>
 
+<h4 id="api-extras">Extras / bonus content</h4>
+<p>Trailers, featurettes, deleted scenes, and behind-the-scenes clips arrive as their own typed items (<code>type</code> = <code>trailer</code> / <code>featurette</code> / <code>deletedScene</code> / <code>behindTheScenes</code>), <strong>nested under their movie or show</strong> via <code>parentId</code> — never as a standalone library tile, never as a real <code>season</code>. The split is deliberate: <strong>the server classifies, the client presents.</strong> The server promises only the <code>type</code> and the <code>parentId</code>; layout is entirely the client's call.</p>
+<p>To consume them, browse a title's children (<code>GET /v1/items?parent=&lt;movieId|seriesId&gt;</code>) — the listing mixes a show's <code>season</code> rows with its extras — then <strong>partition by <code>type</code></strong>. From that grouping a client may render extras however it likes; all of these are valid:</p>
+<ul>
+  <li><strong>A "Bonus / Extras" shelf</strong> on the detail screen, optionally sub-grouped into Trailers / Deleted Scenes / Featurettes / Behind the Scenes. The recommended default.</li>
+  <li><strong>A pseudo-season per category</strong> — show "Deleted Scenes" or "Featurettes" as if it were a season row beside <em>Season 1</em>, <em>Season 2</em>, … This is a <em>client-side rendering choice only</em>: the server emits no <code>season</code> container for extras, and their real <code>parentId</code> is the title.</li>
+  <li><strong>A dedicated "Extras" library/view</strong> — collect extras across titles into their own section, composed client-side by walking each title's children. The server exposes no separate extras library or endpoint.</li>
+</ul>
+<p>Play an extra like any leaf (<code>GET /v1/resolve/&lt;id&gt;</code>); it carries no TMDB id, only filename-derived <code>title</code>/<code>container</code>. Treat the extras <code>type</code> set as <strong>open</strong> — render an unknown type as a generic extra rather than assuming the list is fixed. <em>Specials</em> (a real <code>season</code> with <code>seasonIndex: 0</code>) are <strong>not</strong> extras — they're aired episodes the server enriches from TMDB; don't conflate the two.</p>
+
 <h3 id="search">Search <span class="badge soon">optional</span></h3>
 <p>Search is <strong>optional</strong>, and on purpose. A server advertises whether it implements server-side search through <code>capabilities.search</code>; when that is <code>false</code> the <code>/v1/search</code> endpoint is simply absent. The <strong>reference server ships <code>search:false</code></strong> and implements no server-side search — it leaves search to the client, which is usually the better place for it.</p>
 <div class="callout">
