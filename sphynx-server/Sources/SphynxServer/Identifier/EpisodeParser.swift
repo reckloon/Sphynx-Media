@@ -18,7 +18,9 @@ enum EpisodeParser {
     // NSRegularExpression (Foundation) for reliable cross-platform behaviour.
     private static let patterns: [NSRegularExpression] = {
         let raw = [
-            "[sS](\\d{1,2})[eE](\\d{1,2})",                 // S01E02 / s1e2
+            // Season/episode allow up to 4 digits so long-running anime
+            // (`S01E1071`) and year-as-season daily shows (`S2024E01`) survive.
+            "[sS](\\d{1,4})[eE](\\d{1,4})",                 // S01E02 / s1e2 / S01E1071
             "(?<![0-9])(\\d{1,2})[xX](\\d{2})(?![0-9])",    // 1x05 (not 1280x720)
         ]
         return raw.compactMap { try? NSRegularExpression(pattern: $0) }

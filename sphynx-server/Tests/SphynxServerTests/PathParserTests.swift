@@ -94,4 +94,84 @@ struct PathParserTests {
         let p = PathParser.parse("Parks and Recreation (2009)/Season 6/Parks.and.Recreation.S06E01-02.mkv.strm")
         #expect(p == .episode(series: "Parks and Recreation", season: 6, episode: 1, episodeTitle: nil, year: 2009))
     }
+
+    // MARK: - Localized library roots (folder language-agnostic)
+
+    @Test("a localized library root is treated as a bucket, not the title")
+    func localizedLibraryRoots() {
+        // The root is the wrong title; the filename carries the real title + year.
+        #expect(PathParser.parse("Фильмы/Тачки.2006.1080p.mkv") == .movie(title: "Тачки", year: 2006))
+        #expect(PathParser.parse("映画/千と千尋の神隠し.2001.mkv") == .movie(title: "千と千尋の神隠し", year: 2001))
+        #expect(PathParser.parse("Películas/Coco.2017.1080p.mkv") == .movie(title: "Coco", year: 2017))
+    }
+
+    @Test("an unlisted root with no year defers to a filename that has one")
+    func unlistedBucketDefersToFilename() {
+        // "Кинокартины" isn't in the bucket list; it carries no year and is
+        // unrelated to the file's title, so the richer filename wins.
+        let p = PathParser.parse("Кинокартины/Coco.2017.1080p.mkv")
+        #expect(p == .movie(title: "Coco", year: 2017))
+    }
+
+    @Test("a yearless title folder borrows the year from the filename")
+    func folderTitleBorrowsFileYear() {
+        let p = PathParser.parse("Big Hero 6/Big.Hero.6.2014.1080p.mkv")
+        #expect(p == .movie(title: "Big Hero 6", year: 2014))
+    }
+
+    @Test("a scene-style dotted release folder is cleaned like a filename")
+    func dottedReleaseFolder() {
+        let p = PathParser.parse("Cars.2006.1080p.BluRay.x264-GROUP/Cars.2006.1080p.BluRay.x264.mkv")
+        #expect(p == .movie(title: "Cars", year: 2006))
+    }
+
+    // MARK: - Numeric / leading-year titles (flat files)
+
+    @Test("a flat numeric-title file keeps the title and real year")
+    func flatNumericTitle() {
+        #expect(PathParser.parse("1917.2019.1080p.BluRay.x264.mkv") == .movie(title: "1917", year: 2019))
+    }
+
+    @Test("a movie ending in a number is not mistaken for an absolute episode")
+    func numericMovieNotEpisode() {
+        #expect(PathParser.parse("Blade Runner 2049 (2017).mkv") == .movie(title: "Blade Runner 2049", year: 2017))
+        #expect(PathParser.parse("Ocean's 11 (2001)/Oceans.Eleven.2001.mkv") == .movie(title: "Ocean's 11", year: 2001))
+    }
+
+    // MARK: - Long-running / absolute / date-based episodes
+
+    @Test("a 3-4 digit episode number is not truncated")
+    func largeEpisodeNumber() {
+        let p = PathParser.parse("One Piece/Season 1/One Piece.S01E1071.mkv")
+        #expect(p == .episode(series: "One Piece", season: 1, episode: 1071, episodeTitle: nil, year: nil))
+    }
+
+    @Test("an absolute-numbered anime episode is detected")
+    func absoluteEpisode() {
+        // Flat (4-digit number is enough signal):
+        #expect(PathParser.parse("One Piece - 1071.mkv")
+            == .episode(series: "One Piece", season: 1, episode: 1071, episodeTitle: nil, year: nil))
+        // With a fansub group tag, even a small number is recognised, tag dropped:
+        #expect(PathParser.parse("[SubsPlease] One Piece - 1071 (1080p).mkv")
+            == .episode(series: "One Piece", season: 1, episode: 1071, episodeTitle: nil, year: nil))
+        // In a season folder, the folder supplies the season:
+        #expect(PathParser.parse("One Piece/Season 1/One Piece - 1071.mkv")
+            == .episode(series: "One Piece", season: 1, episode: 1071, episodeTitle: nil, year: nil))
+    }
+
+    @Test("a bare single-digit trailing number without TV signal stays a movie")
+    func absoluteRequiresSignal() {
+        // No season folder, no group tag, single digit → don't hijack as episode.
+        if case .episode = PathParser.parse("Naruto - 5.mkv") {
+            Issue.record("single-digit bare number should not be an absolute episode")
+        }
+    }
+
+    @Test("a date-stamped daily episode is detected (season=year, episode=MMDD)")
+    func dateStampedEpisode() {
+        #expect(PathParser.parse("The Daily Show/2024-01-15.mkv")
+            == .episode(series: "The Daily Show", season: 2024, episode: 115, episodeTitle: nil, year: nil))
+        #expect(PathParser.parse("The.Daily.Show.2024.01.15.1080p.WEB.mkv")
+            == .episode(series: "The Daily Show", season: 2024, episode: 115, episodeTitle: nil, year: nil))
+    }
 }

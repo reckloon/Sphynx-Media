@@ -44,4 +44,42 @@ struct FilenameParserTests {
         let p = FilenameParser.parse("BigBuckBunny_320x180.mp4")
         #expect(p.year == nil)  // 320x180 is not a 4-digit year token
     }
+
+    @Test("a WxH resolution token is stripped from the title")
+    func resolutionStripped() {
+        let p = FilenameParser.parse("BigBuckBunny_1280x720.mp4")
+        #expect(p.title == "BigBuckBunny")
+        #expect(p.year == nil)
+    }
+
+    @Test("a numeric/leading-year title keeps the title and the real release year")
+    func leadingYearTitle() {
+        // The first year token is part of the title, not the boundary; the second
+        // is the release year.
+        let p = FilenameParser.parse("1917.2019.1080p.BluRay.x264.mkv")
+        #expect(p.title == "1917")
+        #expect(p.year == 2019)
+    }
+
+    @Test("a title that starts with a year and has no release year stays intact")
+    func leadingYearNoRelease() {
+        let p = FilenameParser.parse("2001 A Space Odyssey (1968).mkv")
+        #expect(p.title == "2001 A Space Odyssey")
+        #expect(p.year == 1968)
+    }
+
+    @Test("a single-word title that collides with junk vocabulary survives")
+    func junkVocabularyTitle() {
+        // "cam" is a release-source token, but here it's the whole title (Cam, 2018).
+        let p = FilenameParser.parse("Cam.2018.1080p.WEB-DL.mkv")
+        #expect(p.title == "Cam")
+        #expect(p.year == 2018)
+    }
+
+    @Test("a full-width-digit year is recognised")
+    func fullWidthYear() {
+        let p = FilenameParser.parse("君の名は。２０１６.mkv")
+        #expect(p.title == "君の名は")
+        #expect(p.year == 2016)
+    }
 }
