@@ -40,7 +40,14 @@ struct AuthService: Sendable {
             isAdmin: true,
             createdAt: Date().timeIntervalSince1970
         )
-        try await db.writer.write { db in try user.insert(db) }
+        // Re-check the count inside the same write transaction so the
+        // check-and-insert is atomic and can never create a second admin.
+        let inserted = try await db.writer.write { db -> Bool in
+            guard try UserRecord.fetchCount(db) == 0 else { return false }
+            try user.insert(db)
+            return true
+        }
+        guard inserted else { return }
         if generated {
             logger.warning("""
             No SPHYNX_ADMIN_PASSWORD set — generated a random password for admin account '\(username)':

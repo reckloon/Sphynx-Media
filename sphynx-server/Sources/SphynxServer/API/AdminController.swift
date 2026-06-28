@@ -147,20 +147,28 @@ struct AdminController: Sendable {
         try requireAdmin(context)
         let body = try await request.decode(as: UpdateSettingsRequest.self, context: context)
         var updates: [String: String] = [:]
+        // TTLs must be strictly positive — a non-positive access-token TTL would
+        // issue already-expired tokens and break login after the next restart.
+        func requirePositive(_ v: Double, _ label: String) throws -> Double {
+            guard v > 0 else { throw SphynxError.badRequest("\(label) must be greater than 0") }
+            return v
+        }
         if let v = body.serverName { updates[SettingKey.serverName.rawValue] = v }
         if let v = body.serverID { updates[SettingKey.serverID.rawValue] = v }
-        if let v = body.accessTokenTTL { updates[SettingKey.accessTokenTTL.rawValue] = String(v) }
-        if let v = body.refreshTokenTTL { updates[SettingKey.refreshTokenTTL.rawValue] = String(v) }
-        if let v = body.enrichmentTTL { updates[SettingKey.enrichmentTTL.rawValue] = String(v) }
+        if let v = body.accessTokenTTL { updates[SettingKey.accessTokenTTL.rawValue] = String(try requirePositive(v, "accessTokenTTL")) }
+        if let v = body.refreshTokenTTL { updates[SettingKey.refreshTokenTTL.rawValue] = String(try requirePositive(v, "refreshTokenTTL")) }
+        if let v = body.enrichmentTTL { updates[SettingKey.enrichmentTTL.rawValue] = String(try requirePositive(v, "enrichmentTTL")) }
         if let v = body.markersAccess {
             guard ["none", "read", "readwrite"].contains(v) else {
                 throw SphynxError.badRequest("markersAccess must be none | read | readwrite")
             }
             updates[SettingKey.markersAccess.rawValue] = v
         }
-        if let v = body.markersStaleAfter { updates[SettingKey.markersStaleAfter.rawValue] = String(v) }
-        if let v = body.playstateRetention { updates[SettingKey.playstateRetention.rawValue] = String(v) }
+        // Non-negative durations/limits; a negative maintenanceInterval simply disables it.
+        if let v = body.markersStaleAfter { updates[SettingKey.markersStaleAfter.rawValue] = String(max(0, v)) }
+        if let v = body.playstateRetention { updates[SettingKey.playstateRetention.rawValue] = String(max(0, v)) }
         if let v = body.maintenanceInterval { updates[SettingKey.maintenanceInterval.rawValue] = String(v) }
+        if let v = body.avatarMaxBytes { updates[SettingKey.avatarMaxBytes.rawValue] = String(max(0, v)) }
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
@@ -556,6 +564,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
     var markersStaleAfter: Double
     var playstateRetention: Double
     var maintenanceInterval: Double
+    var avatarMaxBytes: Int
 
     init(from c: ServerConfiguration) {
         self.serverName = c.serverName
@@ -567,6 +576,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
         self.markersStaleAfter = c.markersStaleAfter
         self.playstateRetention = c.playstateRetention
         self.maintenanceInterval = c.maintenanceInterval
+        self.avatarMaxBytes = c.avatarMaxBytes
     }
 }
 
@@ -581,6 +591,7 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var markersStaleAfter: Double?
     var playstateRetention: Double?
     var maintenanceInterval: Double?
+    var avatarMaxBytes: Int?
 }
 
 /// Masked TMDB-key status: never returns the full key.

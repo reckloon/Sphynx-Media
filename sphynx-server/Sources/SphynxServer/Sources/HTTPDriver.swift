@@ -41,6 +41,12 @@ struct HTTPDriver: SourceDriver {
 
     func resolve(_ request: ResolveRequest) async throws -> ResolvedLocation {
         let url = Self.directURL(key: request.key, baseURL: baseURL)
+        // The HTTP driver must only ever hand back http(s) locations. A crafted
+        // manifest/item key with another scheme (e.g. `file://`) must not pass
+        // through — it could otherwise reach a server-side consumer (media probe).
+        guard url.hasPrefix("http://") || url.hasPrefix("https://") else {
+            throw SphynxError.badRequest("HTTP source resolved to a non-http(s) URL")
+        }
         return ResolvedLocation(
             url: url,
             headers: headers,

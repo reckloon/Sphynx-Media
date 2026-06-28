@@ -265,7 +265,7 @@ anything else runs):
 | Compose setting | What it does |
 |---|---|
 | `SPHYNX_ADMIN_PASSWORD` | Your admin login password. (Leave it blank and a random one is printed to the log on first start.) |
-| `SPHYNX_TMDB_API_KEY` | Your free TMDB key — fills in posters, plots, cast, episode art. Blank = plain titles only. |
+| `SPHYNX_TMDB_API_KEY` | Your free TMDB key — fills in posters, plots, cast, episode art. Blank = plain titles only. *Seeds the key on first boot only; change it later in the **Settings** tab (`/admin`), not by editing Compose.* |
 | `SPHYNX_PORT` | The port it listens on. Default `9410`. |
 | `SPHYNX_DB_PATH` | Where the catalog database lives. Keep it on the mounted volume (as the Compose file does) so it survives restarts. |
 
@@ -297,8 +297,9 @@ tab is the source of truth.) The exhaustive list with exact units is in
   there. If you let it auto-generate, search the startup log
   (`docker compose logs | grep -i password`). Worst case, wipe the data volume
   (`docker compose down -v`) to start fresh — but that erases your catalog too.
-- **No posters or descriptions** — you haven't set `SPHYNX_TMDB_API_KEY`, or the
-  key is wrong. Add it and re-scan.
+- **No posters or descriptions** — you haven't added a TMDB key yet, or it's
+  wrong. Set it in the **Settings** tab at `/admin` (the `SPHYNX_TMDB_API_KEY`
+  Compose value only seeds it on first boot), then re-scan.
 - **A file won't play in my app** — that's the *player's* department, not
   Sphynx's. Sphynx handed over the correct URL; the file format just isn't one
   your device can play directly. Remember: Sphynx never converts video.

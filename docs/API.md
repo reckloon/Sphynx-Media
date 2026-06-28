@@ -48,7 +48,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
   "capabilities": {
     "search": false,
     "playstate": true,
-    "candidates": false,
+    "candidates": true,
     "events": true,
     "metadata": { "markers": "readwrite", "images": "read" },
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
@@ -96,7 +96,7 @@ carries. (The reference server advertises the full list above. It now serves
 fills is `criticRating`: TMDB exposes only an audience score (`vote_average` →
 `communityRating`), not a critic aggregate, so a critic rating needs a different
 source — see [Item shape](#item-shape). Don't conflate the two: `criticRating` is
-**0–100** (Int); `communityRating` is **0–10** (Double).)
+**0–100** (Double); `communityRating` is **0–10** (Double).)
 
 ---
 
@@ -687,7 +687,10 @@ The caller's favourited items, most-recently-played first. Cursor-paginated; sam
 
 Set the caller's state for an item (row-scoped to the subject). **Body** (any
 subset) `{ "watched": true, "isFavorite": true, "rating": 8.5 }` → **200** with the
-item, the new state folded in. `403` if the caller can't read the item's library.
+item, the new state folded in. The returned item is a **skeleton** projection
+(no `genres`/enrichment — it will read as `genres: null`), so a client should
+merge only the per-user fields back into its cached record, not treat the
+response as a fresh detail fetch. `403` if the caller can't read the item's library.
 Play count and last-played are tracked server-side from playback (a non-failed
 `POST /v1/playstate/{id}/stop` bumps them); `watched` / `isFavorite` / `rating` are
 explicit here.
@@ -1332,11 +1335,11 @@ clients keep working. `extra` is omitted entirely when empty.
 
 ## Planned
 
-Defined in the protocol but not yet implemented by the reference server:
+Every wire field defined in the protocol is now implemented by the reference
+server — including ranked `candidates` in the `/resolve` descriptor
+(`capabilities.candidates: true`), built from a title's other versions.
 
-- Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
-
-(**Search** is also defined-but-unimplemented here, but it's a deliberate
+(**Search** is defined-but-unimplemented here, but it's a deliberate
 non-goal rather than a to-do — see [Search — optional](#search--optional). And
 `criticRating` is left for a critic-source extension — see [Item shape](#item-shape).)
 
