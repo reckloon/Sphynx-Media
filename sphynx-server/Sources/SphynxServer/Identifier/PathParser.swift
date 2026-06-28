@@ -11,12 +11,48 @@ import Foundation
 /// It builds on the filename primitives rather than replacing them, so their
 /// focused unit tests stay valid. Unicode-aware throughout (Cyrillic, accents).
 enum PathParser {
+    /// Which kind of bonus-content bucket a file sits under, mapped to the wire
+    /// `ItemType` the caller stores. Trailers → `.trailer`; deleted scenes →
+    /// `.deletedScene`; behind-the-scenes → `.behindTheScenes`; everything else
+    /// generically bonus (featurettes/extras/bonus/interviews) → `.featurette`.
+    enum ExtrasBucket: String, Equatable, Sendable {
+        case trailer, featurette, deletedScene, behindTheScenes
+    }
+
     enum Parsed: Equatable, Sendable {
         /// A flat movie: title (folder-preferred) + optional year.
         case movie(title: String, year: Int?)
         /// A TV episode: series title (folder-preferred), season, episode, and a
         /// best-effort episode title (nil → caller falls back to "Episode N").
         case episode(series: String, season: Int, episode: Int, episodeTitle: String?, year: Int?)
+        /// A bonus-content clip sitting under an extras bucket (`…/Featurettes/…`,
+        /// `…/Extras/…`, `…/Trailers/…`). The caller nests it under the enclosing
+        /// movie/show item via `parentId`. `parentTitle`/`parentYear` identify that
+        /// enclosing title (the folder above the bucket); `title` is the clip's own
+        /// best-effort name (nil → caller falls back to the filename stem). A bucket
+        /// carries no year of its own, so `parentYear` distinguishes a movie parent
+        /// (`Some Movie (2020)`) from a show parent (`Some Show`).
+        case extras(bucket: ExtrasBucket, parentTitle: String, parentYear: Int?, title: String?)
+    }
+
+    /// Extras/bonus subfolders that never carry the show title, each mapped to the
+    /// `ExtrasBucket` it denotes. A file under one of these is bonus content nested
+    /// under the enclosing title, not a standalone movie. (`Specials` is a *season*
+    /// folder, handled by `seasonFolderKind` → season 0, and is deliberately absent
+    /// here.) Lowercased compare.
+    private static let extrasBuckets: [String: ExtrasBucket] = [
+        "trailers": .trailer, "trailer": .trailer,
+        "featurettes": .featurette, "featurette": .featurette,
+        "extras": .featurette, "extra": .featurette,
+        "bonus": .featurette, "bonus features": .featurette,
+        "interviews": .featurette, "interview": .featurette,
+        "deleted scenes": .deletedScene, "deleted scene": .deletedScene,
+        "behind the scenes": .behindTheScenes, "behindthescenes": .behindTheScenes,
+    ]
+
+    /// The `ExtrasBucket` a directory name denotes, if it is an extras bucket.
+    private static func extrasBucket(_ name: String) -> ExtrasBucket? {
+        extrasBuckets[name.trimmingCharacters(in: .whitespaces).lowercased()]
     }
 
     /// Container folders that never carry a title (top-level library buckets),
@@ -46,6 +82,16 @@ enum PathParser {
         let filename = comps.last ?? key
         let dirs = Array(comps.dropLast())
         let stem = stripExtensions(filename)
+
+        // --- Extras / bonus content ---
+        // A file under an extras bucket (`…/Featurettes/…`, `…/Extras/…`,
+        // `…/Trailers/…`) is bonus content nested under the enclosing title, not a
+        // standalone movie or a real episode tree. The bucket may itself contain
+        // organisational subfolders (`Featurettes/Season 3/clip.mkv`), so scan all
+        // ancestors and take the deepest bucket; the title is the folder above it.
+        if let extras = extrasParse(dirs: dirs, stem: stem) {
+            return extras
+        }
 
         // --- Episode detection ---
         // An explicit SxxExx / NxNN in the filename is authoritative for
@@ -110,6 +156,34 @@ enum PathParser {
             }
         }
         return .movie(title: file.title, year: file.year)
+    }
+
+    /// Detect a bonus-content clip: the deepest extras-bucket ancestor, with the
+    /// enclosing title taken from the nearest informative folder above it. Returns
+    /// nil when no ancestor is an extras bucket (the normal movie/episode path).
+    private static func extrasParse(dirs: [String], stem: String) -> Parsed? {
+        // Deepest bucket wins, so a clip's *own* nested folders don't shadow it.
+        guard let bucketIndex = dirs.indices.reversed().first(where: { extrasBucket(dirs[$0]) != nil }),
+              let bucket = extrasBucket(dirs[bucketIndex])
+        else { return nil }
+
+        // The enclosing title is the nearest informative folder above the bucket,
+        // skipping generic library roots and any nested extras buckets. Cleaned via
+        // the same series logic so a `Title (Year)` folder yields title + year.
+        var parsed: (title: String, year: Int?)?
+        if bucketIndex - 1 >= 0 {
+            for candidate in dirs[0...(bucketIndex - 1)].reversed()
+            where !isGenericBucket(candidate) && extrasBucket(candidate) == nil {
+                let clean = cleanSeriesName(candidate)
+                if !clean.title.isEmpty { parsed = clean; break }
+            }
+        }
+        guard let parent = parsed, !parent.title.isEmpty else { return nil }
+
+        // The clip's own name (cleaned of release junk); nil → caller uses the stem.
+        let file = FilenameParser.parse(stem)
+        let title = file.title.isEmpty ? nil : file.title
+        return .extras(bucket: bucket, parentTitle: parent.title, parentYear: parent.year, title: title)
     }
 
     /// Plausible upper bound for a year token (next calendar year).

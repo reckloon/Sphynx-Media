@@ -215,11 +215,50 @@ struct PathParserTests {
         #expect(p == .movie(title: "Тачки 2", year: 2011))
     }
 
-    @Test("a stacked .mkv.strm container suffix never leaks into a movie title")
+    @Test("a stacked .mkv.strm container suffix never leaks into a clip title")
     func stackedExtensionStripped() {
+        // This now classifies as a featurette (a bonus clip), not a movie; the
+        // container suffix still must not leak into the clip's own title.
         let p = PathParser.parse("Some Show/Featurettes/Season 3/Get Your Cop On.mkv.strm")
-        if case .movie(let title, _) = p {
-            #expect(title == "Get Your Cop On")  // not "Get Your Cop On mkv"
-        }
+        #expect(p == .extras(bucket: .featurette, parentTitle: "Some Show", parentYear: nil,
+                             title: "Get Your Cop On"))  // not "Get Your Cop On mkv"
+    }
+
+    // MARK: - Extras / bonus content (nested under the enclosing title)
+
+    @Test("a show featurette nests under the series, not a standalone movie")
+    func showFeaturetteUnderSeries() {
+        // The bug: this used to classify as a `.movie`. It must be a featurette
+        // whose parent is the show above the bucket.
+        let p = PathParser.parse("Some Show/Featurettes/Season 3/Get Your Cop On.mkv.strm")
+        #expect(p == .extras(bucket: .featurette, parentTitle: "Some Show", parentYear: nil,
+                             title: "Get Your Cop On"))
+    }
+
+    @Test("a movie extra names its parent movie (folder year → movie parent)")
+    func movieExtraNamesParent() {
+        let p = PathParser.parse("Sky Harbor (2020)/Extras/Making Of.mkv")
+        #expect(p == .extras(bucket: .featurette, parentTitle: "Sky Harbor", parentYear: 2020,
+                             title: "Making Of"))
+    }
+
+    @Test("each extras bucket maps to the right type")
+    func extrasBucketTypeMapping() {
+        #expect(PathParser.parse("Lantern Bay (2018)/Trailers/Teaser.mkv")
+            == .extras(bucket: .trailer, parentTitle: "Lantern Bay", parentYear: 2018, title: "Teaser"))
+        #expect(PathParser.parse("Lantern Bay (2018)/Deleted Scenes/Alternate Ending.mkv")
+            == .extras(bucket: .deletedScene, parentTitle: "Lantern Bay", parentYear: 2018, title: "Alternate Ending"))
+        #expect(PathParser.parse("Lantern Bay (2018)/Behind The Scenes/On Set.mkv")
+            == .extras(bucket: .behindTheScenes, parentTitle: "Lantern Bay", parentYear: 2018, title: "On Set"))
+        // Interviews / bonus collapse to the generic featurette type.
+        #expect(PathParser.parse("Pinewood Hollow/Interviews/Director Chat.mkv")
+            == .extras(bucket: .featurette, parentTitle: "Pinewood Hollow", parentYear: nil, title: "Director Chat"))
+    }
+
+    @Test("a real episode is unchanged — extras detection doesn't hijack a season tree")
+    func episodeUnaffectedByExtras() {
+        // The canonical curated layout must still classify as an episode.
+        let p = PathParser.parse("Riverside (2017)/Season 2/Riverside - S02E03.mkv")
+        #expect(p == .episode(series: "Riverside", season: 2, episode: 3, episodeTitle: nil, year: 2017))
     }
 }

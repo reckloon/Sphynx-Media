@@ -55,6 +55,7 @@ struct Indexer: Sendable {
 
         // Per-scan caches to dedupe containers and avoid refetching seasons.
         var seriesCache: [String: ItemRecord] = [:]                 // normalized series title
+        var movieParentCache: [String: ItemRecord] = [:]            // "normTitle|year" → movie parent for extras
         var seasonCache: [String: ItemRecord] = [:]                 // "seriesId|season"
         var seasonDetailsCache: [String: TMDBSeasonDetails] = [:]   // "tmdbId|season"
         var touchedContainers: Set<String> = []
@@ -142,6 +143,28 @@ struct Indexer: Sendable {
                 try await catalog.updateItem(record)
             }
             seasonCache[cacheKey] = record
+            return record
+        }
+
+        /// Resolve (or create) the flat movie item an extras clip nests under,
+        /// matching an existing movie by title (+ optional year) in the movie
+        /// library so a curated `Some Movie (2020)/Extras/…` attaches to the movie.
+        /// Creates a lightweight placeholder movie only if none exists yet, so a
+        /// bonus clip is still browsable; a later scan of the feature heals it.
+        func ensureMovieParent(_ title: String, year: Int?) async throws -> ItemRecord {
+            let cacheKey = "\(HeuristicIdentifier.normalize(title))|\(year.map(String.init) ?? "")"
+            if let cached = movieParentCache[cacheKey] { return cached }
+            let record: ItemRecord
+            if let existing = try await catalog.movieItem(libraryId: movieLib ?? "", title: title, year: year) {
+                record = existing
+            } else {
+                record = try await catalog.createItem(
+                    type: "movie", title: title, sourceId: source.id, sourceKey: "",
+                    container: nil, tmdbId: nil, libraryId: movieLib,
+                    parentId: nil, year: year
+                )
+            }
+            movieParentCache[cacheKey] = record
             return record
         }
 
@@ -247,6 +270,42 @@ struct Indexer: Sendable {
                     )
                     added += 1
                 }
+            case .extras(let info):
+                // Bonus content nests under its enclosing title. A parent that
+                // carries a year is a movie; otherwise it's a show (series). Resolve
+                // (or create) that parent, then attach the clip to it via parentId.
+                // The extras item inherits the parent's library (libraryId nil →
+                // owningLibraryId walks up the parent chain).
+                let parent: ItemRecord
+                if info.parentYear != nil {
+                    parent = try await ensureMovieParent(info.parentTitle, year: info.parentYear)
+                } else {
+                    parent = try await ensureSeries(info.parentTitle, year: nil)
+                }
+                touchedContainers.insert(parent.id)
+
+                if var current = existingByKey.removeValue(forKey: entry.key) {
+                    // Existing extra: refresh parent link / type if the structure
+                    // changed (without disturbing admin-locked fields).
+                    let locked = current.lockedFields()
+                    let newTitle = locked.contains(LockableField.title) ? current.title : info.title
+                    if current.parentId != parent.id || current.type != info.bucket.rawValue || current.title != newTitle {
+                        current.parentId = parent.id
+                        current.type = info.bucket.rawValue
+                        current.title = newTitle
+                        current.libraryId = nil
+                        current.updatedAt = now
+                        try await catalog.updateItem(current)
+                        updated += 1
+                    }
+                } else {
+                    _ = try await catalog.createItem(
+                        type: info.bucket.rawValue, title: info.title,
+                        sourceId: source.id, sourceKey: entry.key, container: entry.container,
+                        tmdbId: nil, libraryId: nil, parentId: parent.id, year: nil
+                    )
+                    added += 1
+                }
             }
         }
 
@@ -287,10 +346,16 @@ struct Indexer: Sendable {
     /// A TV episode's identity after merging hints + folder-aware parsing.
     struct EpisodeInfo { var series: String; var season: Int; var episode: Int; var episodeTitle: String?; var year: Int? }
 
+    /// A bonus-content clip's identity: the extras type to store plus the enclosing
+    /// title to nest it under. `parentYear` distinguishes a movie parent (carries a
+    /// year) from a show parent (none).
+    struct ExtrasInfo { var bucket: PathParser.ExtrasBucket; var title: String; var parentTitle: String; var parentYear: Int? }
+
     /// What an entry is, with the merged identity to store.
     enum Classified {
         case episode(EpisodeInfo)
         case movie(title: String, year: Int?)
+        case extras(ExtrasInfo)
     }
 
     /// Classify an entry into a movie or an episode, merging the source's explicit
@@ -312,6 +377,11 @@ struct Indexer: Sendable {
         case .movie(let title, let year):
             // The manifest's title/year, when present, override the parsed ones.
             return .movie(title: entry.title ?? title, year: entry.year ?? year)
+        case .extras(let bucket, let parentTitle, let parentYear, let title):
+            // The manifest's title (when present) names the clip; the parent comes
+            // from the folder structure (extras nest under their enclosing title).
+            let clipTitle = entry.title ?? title ?? FilenameParser.parse(entry.key).title
+            return .extras(ExtrasInfo(bucket: bucket, title: clipTitle, parentTitle: parentTitle, parentYear: parentYear))
         }
     }
 
