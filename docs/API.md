@@ -902,15 +902,22 @@ The current persisted runtime settings (configured here rather than via env vars
 env vars only seed them on first run). **200** →
 ```json
 { "serverName": "…", "serverID": "…", "accessTokenTTL": 3600,
-  "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "markersAccess": "readwrite",
-  "markersStaleAfter": 604800, "playstateRetention": 31536000, "maintenanceInterval": 86400,
+  "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "metadataLanguage": "en-US",
+  "markersAccess": "readwrite", "markersStaleAfter": 604800,
+  "playstateRetention": 31536000, "maintenanceInterval": 86400, "avatarMaxBytes": 2000000,
   "passkeyRelyingPartyID": "", "passkeyRelyingPartyName": "", "passkeyRelyingPartyOrigin": "" }
 ```
+
+`metadataLanguage` is the TMDB language tag (`en-US`, `ru-RU`, …) used during
+enrichment. Titles, overviews, and episode names are normalised to it, so the
+**display title is the canonical name in your language regardless of how the
+source named the file** — a `Бэтмен` release shows as `Batman` under `en-US`. A
+manually-edited title 🔒 is never overwritten. Applies on the next scan/refresh.
 
 ### `PATCH /v1/admin/settings`
 
 Update any subset of the runtime settings. **Body** e.g.
-`{ "serverName": "My Library", "markersAccess": "read", "enrichmentTTL": 1209600 }`
+`{ "serverName": "My Library", "markersAccess": "read", "metadataLanguage": "ru-RU" }`
 → **200** with the full updated settings. Persisted; applies on the next restart.
 **400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
 (host, port, DB path, admin bootstrap) remain environment variables.
