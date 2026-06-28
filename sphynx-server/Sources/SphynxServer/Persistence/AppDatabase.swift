@@ -339,6 +339,16 @@ struct AppDatabase: Sendable {
             try db.execute(sql: "UPDATE library SET collectionThreshold = 2 WHERE collectionThreshold = 1")
         }
 
+        migrator.registerMigration("m22_item_versions") { db in
+            // Selectable versions/editions of a movie — the same title backed by more
+            // than one file (4K + 1080p, Director's Cut + Theatrical) — stored as one
+            // JSON array and projected onto `Item.versions`. The item's own
+            // `sourceKey` remains the default (highest-quality) version.
+            try db.alter(table: "item") { t in
+                t.add(column: "versionsJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

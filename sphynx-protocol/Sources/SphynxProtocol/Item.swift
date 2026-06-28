@@ -210,6 +210,14 @@ public struct Item: Codable, Hashable, Sendable {
     /// progress report. Absent ⇒ unknown.
     public var updatedAt: String?
 
+    /// Selectable versions/editions of this title — the same logical movie/episode
+    /// backed by more than one file (4K + 1080p, Director's Cut + Theatrical). Absent
+    /// or a single entry ⇒ resolve the item by id as usual; with multiple, a client
+    /// shows a version picker and plays one via `GET /v1/resolve/<id>?version=<vid>`.
+    /// The first entry is the server's default (highest quality) — what a plain
+    /// `resolve` returns. See `MediaVersion`.
+    public var versions: [MediaVersion]?
+
     /// Open, server-defined metadata not covered by the canonical fields above.
     /// A server (or server extension) may attach any additional metadata here; a
     /// client reads the keys it understands and ignores the rest. Omitted when
@@ -261,6 +269,7 @@ public struct Item: Codable, Hashable, Sendable {
         isFavorite: Bool? = nil,
         lastPlayedAt: String? = nil,
         updatedAt: String? = nil,
+        versions: [MediaVersion]? = nil,
         extra: [String: JSONValue]? = nil
     ) {
         self.id = id
@@ -306,6 +315,41 @@ public struct Item: Codable, Hashable, Sendable {
         self.isFavorite = isFavorite
         self.lastPlayedAt = lastPlayedAt
         self.updatedAt = updatedAt
+        self.versions = versions
         self.extra = extra
+    }
+}
+
+/// One selectable version/edition of a title — a single file backing the same
+/// logical movie/episode. A client renders these as a version picker and plays one
+/// with `GET /v1/resolve/<itemId>?version=<id>`; resolving without `version` plays
+/// the item's default (first) version.
+public struct MediaVersion: Codable, Hashable, Sendable {
+    /// Opaque, stable id — pass back as `?version=`. Don't parse it.
+    public var id: String
+    /// Human label for the picker, e.g. "4K HDR · Remux", "Director's Cut · 1080p".
+    public var label: String
+    /// Source container hint (`mkv`, `mp4`, …), when known.
+    public var container: String?
+    /// Resolution bucket (`4K`, `1080p`, `720p`, …), when detected.
+    public var resolution: String?
+    /// Edition (`Director's Cut`, `Extended`, `Theatrical`, `IMAX`, …), when detected.
+    public var edition: String?
+    /// Dynamic range (`HDR10`, `HDR10+`, `DV`), when detected; absent ⇒ SDR/unknown.
+    public var dynamicRange: String?
+    /// File size in bytes, when the driver reports it.
+    public var size: Int?
+
+    public init(
+        id: String, label: String, container: String? = nil, resolution: String? = nil,
+        edition: String? = nil, dynamicRange: String? = nil, size: Int? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.container = container
+        self.resolution = resolution
+        self.edition = edition
+        self.dynamicRange = dynamicRange
+        self.size = size
     }
 }

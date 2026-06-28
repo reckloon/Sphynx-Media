@@ -63,6 +63,8 @@ struct InfoController: Sendable {
         "studios", "directors", "writers", "countries", "tags", "trailers", "externalIds",
         // Embedded chapters (when probed by the media-probe extension)
         "chapters",
+        // Selectable versions/editions (multiple files of one title)
+        "versions",
         // Per-user state
         "resumePosition", "watched", "playCount", "isFavorite", "lastPlayedAt",
     ]

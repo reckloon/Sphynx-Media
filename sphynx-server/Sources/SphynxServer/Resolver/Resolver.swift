@@ -9,7 +9,7 @@ struct Resolver: Sendable {
     let catalog: Catalog
     let drivers: DriverFactory
 
-    func resolve(itemId: String) async throws -> ResolveDescriptor {
+    func resolve(itemId: String, version: String? = nil) async throws -> ResolveDescriptor {
         guard let item = try await catalog.item(id: itemId) else {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
@@ -17,6 +17,19 @@ struct Resolver: Sendable {
         // Containers (series/season) aren't playable — resolve an episode/movie.
         guard !item.sourceKey.isEmpty, item.type != "series", item.type != "season" else {
             throw SphynxError.noMediaSource("'\(item.type)' items are containers, not playable")
+        }
+
+        // Pick the requested version's file, else the item's default (the primary,
+        // mirrored on `sourceKey`). An unknown version id is a 404 — never a silent
+        // fallback, so a client that asked for the 4K never gets handed the 1080p.
+        var sourceKey = item.sourceKey
+        var container = item.container
+        if let version, !version.isEmpty {
+            guard let chosen = item.storedVersions().first(where: { $0.id == version }) else {
+                throw SphynxError.notFound("No version '\(version)' for item '\(itemId)'")
+            }
+            sourceKey = chosen.sourceKey
+            container = chosen.container ?? item.container
         }
 
         let driver: any SourceDriver
@@ -31,7 +44,7 @@ struct Resolver: Sendable {
         }
 
         let location = try await driver.resolve(
-            ResolveRequest(key: item.sourceKey, container: item.container)
+            ResolveRequest(key: sourceKey, container: container)
         )
 
         return ResolveDescriptor(

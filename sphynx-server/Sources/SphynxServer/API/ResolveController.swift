@@ -29,6 +29,9 @@ struct ResolveController: Sendable {
                 throw SphynxError.forbidden("You don't have permission to play this item")
             }
         }
-        return try await resolver.resolve(itemId: itemId)
+        // Optional `?version=<id>` selects a specific edition/quality; absent ⇒ the
+        // item's default (highest-quality) version.
+        let version = request.uri.queryParameters["version"].map(String.init)
+        return try await resolver.resolve(itemId: itemId, version: version)
     }
 }

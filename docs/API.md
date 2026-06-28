@@ -53,8 +53,8 @@ Confirm a URL is a Sphynx server and learn its capabilities.
                "extra", "overview", "runtime", "genres", "chapters", "communityRating", "officialRating",
                "cast", "originalTitle", "sortTitle", "tagline", "status", "premiereDate",
                "endDate", "studios", "directors", "writers", "countries", "tags", "trailers",
-               "externalIds", "resumePosition", "watched", "playCount", "isFavorite",
-               "lastPlayedAt"],
+               "externalIds", "versions", "resumePosition", "watched", "playCount",
+               "isFavorite", "lastPlayedAt"],
     "browse": { "sorts": ["added", "name", "rating"], "filters": ["genre", "year", "unwatched"] },
     "playstateReportInterval": 5
   }
@@ -447,6 +447,12 @@ Contributed markers also appear in the `/resolve` descriptor's `markers`.
 The late-bound handoff: turns an item into a direct, playable location. Called at
 play time, never cached from browse.
 
+**Query:** `version=<id>` *(optional)* — when an item has multiple
+[versions/editions](#multi-version--editions), play a specific one. Absent ⇒ the
+item's **default** (first/highest-quality) version. An unknown id is **404**
+`not_found` — never a silent fallback, so a client that asked for the 4K never gets
+handed the 1080p.
+
 **200**
 ```json
 {
@@ -495,6 +501,34 @@ play time, never cached from browse.
   signal is preserved on both paths.
 
 **404** `not_found` (no such item) / `no_media_source` (item's source unavailable).
+
+#### Multi-version / editions
+
+When one title is backed by **more than one file** — 4K + 1080p, Director's Cut +
+Theatrical — the server collapses them into a **single item** (grouped by title +
+year) carrying a `versions` array instead of duplicate tiles:
+
+```json
+"versions": [
+  { "id": "v_…", "label": "4K · HDR10 · Remux", "resolution": "4K",
+    "dynamicRange": "HDR10", "container": "mkv", "size": 60129542144 },
+  { "id": "v_…", "label": "Director's Cut · 1080p", "resolution": "1080p",
+    "edition": "Director's Cut", "container": "mkv" }
+]
+```
+
+- The array is **best-first** — `versions[0]` is the default a plain `resolve`
+  returns. Each `id` is opaque and stable across re-scans (cache a user's choice).
+- `versions` is **present only when there's a real choice** (≥2 files); a single-file
+  item omits it and resolves by id as usual.
+- `label` is a ready-to-show string; `resolution` / `edition` / `dynamicRange` /
+  `size` are the structured parts (any may be absent) if a client wants to build its
+  own label or sort the picker.
+- A client shows a version picker and plays one via `GET /v1/resolve/<id>?version=<vid>`.
+
+The reference server detects versions from filenames (`2160p`/`4K`, `1080p`,
+`HDR10`/`DV`, `Director's Cut`, `Extended`, `Remux`, …); a field-rich server may
+populate them from a probe instead.
 
 ---
 

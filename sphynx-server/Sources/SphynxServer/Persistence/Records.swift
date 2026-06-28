@@ -332,6 +332,28 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// resolve descriptor's `tracks`. Absent until the item has been probed.
     var probedTracksJSON: String? = nil
 
+    /// Selectable versions/editions — the same title backed by more than one file
+    /// (4K + 1080p, Director's Cut + Theatrical), stored as a JSON `[StoredVersion]`
+    /// and projected onto `Item.versions`. `sourceKey` mirrors the first (default)
+    /// version. Absent/single ⇒ an ordinary single-file item.
+    var versionsJSON: String? = nil
+
+    /// Decoded stored versions (empty if none / malformed), best-first as stored.
+    func storedVersions() -> [StoredVersion] {
+        guard let versionsJSON, let data = versionsJSON.data(using: .utf8),
+              let list = try? JSONDecoder().decode([StoredVersion].self, from: data)
+        else { return [] }
+        return list
+    }
+
+    /// Versions projected for the wire — only when there's a real choice (≥2), so a
+    /// single-file item stays clean (`versions` omitted, resolve by id).
+    func versionsList() -> [MediaVersion]? {
+        let stored = storedVersions()
+        guard stored.count >= 2 else { return nil }
+        return stored.map(\.asProtocol)
+    }
+
     /// Decoded extended metadata (nil if none / malformed).
     func extended() -> StoredExtended? {
         guard let extendedJSON, let data = extendedJSON.data(using: .utf8) else { return nil }
@@ -407,6 +429,9 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
         }
         // When the item entered the library (tile-level, for "Recently Added").
         item.dateAdded = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: createdAt))
+        // Selectable versions/editions (only when there's a real choice). Cheap and
+        // useful on a tile ("2 versions"), so it's not gated behind `full`.
+        item.versions = versionsList()
         if full {
             item.overview = overview
             item.runtime = runtime

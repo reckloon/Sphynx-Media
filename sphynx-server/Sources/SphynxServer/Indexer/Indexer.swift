@@ -64,8 +64,11 @@ struct Indexer: Sendable {
         var seasonDetailsCache: [String: TMDBSeasonDetails] = [:]   // "tmdbId|season"
         var touchedContainers: Set<String> = []
 
-        var added = 0, updated = 0
+        var added = 0, updated = 0, removed = 0
         var tvEnriched = 0
+        // Movies are grouped into one item per (title, year); multiple files of the
+        // same title collapse into selectable versions instead of duplicate tiles.
+        var movieGroups: [String: (title: String, year: Int?, files: [SourceEntry])] = [:]
 
         // --- nested helpers (capture the caches above) ---
 
@@ -265,34 +268,10 @@ struct Indexer: Sendable {
                     added += 1
                 }
             case .movie(let title, let year):
-                if var current = existingByKey.removeValue(forKey: entry.key) {
-                    // Existing movie: refresh source-derived fields if changed —
-                    // but never overwrite a field the admin has locked.
-                    let locked = current.lockedFields()
-                    let newTitle = locked.contains(LockableField.title) ? current.title : title
-                    let newType = entry.type ?? current.type
-                    let newContainer = entry.container ?? current.container
-                    let newYear = locked.contains(LockableField.year) ? current.year : (year ?? current.year)
-                    if newTitle != current.title || newType != current.type
-                        || newContainer != current.container || newYear != current.year {
-                        current.title = newTitle
-                        current.type = newType
-                        current.container = newContainer
-                        current.year = newYear
-                        current.updatedAt = now
-                        try await catalog.updateItem(current)
-                        updated += 1
-                    }
-                } else {
-                    // New movie (flat).
-                    _ = try await catalog.createItem(
-                        type: entry.type ?? "movie",
-                        title: title,
-                        sourceId: source.id, sourceKey: entry.key, container: entry.container,
-                        tmdbId: nil, libraryId: movieLib, parentId: nil, year: year
-                    )
-                    added += 1
-                }
+                // Collect now; reconciled as a group after the loop so multiple files
+                // of the same title become one item with selectable versions.
+                let groupKey = "\(HeuristicIdentifier.normalize(title))|\(year.map(String.init) ?? "")"
+                movieGroups[groupKey, default: (title, year, [])].files.append(entry)
             case .extras(let info):
                 // Bonus content nests under its enclosing title. A parent that
                 // carries a year is a movie; otherwise it's a show (series). Resolve
@@ -332,8 +311,71 @@ struct Indexer: Sendable {
             }
         }
 
+        // --- reconcile movie groups (one item per title+year; extra files = versions) ---
+        for (_, group) in movieGroups {
+            // Parse each file into a version, ordered best-first (resolution, then
+            // dynamic range, then remux, then size). The first is the item's default.
+            var versions = group.files.map {
+                MediaVersionParser.version(key: $0.key, container: $0.container, size: $0.size)
+            }
+            versions.sort { MediaVersionParser.rank($0) > MediaVersionParser.rank($1) }
+            let primary = versions[0]
+            // Only persist a versions list when there's a real choice (≥2); a lone
+            // file stays an ordinary single-file movie (versionsJSON nil). `.sortedKeys`
+            // keeps the on-disk JSON canonical across platforms (Linux's JSONEncoder
+            // doesn't otherwise guarantee key order).
+            let desiredVersions = versions.count >= 2 ? versions : []
+            let versionsJSON = try desiredVersions.isEmpty ? nil : {
+                let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+                return String(data: try encoder.encode(versions), encoding: .utf8)
+            }()
+            let entryType = group.files.first?.type
+
+            // Match an existing item by any of the group's file keys. The first match
+            // is the canonical item to keep; any others are stale duplicates (files
+            // that used to be separate tiles) and are merged away.
+            let matched = group.files.compactMap { existingByKey.removeValue(forKey: $0.key) }
+            if let canonical = matched.first {
+                var rec = canonical
+                let locked = rec.lockedFields()
+                let newTitle = locked.contains(LockableField.title) ? rec.title : group.title
+                let newYear = locked.contains(LockableField.year) ? rec.year : (group.year ?? rec.year)
+                let newType = entryType ?? rec.type
+                // Compare versions structurally (not by JSON string): the encoder's
+                // key order isn't stable across platforms, so a string compare would
+                // flag a phantom change on every re-scan on Linux.
+                if rec.title != newTitle || rec.year != newYear || rec.type != newType
+                    || rec.sourceKey != primary.sourceKey || rec.container != primary.container
+                    || rec.storedVersions() != desiredVersions {
+                    rec.title = newTitle
+                    rec.year = newYear
+                    rec.type = newType
+                    rec.sourceKey = primary.sourceKey
+                    rec.container = primary.container
+                    rec.versionsJSON = versionsJSON
+                    rec.updatedAt = now
+                    try await catalog.updateItem(rec)
+                    updated += 1
+                }
+                for dup in matched.dropFirst() {
+                    try await catalog.deleteItem(id: dup.id)
+                    removed += 1
+                }
+            } else {
+                var rec = try await catalog.createItem(
+                    type: entryType ?? "movie", title: group.title,
+                    sourceId: source.id, sourceKey: primary.sourceKey, container: primary.container,
+                    tmdbId: nil, libraryId: movieLib, parentId: nil, year: group.year)
+                if let versionsJSON {
+                    rec.versionsJSON = versionsJSON
+                    rec.updatedAt = now
+                    try await catalog.updateItem(rec)
+                }
+                added += 1
+            }
+        }
+
         // Media items no longer present → removed (containers are left in place).
-        var removed = 0
         for (_, stale) in existingByKey {
             try await catalog.deleteItem(id: stale.id)
             removed += 1
