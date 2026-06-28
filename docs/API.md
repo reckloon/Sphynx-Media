@@ -44,6 +44,8 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "candidates": false,
     "events": true,
     "metadata": { "markers": "readwrite", "images": "read" },
+    "fields": ["title", "year", "overview", "genres", "communityRating",
+               "cast", "images", "seriesId", "parentId", "resumePosition"],
     "playstateReportInterval": 5
   }
 }
@@ -59,6 +61,21 @@ A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
 — readable if served, but not contributable. See the [guide → Extending](https://reckloon.github.io/Sphynx-Media/#extending).
+
+**`fields`** is the server's **coverage advertisement**: the canonical [`Item`](#item-shape)
+field names it can populate (distinct from `metadata`, which is the read/write
+*access* policy). It is **highly recommended** that:
+
+- a **server lists every field it can serve** in `fields`, so clients know its
+  coverage up front rather than discovering it by inspecting items, and
+- a **client uses it to inform the user of unsupported features** — e.g. greying out
+  a "Trailers" affordance when `fields` omits `trailers`.
+
+An **absent or empty** `fields` means the server doesn't advertise coverage; a
+client must then assume nothing and simply render whatever each item actually
+carries. (The reference server advertises the full list above and deliberately
+omits `criticRating`, `tags`, `trailers`, `chapters`, `sortTitle`, and the
+`logo`/`banner` image roles, which it does not populate — see [Item shape](#item-shape).)
 
 ---
 

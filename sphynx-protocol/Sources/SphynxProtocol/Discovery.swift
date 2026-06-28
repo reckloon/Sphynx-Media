@@ -57,6 +57,15 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
+    /// The canonical `Item` field names this server can **populate** (e.g.
+    /// `"overview"`, `"genres"`, `"cast"`, `"trailers"`). This is a *coverage*
+    /// advertisement — distinct from `metadata`, which is the read/write access
+    /// policy. A server is **highly recommended** to list every field it serves so
+    /// a client can tell up front which canonical features it backs and inform the
+    /// user of unsupported ones. Absent/empty ⇒ the server doesn't advertise
+    /// coverage, and a client must not assume any field is present (it falls back
+    /// to "render whatever actually arrives").
+    public var fields: [String]
     /// Preferred client playback-report cadence, in **seconds**. A client that
     /// reports progress periodically SHOULD use this interval; absent ⇒ the client
     /// falls back to the protocol default (~5s). Push-only: the server stores what
@@ -69,6 +78,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         candidates: Bool = false,
         events: Bool = false,
         metadata: [String: MetadataAccess] = [:],
+        fields: [String] = [],
         playstateReportInterval: Double? = nil
     ) {
         self.search = search
@@ -76,6 +86,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.candidates = candidates
         self.events = events
         self.metadata = metadata
+        self.fields = fields
         self.playstateReportInterval = playstateReportInterval
     }
 
@@ -86,7 +97,16 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.candidates = try container.decodeIfPresent(Bool.self, forKey: .candidates) ?? false
         self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
+        self.fields = try container.decodeIfPresent([String].self, forKey: .fields) ?? []
         self.playstateReportInterval = try container.decodeIfPresent(Double.self, forKey: .playstateReportInterval)
+    }
+
+    /// Whether the server advertises that it can populate `field`. When the server
+    /// publishes no coverage list at all (`fields` empty), this returns `true` —
+    /// "unknown, assume it might" — so a client only treats a field as *unsupported*
+    /// when the server actively advertises coverage that omits it.
+    public func supportsField(_ field: String) -> Bool {
+        fields.isEmpty || fields.contains(field)
     }
 
     /// Access level the server advertises for a field (`.none` if unlisted).
@@ -95,7 +115,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, events, metadata, playstateReportInterval
+        case search, playstate, candidates, events, metadata, fields, playstateReportInterval
     }
 }
 

@@ -392,8 +392,13 @@
 <span class="key">{ "product":"Sphynx", "serverName":"Sphynx Reference Server", "id":"srv_reference",
   "version":"1.0", "protocol":["v1"],
   "capabilities": { "search":false, "playstate":true, "candidates":false, "events":true,
-    "metadata": { "markers":"readwrite", "images":"read" }, "playstateReportInterval":5 } }</span></code></pre>
+    "metadata": { "markers":"readwrite", "images":"read" },
+    "fields": ["title","year","overview","genres","cast","images","seriesId","parentId","resumePosition"],
+    "playstateReportInterval":5 } }</span></code></pre>
 <p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable. <strong><code>playstateReportInterval</code></strong> (seconds) is the server's preferred client playback-report cadence — a client reporting progress periodically SHOULD use it (default ~5s if absent). Push-only: the server never polls. <strong><code>events</code></strong> advertises the additive <a href="#api-events">server→client event stream</a> (SSE); absent ⇒ the client falls back to polling.</p>
+<div class="callout tip">
+  <p><strong><code>fields</code> — the coverage advertisement (highly recommended on both sides).</strong> It lists the canonical <a href="#api-item">Item</a> fields the server can populate — distinct from <code>metadata</code>, which is the read/write <em>access</em> policy. The protocol <strong>strongly recommends (SHOULD)</strong> that a <strong>server list every field it serves</strong> here, and that a <strong>client read it to inform the user of unsupported features</strong> (e.g. hide a "Trailers" row when <code>fields</code> omits <code>trailers</code>). An absent/empty list means "coverage not advertised" — the client assumes nothing and just renders whatever each item carries. (The reference server advertises its full set and deliberately omits <code>criticRating</code>, <code>tags</code>, <code>trailers</code>, <code>chapters</code>, <code>sortTitle</code>, and the <code>logo</code>/<code>banner</code> image roles, which it doesn't fill.)</p>
+</div>
 
 <h3 id="api-auth">Authentication</h3>
 
@@ -612,7 +617,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <h3 id="proto-client">Building a client</h3>
 <p>A minimal Sphynx client needs to walk this path. Each step maps to one endpoint:</p>
 <ol>
-  <li><strong>Discover</strong> — <code>GET /v1/info</code> (no auth). Confirm <code>product == "Sphynx"</code> and that <code>protocol</code> includes a version you speak before showing a login screen. Read <code>capabilities</code> to decide which features to surface.</li>
+  <li><strong>Discover</strong> — <code>GET /v1/info</code> (no auth). Confirm <code>product == "Sphynx"</code> and that <code>protocol</code> includes a version you speak before showing a login screen. Read <code>capabilities</code> to decide which features to surface — in particular it is <strong>highly recommended</strong> to read <code>capabilities.fields</code> and <strong>inform the user of unsupported features</strong> (e.g. grey out or hide a "Trailers" row when <code>trailers</code> isn't listed) rather than silently showing empty UI.</li>
   <li><strong>Authenticate</strong> — <code>POST /v1/auth/login</code> with a stable <code>X-Sphynx-Device</code> header. Store both tokens. When a call returns <strong>401</strong> with <code>code: "unauthorized"</code>, call <code>POST /v1/auth/refresh</code> once, then retry; if refresh also fails, send the user back to login.</li>
   <li><strong>Browse</strong> — <code>GET /v1/libraries</code>, then <code>GET /v1/items?parent=…</code>. Render tiles from <code>detail=skeleton</code>; fetch <code>detail=full</code> (or <code>GET /v1/items/{id}</code>) when the user opens an item. Page with <code>nextCursor</code>.</li>
   <li><strong>Resolve at play time</strong> — <code>GET /v1/resolve/{id}</code> the moment the user hits play, <strong>never earlier</strong>. Stream <code>url</code> yourself, sending any <code>headers</code>. Respect <code>ttl</code>: if playback drops after it expires, re-resolve. If <code>terminal</code> is true, <code>url</code> is the final location — fetch it directly, no further resolve step needed.</li>
@@ -645,6 +650,7 @@ targets: [
   <li><strong>Resolve is the whole point.</strong> Return a direct, client-fetchable <code>url</code> plus any <code>headers</code> and a <code>ttl</code>. Never proxy or redirect bytes through your process. If your locations are time-bounded, set <code>ttl</code> and expect clients to re-resolve.</li>
   <li><strong>Pick your access policy.</strong> <code>capabilities.metadata</code> is per-field <code>none|read|readwrite</code>. A field absent from the map is <code>none</code>. If you accept contributions, also implement the per-user grant model so <code>/v1/auth/me</code> can report effective access.</li>
   <li><strong>Serve what you have.</strong> Every Item field except <code>id</code>/<code>title</code>/<code>type</code> is optional. Omit what you lack; put anything non-canonical in <code>extra</code>. Don't invent required fields — clients won't expect them.</li>
+  <li><strong>Advertise your coverage (highly recommended).</strong> List every canonical Item field you can populate in <code>capabilities.fields</code>. It costs nothing and lets clients tell the user what your server backs up front, instead of discovering gaps by inspecting items. Keep it honest — list only fields you actually fill.</li>
 </ul>
 
 <div class="callout note">
