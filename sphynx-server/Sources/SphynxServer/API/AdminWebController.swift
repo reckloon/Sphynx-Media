@@ -93,28 +93,46 @@ enum AdminWebController {
     </div>
 
     <section id="tab-settings">
-      <div class="group-title">Identity</div>
+      <p class="hint" style="margin-top:0;">All time settings are in <strong>seconds</strong>. Handy conversions: 1 hour = 3600 · 1 day = 86400 · 30 days = 2592000 · 1 year = 31536000.</p>
+
+      <div class="group-title">Server identity</div>
       <div class="row">
-        <div><label for="serverName">Server name</label><input id="serverName"></div>
-        <div><label for="serverID">Server id</label><input id="serverID"></div>
+        <div><label for="serverName">Server name</label><input id="serverName">
+          <p class="hint">The friendly name apps show when they connect.</p></div>
+        <div><label for="serverID">Server ID</label><input id="serverID">
+          <p class="hint">A stable identifier for this server. You rarely need to change this.</p></div>
       </div>
-      <div class="group-title">Sessions (seconds)</div>
+
+      <div class="group-title">Signing in</div>
       <div class="row">
-        <div><label for="accessTokenTTL">Access token lifetime</label><input id="accessTokenTTL" type="number" min="0"></div>
-        <div><label for="refreshTokenTTL">Refresh token lifetime</label><input id="refreshTokenTTL" type="number" min="0"></div>
+        <div><label for="accessTokenTTL">Login session length</label><input id="accessTokenTTL" type="number" min="0">
+          <p class="hint">How long the app stays signed in before it quietly re-authenticates. e.g. 3600 = 1 hour.</p></div>
+        <div><label for="refreshTokenTTL">Time before sign-in is required again</label><input id="refreshTokenTTL" type="number" min="0">
+          <p class="hint">After this, the user must type their password again. e.g. 2592000 = 30 days.</p></div>
       </div>
-      <div class="group-title">Metadata &amp; maintenance (seconds)</div>
+
+      <div class="group-title">Library &amp; upkeep</div>
       <div class="row">
-        <div><label for="markersAccess">Markers access</label>
-          <select id="markersAccess"><option>none</option><option>read</option><option>readwrite</option></select></div>
-        <div><label for="enrichmentTTL">Enrichment freshness</label><input id="enrichmentTTL" type="number" min="0"></div>
-        <div><label for="markersStaleAfter">Markers stale after</label><input id="markersStaleAfter" type="number" min="0"></div>
-        <div><label for="playstateRetention">Playstate retention</label><input id="playstateRetention" type="number" min="0"></div>
-        <div><label for="maintenanceInterval">Maintenance interval</label><input id="maintenanceInterval" type="number" min="0"></div>
+        <div><label for="markersAccess">Who can add "skip intro" markers</label>
+          <select id="markersAccess">
+            <option value="none">Off — not offered</option>
+            <option value="read">Read only — clients can use them, not add</option>
+            <option value="readwrite">Read &amp; let clients contribute</option>
+          </select>
+          <p class="hint">Whether apps may read and/or submit intro/credits markers.</p></div>
+        <div><label for="enrichmentTTL">Refresh posters &amp; info every</label><input id="enrichmentTTL" type="number" min="0">
+          <p class="hint">How old TMDB data can get before it's re-fetched. e.g. 7776000 = 90 days.</p></div>
+        <div><label for="markersStaleAfter">Mark "skip intro" data old after</label><input id="markersStaleAfter" type="number" min="0">
+          <p class="hint">When a client is asked to refresh contributed markers. e.g. 604800 = 7 days.</p></div>
+        <div><label for="playstateRetention">Remember watch progress for</label><input id="playstateRetention" type="number" min="0">
+          <p class="hint">How long to keep "resume where you left off". e.g. 31536000 = 1 year.</p></div>
+        <div><label for="maintenanceInterval">Run background cleanup every</label><input id="maintenanceInterval" type="number" min="0">
+          <p class="hint">Refreshes stale info and tidies old data. e.g. 86400 = 1 day; 0 = off.</p></div>
       </div>
+
       <button id="save-btn">Save settings</button>
       <div id="save-msg" class="msg"></div>
-      <p class="hint">Saved settings apply on the next server restart. Host, port, database path, the admin login, and the TMDB key stay environment variables.</p>
+      <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, the admin login, and the TMDB key are set when starting the server, not here.)</p>
     </section>
 
     <section id="tab-libraries" hidden>
