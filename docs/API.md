@@ -906,8 +906,29 @@ forward-compatible — unknown keys are tolerated. Well-known keys:
 | `metadata.edit` | Edit item metadata and lock fields against auto-refresh |
 
 A key may be **scoped to one library** with a `:<libraryId>` suffix, e.g.
-`library.read:lib_abc` grants read for that library only. Each gated action
-checks the caller's effective permission; the admin always passes.
+`library.read:lib_abc` grants read for that library only. A user may hold both
+the global key and any number of scoped keys; a gated action passes if the caller
+holds the global key **or** the key scoped to the relevant library. The admin
+always passes.
+
+The permission set is replaced wholesale via
+[`PUT /v1/admin/users/{userId}/permissions`](#put-v1adminusersuseridpermissions)
+— the admin UI's permission editor reads the current array, toggles global and
+per-library grants, and writes the full array back.
+
+### `GET /v1/admin/permissions`
+
+The permission vocabulary for the admin editor (so the UI is data-driven, not
+hardcoded). **200** →
+```json
+{ "permissions": [
+    { "key": "library.read", "label": "Browse & play",
+      "description": "Browse libraries and resolve/play their items.",
+      "scopable": true, "reserved": false } ],
+  "libraries": [ { "id": "lib_…", "title": "Movies" } ] }
+```
+`scopable` keys may be granted per-library (`key:<libraryId>`) for any of the
+listed `libraries`; `reserved` keys are accepted and stored but not yet enforced.
 
 > **Image contribution is not yet wire-defined.** There is no image-write endpoint
 > in the protocol (no `PUT …/images`), and `images` is only ever advertised
@@ -919,8 +940,9 @@ checks the caller's effective permission; the admin always passes.
 ### `GET /v1/admin/users`
 
 List all accounts. **200** → `{ "users": [ { "id": "u_…", "username": "bob",
-"displayName": "Bob", "isAdmin": false, "permissions": ["library.read"] }, … ] }`.
-The admin's `permissions` reflects the full implicit set.
+"displayName": "Bob", "avatarURL": "/v1/users/u_…/avatar?v=…", "isAdmin": false,
+"permissions": ["library.read"] }, … ] }`. `avatarURL` is omitted when the user
+has no profile picture. The admin's `permissions` reflects the full implicit set.
 
 ### `POST /v1/admin/users`
 

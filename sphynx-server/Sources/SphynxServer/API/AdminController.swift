@@ -41,6 +41,7 @@ struct AdminController: Sendable {
         admin.post("items/:itemId/identity", use: setIdentity)
         admin.post("items/:itemId/enrich", use: enrichItem)
         admin.post("enrich", use: enrichAll)
+        admin.get("permissions", use: listPermissions)
         admin.get("users", use: listUsers)
         admin.post("users", use: createUser)
         admin.delete("users/:userId", use: deleteUser)
@@ -52,6 +53,18 @@ struct AdminController: Sendable {
         try requireAdmin(context)
         let users = try await auth.listUsers()
         return AdminUsersResponse(users: users.map(AdminUserResponse.init(from:)))
+    }
+
+    /// The permission vocabulary for the admin editor: well-known capabilities plus
+    /// the libraries each can be scoped to. Lets the UI render a data-driven matrix.
+    @Sendable
+    func listPermissions(_ request: Request, context: SphynxRequestContext) async throws -> PermissionsCatalogResponse {
+        try requireAdmin(context)
+        let libraries = try await catalog.libraries()
+        return PermissionsCatalogResponse(
+            permissions: Permissions.catalog,
+            libraries: libraries.map { ScopeLibrary(id: $0.id, title: $0.title) }
+        )
     }
 
     /// Create a non-admin user. There is exactly one admin (the bootstrap
@@ -664,6 +677,7 @@ struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
     var id: String
     var username: String
     var displayName: String
+    var avatarURL: String?
     var isAdmin: Bool
     var permissions: [String]
 
@@ -671,11 +685,25 @@ struct AdminUserResponse: Codable, Sendable, ResponseEncodable {
         self.id = user.id
         self.username = user.username
         self.displayName = user.displayName
+        self.avatarURL = user.avatarURL
         self.isAdmin = user.isAdmin
         // The admin holds everything implicitly; reflect that rather than its
         // (empty) stored set.
         self.permissions = user.isAdmin ? Permissions.wellKnown.sorted() : Array(user.permissions()).sorted()
     }
+}
+
+/// The admin permission editor's catalog: the capability vocabulary plus the
+/// libraries a scopable capability can be granted for.
+struct PermissionsCatalogResponse: Codable, Sendable, ResponseEncodable {
+    var permissions: [PermissionCapability]
+    var libraries: [ScopeLibrary]
+}
+
+/// A library a permission can be scoped to (id + title for the editor).
+struct ScopeLibrary: Codable, Sendable {
+    var id: String
+    var title: String
 }
 
 struct AdminUsersResponse: Codable, Sendable, ResponseEncodable {

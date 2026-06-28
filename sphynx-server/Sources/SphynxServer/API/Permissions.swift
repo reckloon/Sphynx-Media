@@ -43,4 +43,47 @@ enum Permissions {
     static func scoped(_ key: String, to libraryId: String) -> String {
         "\(key):\(libraryId)"
     }
+
+    /// Split a stored permission key into its base key and optional library scope.
+    /// `"library.read:lib_abc"` → `("library.read", "lib_abc")`;
+    /// `"library.read"` → `("library.read", nil)`.
+    static func split(_ key: String) -> (base: String, libraryId: String?) {
+        guard let colon = key.firstIndex(of: ":") else { return (key, nil) }
+        return (String(key[..<colon]), String(key[key.index(after: colon)...]))
+    }
+
+    /// The admin permission editor's vocabulary: each well-known capability with a
+    /// human label, a description, whether it can be scoped to a single library,
+    /// and whether it is reserved (stored but not yet enforced by any endpoint).
+    /// Served by `GET /v1/admin/permissions` so the editor is data-driven rather
+    /// than hardcoding keys.
+    static let catalog: [PermissionCapability] = [
+        PermissionCapability(
+            key: libraryRead, label: "Browse & play",
+            description: "Browse libraries and resolve/play their items.",
+            scopable: true, reserved: false),
+        PermissionCapability(
+            key: markersWrite, label: "Contribute markers",
+            description: "Contribute intro/credit markers (when the server allows writes).",
+            scopable: true, reserved: false),
+        PermissionCapability(
+            key: metadataEdit, label: "Edit metadata",
+            description: "Edit item metadata and lock fields against auto-refresh.",
+            scopable: true, reserved: false),
+        PermissionCapability(
+            key: imagesWrite, label: "Contribute artwork",
+            description: "Contribute artwork/images. Reserved — no wire endpoint yet.",
+            scopable: true, reserved: true),
+    ]
+}
+
+/// One well-known permission, described for the admin permission editor.
+struct PermissionCapability: Codable, Sendable {
+    var key: String
+    var label: String
+    var description: String
+    /// Whether the key may be granted per-library with a `:<libraryId>` suffix.
+    var scopable: Bool
+    /// Reserved keys are accepted/stored but not yet enforced by any endpoint.
+    var reserved: Bool
 }

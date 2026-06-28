@@ -50,6 +50,33 @@ struct OverviewTests {
         }
     }
 
+    @Test("permission catalog lists capabilities and scopable libraries")
+    func permissionCatalog() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let tokens: TokenResponse = try await client.execute(
+                uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),
+                body: try jsonBody(LoginRequest(username: "admin", password: "test-password"))
+            ) { try $0.decoded() }
+            let auth = jsonHeaders(bearer: tokens.accessToken)
+
+            let library: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: auth,
+                body: try jsonBody(CreateLibraryRequest(title: "Movies", kind: "movies"))
+            ) { try $0.decoded() }
+
+            let catalog: PermissionsCatalogResponse = try await client.execute(
+                uri: "/v1/admin/permissions", method: .get, headers: auth
+            ) { response in
+                #expect(response.status == .ok)
+                return try response.decoded()
+            }
+            #expect(catalog.permissions.contains { $0.key == "library.read" && $0.scopable })
+            #expect(catalog.permissions.contains { $0.key == "metadata.images.write" && $0.reserved })
+            #expect(catalog.libraries.contains { $0.id == library.id })
+        }
+    }
+
     @Test("overview is admin-only")
     func overviewAdminOnly() async throws {
         let app = try await buildApplication(configuration: testConfiguration())
