@@ -1312,7 +1312,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Discovery &amp; auth</strong> — <code>GET /v1/info</code>; password login with short access tokens + rotating refresh tokens; device-scoped sessions.</li>
   <li><strong>Browse</strong> — libraries and items (skeleton/full), cursor pagination, single-item detail.</li>
   <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles. A broad canonical field set (tagline, studios, directors/writers, <code>externalIds</code>, premiereDate, …) so clients have what they display.</li>
-  <li><strong>Admin catalog management</strong> — create / list / update / delete libraries, sources, and items, with <strong>cascade</strong>. One source can map a Movies and a TV library, routing a mixed folder by type from a single scan. A built-in <strong>web admin page</strong> (<code>/admin</code>) drives settings, libraries, and sources from the browser.</li>
+  <li><strong>Admin catalog management</strong> — create / list / update / delete libraries, sources, and items, with <strong>cascade</strong>. One source can map a Movies and a TV library, routing a mixed folder by type from a single scan. A built-in <strong>web admin page</strong> (<code>/admin</code>) drives settings, libraries, sources, and users from the browser, with a live <strong>activity dashboard</strong> (items being parsed/enriched), a read-only <strong>database browser</strong>, and a <strong>diagnostics log</strong>.</li>
   <li><strong>Manual edits</strong> — admin <code>PATCH</code> of item metadata with per-field <strong>locks</strong> that survive every scan and refresh.</li>
   <li><strong>Resolve</strong> — direct playback location + headers, resolved fresh per play and never stored (never proxied; carries an optional expiry only for time-bounded source links).</li>
   <li><strong>Playstate &amp; per-user state</strong> — start/progress/stop with failed-stop protection; watched / favorite / play-count / last-played; Continue Watching, Recently Added, and Favorites feeds; browse sort (name/added/rating) + genre/unwatched filter.</li>
@@ -1325,7 +1325,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
 <p>The reference server already ships a Docker build and a built-in <code>/admin</code> page; the work below is the protocol- and client-facing roadmap next. Most of these are <strong>wire-contract</strong> additions — a server may already do some of it as private convention, but the protocol doesn't model it yet, so clients can't rely on it. Ordered by priority.</p>
 
 <div class="callout soon">
-  <p><strong>Published Docker image &amp; fuller control panel.</strong> A pre-built image you can <code>docker run</code> without cloning (for now, <a href="#docker">build it yourself</a>), and growing the <code>/admin</code> page into a full browser control panel — users, libraries, sources, and scans.</p>
+  <p><strong>Published Docker image.</strong> A pre-built image you can <code>docker run</code> without cloning. For now, <a href="#docker">build it yourself</a> from the included Dockerfile.</p>
 </div>
 
 <h4>High impact</h4>

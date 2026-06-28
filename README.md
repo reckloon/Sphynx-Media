@@ -112,6 +112,9 @@ Built spine-first. Working today:
 - **Bi-directional metadata** — server-configurable, per-field read/write access;
   contributable intro/credit markers; an open `extra` bag for arbitrary
   server-defined metadata. See the [complete guide](https://reckloon.github.io/Sphynx-Media/).
+- **Web admin** — a built-in `/admin` page for settings, libraries, sources, and
+  users, plus a live activity dashboard (items being parsed/enriched), a read-only
+  database browser, and a diagnostics log.
 
 ### Roadmap
 
@@ -130,8 +133,8 @@ rely on. In priority order:
   marker DELETE + per-segment provenance; `Accept-Language` negotiation; typed
   collection/person traversal; more source drivers.
 
-A pre-built Docker image and a fuller web control panel are also planned. The full
-roadmap lives in the [complete guide](https://reckloon.github.io/Sphynx-Media/#roadmap).
+A pre-built Docker image is also planned. The full roadmap lives in the
+[complete guide](https://reckloon.github.io/Sphynx-Media/#roadmap).
 
 ## Building / testing
 
