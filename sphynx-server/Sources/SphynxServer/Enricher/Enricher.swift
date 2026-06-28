@@ -2,6 +2,10 @@ import Foundation
 
 /// Enrichment fields derived from TMDB, ready to apply to an item.
 struct EnrichedFields: Sendable {
+    /// Canonical title in the server's metadata language. Applied as the display
+    /// name during enrichment (honoring the `title` lock), so a foreign-named
+    /// release is normalised to the declared language. nil → keep the parsed name.
+    var title: String? = nil
     var overview: String?
     var year: Int?
     var runtimeSeconds: Double?
@@ -60,6 +64,7 @@ struct Enricher: Sendable {
     func enrichMovie(tmdbId: Int) async throws -> EnrichedFields {
         let details = try await tmdb.movieDetails(id: tmdbId)
         return EnrichedFields(
+            title: details.title.isEmpty ? nil : details.title,
             overview: details.overview?.isEmpty == true ? nil : details.overview,
             year: details.year,
             runtimeSeconds: details.runtimeMinutes.map { Double($0) * 60 },

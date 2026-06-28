@@ -77,9 +77,10 @@ skip button, no error.
 
 **Contribute (Ocelot is the TheIntroDB bridge):** Sphynx never calls an intro source server-side, so
 Ocelot owns it. On playback, when an item has **no native markers** but carries a `tmdbId`/`imdbId`,
-Ocelot fetches intro/credit markers from **TheIntroDB**'s free, unauthenticated read API — the
-client-only rule is about *call origin* (a server must not fetch it for clients), not credentials,
-so no key is needed to read — shows the skip button, and — for Sphynx items — writes them back:
+Ocelot fetches markers from **TheIntroDB's free public API** (`GET https://api.theintrodb.org/v3/media?tmdb_id=&imdb_id=&season=&episode=`
+— no API key required for reads; the client-only rule is about *call origin* (a server must not fetch
+it for clients), not credentials; times come back per-type as `{start_ms,end_ms}` arrays in **ms**),
+shows the skip button, and — for Sphynx items — writes them back:
 
 ```
 PUT /v1/items/{id}/markers

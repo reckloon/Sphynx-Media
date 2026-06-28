@@ -60,6 +60,22 @@ enum UserWebController {
   .bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .row button { margin-top:0; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  .group-title { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:18px 0 8px; }
+  .item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; background:#0e1117; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
+  .item .meta { font-size:13px; color:var(--muted); }
+  .empty { color:var(--muted); font-size:14px; padding:6px 0; }
+  .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
+  .crumbs { font-size:13px; color:var(--muted); margin:10px 0; }
+  .crumbs a { color:var(--accent); cursor:pointer; }
+  .it-row { display:flex; align-items:center; gap:11px; min-width:0; }
+  .it-thumb { width:30px; height:44px; object-fit:cover; border-radius:4px; background:var(--bg); border:1px solid var(--line); flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; font-size:16px; }
+  button.mini { margin:0; padding:5px 11px; font-size:13px; font-weight:500; }
+  .editor { border-top:1px solid var(--line); margin-top:16px; padding-top:6px; }
+  .lockbadge { font-size:11px; color:#e8c468; }
+  textarea { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; resize:vertical; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  select { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
 </style>
 </head>
 <body>
@@ -121,6 +137,38 @@ enum UserWebController {
       <p class="hint">Resetting clears your resume positions and watched marks on every device. It can't be undone.</p>
       <div id="device-msg" class="msg"></div>
     </div>
+
+    <div class="card" id="correction-card" hidden>
+      <h2>Library correction</h2>
+      <p class="sub">You can fix titles in the libraries you have edit access to. Browse the library, open a title, and correct its details. Anything you change is <strong>locked</strong> 🔒 so a re-scan won't overwrite it.</p>
+      <label for="cx-lib">Library</label>
+      <select id="cx-lib"></select>
+      <div id="cx-crumbs" class="crumbs"></div>
+      <div id="cx-list"><div class="empty">Pick a library to browse its titles.</div></div>
+
+      <div id="cx-editor" class="editor" hidden>
+        <div class="group-title">Editing <span id="cx-ed-title" class="muted"></span></div>
+        <div class="lockrow"><label for="cx-f-title">Title <span class="lockbadge" data-lb="title"></span></label><input id="cx-f-title"></div>
+        <div class="lockrow"><label for="cx-f-overview">Overview <span class="lockbadge" data-lb="overview"></span></label><textarea id="cx-f-overview" rows="3"></textarea></div>
+        <div class="row2">
+          <div class="lockrow"><label for="cx-f-year">Year <span class="lockbadge" data-lb="year"></span></label><input id="cx-f-year" type="number"></div>
+          <div class="lockrow"><label for="cx-f-runtime">Runtime (min) <span class="lockbadge" data-lb="runtime"></span></label><input id="cx-f-runtime" type="number" min="0"></div>
+        </div>
+        <div class="row2">
+          <div class="lockrow"><label for="cx-f-rating">Community rating <span class="lockbadge" data-lb="communityRating"></span></label><input id="cx-f-rating" type="number" step="0.1" min="0" max="10"></div>
+          <div class="lockrow"><label for="cx-f-official">Content rating <span class="lockbadge" data-lb="officialRating"></span></label><input id="cx-f-official" placeholder="PG-13"></div>
+        </div>
+        <div class="lockrow"><label for="cx-f-genres">Genres (comma-separated) <span class="lockbadge" data-lb="genres"></span></label><input id="cx-f-genres" placeholder="Action, Drama"></div>
+        <div class="lockrow"><label for="cx-f-primary">Poster URL <span class="lockbadge" data-lb="images"></span></label><input id="cx-f-primary" placeholder="https://…"></div>
+        <div class="lockrow"><label for="cx-f-backdrop">Backdrop URL <span class="lockbadge" data-lb="images"></span></label><input id="cx-f-backdrop" placeholder="https://…"></div>
+        <div class="row">
+          <button id="cx-save-btn">Save &amp; lock edited fields</button>
+          <button id="cx-unlock-btn" class="secondary">Unlock all</button>
+          <button id="cx-close-btn" class="secondary">Close</button>
+        </div>
+        <div id="cx-msg" class="msg"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -168,8 +216,101 @@ enum UserWebController {
       $('#me-user').textContent = 'id ' + d.user.id;
       $('#dname').value = d.user.displayName || '';
       renderAvatar();
+      initCorrection(d.permissions || []);
     });
   }
+
+  // ---- library correction (shown only to users who hold metadata.edit) ----
+  var CX_LOCKABLE = ['title', 'overview', 'year', 'runtime', 'communityRating', 'officialRating', 'genres', 'images'];
+  var cxNav = [], cxEditing = null, cxOrig = {}, cxInited = false;
+  function canEdit(perms) { return perms.some(function (p) { return p === 'metadata.edit' || p.indexOf('metadata.edit:') === 0; }); }
+  function initCorrection(perms) {
+    if (!canEdit(perms)) { $('#correction-card').hidden = true; return; }
+    $('#correction-card').hidden = false;
+    if (cxInited) return; cxInited = true;
+    api('/v1/libraries', 'GET').then(function (res) { return res.ok ? res.json() : { libraries: [] }; }).then(function (d) {
+      var libs = d.libraries || [];
+      $('#cx-lib').innerHTML = '<option value="">— pick —</option>' + libs.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join('');
+    });
+  }
+  $('#cx-lib').onchange = function () {
+    cxNav = []; var id = $('#cx-lib').value;
+    if (id) { cxNav.push({ id: id, title: $('#cx-lib').selectedOptions[0].textContent }); cxList(); }
+    else { $('#cx-list').innerHTML = '<div class="empty">Pick a library to browse its titles.</div>'; $('#cx-crumbs').innerHTML = ''; cxClose(); }
+  };
+  function cxRow(it) {
+    var container = it.type === 'collection' || it.type === 'series' || it.type === 'season' || (it.childCount && it.childCount > 0);
+    var poster = (it.images && it.images.primary)
+      ? '<img class="it-thumb" loading="lazy" src="' + esc(it.images.primary) + '" alt="">'
+      : '<span class="it-thumb">' + (container ? '📁' : '🎞️') + '</span>';
+    var open = container ? '<button class="mini secondary" data-open="' + esc(it.id) + '" data-title="' + esc(it.title) + '">Open</button>' : '';
+    var sub = it.childCount ? (it.childCount + ' inside') : (it.year ? String(it.year) : '');
+    return '<div class="item"><span class="it-row">' + poster + '<span><span class="chip">' + esc(it.type || 'item') + '</span> ' + esc(it.title) + (sub ? ' <span class="meta">' + esc(sub) + '</span>' : '') + '</span></span><span class="row">' + open + '<button class="mini" data-fix="' + esc(it.id) + '">Fix</button></span></div>';
+  }
+  function cxList() {
+    var top = cxNav[cxNav.length - 1]; if (!top) return;
+    var up = cxNav.length > 1 ? '<a data-up="1">⬆ Up</a> · ' : '';
+    $('#cx-crumbs').innerHTML = up + cxNav.map(function (n, i) { return '<a data-crumb="' + i + '">' + esc(n.title) + '</a>'; }).join(' › ');
+    api('/v1/admin/items?parent=' + encodeURIComponent(top.id) + '&limit=500', 'GET').then(function (res) { return res.ok ? res.json() : { items: [] }; }).then(function (d) {
+      var items = d.items || [];
+      $('#cx-list').innerHTML = items.length ? items.map(cxRow).join('') : '<div class="empty">Nothing here.</div>';
+    });
+  }
+  $('#cx-crumbs').onclick = function (e) {
+    if (e.target.getAttribute('data-up') != null) { if (cxNav.length > 1) { cxNav.pop(); cxClose(); cxList(); } return; }
+    var i = e.target.getAttribute('data-crumb'); if (i == null) return;
+    cxNav = cxNav.slice(0, Number(i) + 1); cxClose(); cxList();
+  };
+  $('#cx-list').onclick = function (e) {
+    var open = e.target.getAttribute('data-open');
+    if (open) { cxNav.push({ id: open, title: e.target.getAttribute('data-title') }); cxClose(); cxList(); return; }
+    var fix = e.target.getAttribute('data-fix'); if (fix) cxOpen(fix);
+  };
+  function cxBadges(locked) { CX_LOCKABLE.forEach(function (f) { var el = document.querySelector('#cx-editor .lockbadge[data-lb="' + f + '"]'); if (el) el.textContent = locked.indexOf(f) >= 0 ? '🔒 locked' : ''; }); }
+  function cxOpen(id) {
+    msg('cx-msg', '');
+    api('/v1/admin/items/' + id, 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (r) {
+      if (!r) { msg('cx-msg', 'Could not load item.'); return; }
+      cxEditing = id; var it = r.item; $('#cx-editor').hidden = false;
+      $('#cx-ed-title').textContent = it.title || id;
+      $('#cx-f-title').value = it.title || ''; $('#cx-f-overview').value = it.overview || '';
+      $('#cx-f-year').value = it.year || ''; $('#cx-f-runtime').value = it.runtime ? Math.round(it.runtime / 60) : '';
+      $('#cx-f-rating').value = it.communityRating != null ? it.communityRating : ''; $('#cx-f-official').value = it.officialRating || '';
+      $('#cx-f-genres').value = (it.genres || []).join(', ');
+      $('#cx-f-primary').value = (it.images && it.images.primary) || ''; $('#cx-f-backdrop').value = (it.images && it.images.backdrop) || '';
+      cxOrig = { title: $('#cx-f-title').value, overview: $('#cx-f-overview').value, year: $('#cx-f-year').value, runtime: $('#cx-f-runtime').value, rating: $('#cx-f-rating').value, official: $('#cx-f-official').value, genres: $('#cx-f-genres').value, primary: $('#cx-f-primary').value, backdrop: $('#cx-f-backdrop').value };
+      cxBadges(r.lockedFields || []);
+      $('#cx-editor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  function cxClose() { $('#cx-editor').hidden = true; cxEditing = null; }
+  function cxSave() {
+    if (!cxEditing) return;
+    var body = {}, o = cxOrig;
+    if ($('#cx-f-title').value !== o.title) body.title = $('#cx-f-title').value;
+    if ($('#cx-f-overview').value !== o.overview) body.overview = $('#cx-f-overview').value;
+    if ($('#cx-f-year').value !== o.year) { var y = $('#cx-f-year').value; if (y !== '') body.year = Number(y); }
+    if ($('#cx-f-runtime').value !== o.runtime) { var rt = $('#cx-f-runtime').value; if (rt !== '') body.runtime = Math.round(Number(rt) * 60); }
+    if ($('#cx-f-rating').value !== o.rating) { var cr = $('#cx-f-rating').value; if (cr !== '') body.communityRating = Number(cr); }
+    if ($('#cx-f-official').value !== o.official) body.officialRating = $('#cx-f-official').value;
+    if ($('#cx-f-genres').value !== o.genres) { var g = $('#cx-f-genres').value.trim(); if (g) body.genres = g.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+    if ($('#cx-f-primary').value !== o.primary || $('#cx-f-backdrop').value !== o.backdrop) body.images = { primary: $('#cx-f-primary').value || null, backdrop: $('#cx-f-backdrop').value || null };
+    if (!Object.keys(body).length) { msg('cx-msg', 'No changes to save.'); return; }
+    msg('cx-msg', 'Saving…');
+    api('/v1/admin/items/' + cxEditing, 'PATCH', body).then(function (res) { return res.ok ? res.json() : null; }).then(function (r) {
+      if (!r) { msg('cx-msg', 'Save failed.'); return; }
+      msg('cx-msg', 'Saved and locked the edited fields.', true);
+      cxOrig = { title: $('#cx-f-title').value, overview: $('#cx-f-overview').value, year: $('#cx-f-year').value, runtime: $('#cx-f-runtime').value, rating: $('#cx-f-rating').value, official: $('#cx-f-official').value, genres: $('#cx-f-genres').value, primary: $('#cx-f-primary').value, backdrop: $('#cx-f-backdrop').value };
+      cxBadges(r.lockedFields || []); cxList();
+    }).catch(function () { msg('cx-msg', 'Could not reach the server.'); });
+  }
+  function cxUnlock() {
+    if (!cxEditing) return;
+    api('/v1/admin/items/' + cxEditing, 'PATCH', { unlockAll: true }).then(function (res) { return res.ok ? res.json() : null; }).then(function (r) { if (r) { cxBadges([]); msg('cx-msg', 'Unlocked.', true); } });
+  }
+  $('#cx-save-btn').onclick = cxSave;
+  $('#cx-unlock-btn').onclick = cxUnlock;
+  $('#cx-close-btn').onclick = cxClose;
 
   function saveName() {
     msg('name-msg', '');

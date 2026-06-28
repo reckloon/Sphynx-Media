@@ -28,6 +28,7 @@ struct TVEnricher: Sendable {
     func seriesFields(tmdbId: Int) async throws -> EnrichedFields {
         let details = try await tmdb.tvDetails(id: tmdbId)
         return EnrichedFields(
+            title: details.name.isEmpty ? nil : details.name,
             overview: details.overview?.isEmpty == true ? nil : details.overview,
             year: details.year,
             runtimeSeconds: nil,

@@ -11,6 +11,7 @@ enum SettingKey: String, CaseIterable, Sendable {
     case accessTokenTTL
     case refreshTokenTTL
     case enrichmentTTL
+    case metadataLanguage
     case markersAccess
     case markersStaleAfter
     case playstateRetention
@@ -55,6 +56,7 @@ extension ServerConfiguration {
             SettingKey.accessTokenTTL.rawValue: String(accessTokenTTL),
             SettingKey.refreshTokenTTL.rawValue: String(refreshTokenTTL),
             SettingKey.enrichmentTTL.rawValue: String(enrichmentTTL),
+            SettingKey.metadataLanguage.rawValue: metadataLanguage,
             SettingKey.markersAccess.rawValue: markersAccess,
             SettingKey.markersStaleAfter.rawValue: String(markersStaleAfter),
             SettingKey.playstateRetention.rawValue: String(playstateRetention),
@@ -75,6 +77,7 @@ extension ServerConfiguration {
         if let v = settings[SettingKey.accessTokenTTL.rawValue], let d = Double(v) { c.accessTokenTTL = d }
         if let v = settings[SettingKey.refreshTokenTTL.rawValue], let d = Double(v) { c.refreshTokenTTL = d }
         if let v = settings[SettingKey.enrichmentTTL.rawValue], let d = Double(v) { c.enrichmentTTL = d }
+        if let v = settings[SettingKey.metadataLanguage.rawValue], !v.isEmpty { c.metadataLanguage = v }
         if let v = settings[SettingKey.markersAccess.rawValue] { c.markersAccess = v }
         if let v = settings[SettingKey.markersStaleAfter.rawValue], let d = Double(v) { c.markersStaleAfter = d }
         if let v = settings[SettingKey.playstateRetention.rawValue], let d = Double(v) { c.playstateRetention = d }

@@ -135,6 +135,11 @@ enum TMDBImage {
 /// and unit-testable) and authenticates with the v3 `api_key` query parameter.
 struct TMDBHTTPClient: TMDBClient {
     let apiKey: String
+    /// Metadata language as an ISO `language-COUNTRY` tag (`en-US`, `ru-RU`, …).
+    /// Sent on the *detail* endpoints, so titles, overviews, and episode names come
+    /// back in the server's declared language. Search stays language-neutral —
+    /// TMDB matches a query against all translations regardless.
+    var language: String = "en-US"
     let fetcher: any HTTPFetching
     private let apiBase = "https://api.themoviedb.org/3"
 
@@ -157,6 +162,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/movie/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "language", value: language),
             URLQueryItem(name: "append_to_response", value: "credits,videos,keywords,images,release_dates"),
             // Logos for the title-logo image carry no language on backdrops; ask
             // for English + null-language so a clearlogo is available.
@@ -252,6 +258,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/tv/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "language", value: language),
             URLQueryItem(name: "append_to_response", value: "credits,content_ratings"),
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
@@ -284,7 +291,10 @@ struct TMDBHTTPClient: TMDBClient {
 
     func seasonDetails(tvId: Int, season: Int) async throws -> TMDBSeasonDetails {
         var components = URLComponents(string: "\(apiBase)/tv/\(tvId)/season/\(season)")!
-        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "language", value: language),
+        ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawSeasonDetails.self, from: data)
         return TMDBSeasonDetails(
