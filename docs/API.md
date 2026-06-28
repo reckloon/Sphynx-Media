@@ -241,7 +241,7 @@ play time, never cached from browse.
   produced, *not* a probe of the origin — it says nothing about ordinary HTTP
   redirects (the client's HTTP stack follows those) or timing (resolution is
   always fresh at play time). Absent/false means resolve `url` yourself first.
-- `ttl` — *optional.* When the source returns a time-bounded link (e.g. a signed
+- `ttl` (time-to-live, seconds) — *optional.* When the source returns a time-bounded link (e.g. a signed
   CDN URL), how many seconds it stays valid; the server passes the driver's value
   straight through and never persists it. The built-in `http`/`local` drivers
   return plain, non-expiring URLs, so `ttl` is absent. Absent = no expiry.
@@ -455,7 +455,7 @@ deleted. **204** on success.
   "libraryMap": { "movie": "lib_movies", "tv": "lib_tv" },
   "manifestURL": "https://cdn.example/manifest.json" }
 ```
-`driver` defaults to `http`. `manifestURL` is where the indexer lists entries.
+`driver` defaults to `http`. `manifestURL` points to a JSON document (the *manifest*) that lists the entries to index — metadata only, never the media bytes.
 
 A source feeds a library by content **category**: `libraryMap` routes each item
 to a library by type (`movie` / `tv`), so **one source + one scan** fills a Movies
