@@ -41,6 +41,23 @@ struct TMDBMovieDetails: Sendable {
     var directors: [String] = []
     var writers: [String] = []
     var countries: [String] = []
+    /// Collection / box set this movie belongs to (TMDB `belongs_to_collection`).
+    var collection: TMDBCollection? = nil
+    /// Title-logo / banner artwork (TMDB `/movie/{id}/images`, appended).
+    var logoPath: String? = nil
+    var bannerPath: String? = nil
+    /// Trailer URLs (resolved from TMDB `videos`: YouTube/Vimeo site+key).
+    var trailers: [String] = []
+    /// Free-form keyword tags (TMDB `keywords`).
+    var tags: [String] = []
+}
+
+/// A TMDB movie collection / box set (from `belongs_to_collection`).
+struct TMDBCollection: Sendable {
+    var id: Int
+    var name: String
+    var posterPath: String?
+    var backdropPath: String?
 }
 
 struct TMDBCastMember: Sendable {
@@ -135,7 +152,10 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/movie/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "append_to_response", value: "credits"),
+            URLQueryItem(name: "append_to_response", value: "credits,videos,keywords,images"),
+            // Logos for the title-logo image carry no language on backdrops; ask
+            // for English + null-language so a clearlogo is available.
+            URLQueryItem(name: "include_image_language", value: "en,null"),
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawMovieDetails.self, from: data)
@@ -161,8 +181,37 @@ struct TMDBHTTPClient: TMDBClient {
             studios: raw.production_companies?.map(\.name) ?? [],
             directors: crew.filter { $0.job == "Director" }.map(\.name),
             writers: crew.filter { $0.department == "Writing" }.map(\.name),
-            countries: raw.production_countries?.map(\.name) ?? []
+            countries: raw.production_countries?.map(\.name) ?? [],
+            collection: raw.belongs_to_collection.map {
+                TMDBCollection(id: $0.id, name: $0.name, posterPath: $0.poster_path, backdropPath: $0.backdrop_path)
+            },
+            logoPath: raw.images?.logos?.first?.file_path,
+            bannerPath: Self.bannerPath(from: raw.images?.backdrops),
+            trailers: Self.trailerURLs(from: raw.videos?.results ?? []),
+            tags: (raw.keywords?.keywords ?? []).map(\.name)
         )
+    }
+
+    /// Pick a banner-ish image: a backdrop explicitly flagged wide (aspect ≥ 2.0,
+    /// i.e. ultra-wide letterbox art), else the widest available backdrop. Best-effort.
+    static func bannerPath(from backdrops: [RawImage]?) -> String? {
+        guard let backdrops, !backdrops.isEmpty else { return nil }
+        let wide = backdrops.first { ($0.aspect_ratio ?? 0) >= 2.0 }
+        return (wide ?? backdrops.max { ($0.aspect_ratio ?? 0) < ($1.aspect_ratio ?? 0) })?.file_path
+    }
+
+    /// Map TMDB videos to playable URLs (YouTube/Vimeo trailers + teasers).
+    static func trailerURLs(from videos: [RawVideo]) -> [String] {
+        videos.compactMap { video in
+            guard let key = video.key, !key.isEmpty else { return nil }
+            let type = (video.type ?? "").lowercased()
+            guard type == "trailer" || type == "teaser" else { return nil }
+            switch (video.site ?? "").lowercased() {
+            case "youtube": return "https://www.youtube.com/watch?v=\(key)"
+            case "vimeo":   return "https://vimeo.com/\(key)"
+            default:        return nil
+            }
+        }
     }
 
     // MARK: TV
@@ -267,6 +316,41 @@ private struct RawMovieDetails: Decodable {
     var production_companies: [RawNamed]?
     var production_countries: [RawNamed]?
     var credits: RawCredits?
+    var belongs_to_collection: RawCollection?
+    var videos: RawVideos?
+    var keywords: RawKeywords?
+    var images: RawImages?
+}
+
+private struct RawCollection: Decodable {
+    var id: Int
+    var name: String
+    var poster_path: String?
+    var backdrop_path: String?
+}
+
+private struct RawVideos: Decodable {
+    var results: [RawVideo]
+}
+
+struct RawVideo: Decodable {
+    var key: String?
+    var site: String?
+    var type: String?
+}
+
+private struct RawKeywords: Decodable {
+    var keywords: [RawNamed]?
+}
+
+private struct RawImages: Decodable {
+    var logos: [RawImage]?
+    var backdrops: [RawImage]?
+}
+
+struct RawImage: Decodable {
+    var file_path: String?
+    var aspect_ratio: Double?
 }
 
 private struct RawGenre: Decodable {

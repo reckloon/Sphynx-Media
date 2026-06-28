@@ -22,6 +22,14 @@ struct EnrichedFields: Sendable {
     var writers: [String] = []
     var countries: [String] = []
     var externalIds: [String: String] = [:]
+    // M8 metadata fills (optional; defaulted so the TV path needn't set them).
+    var logoImage: String? = nil
+    var bannerImage: String? = nil
+    var trailers: [String] = []
+    var tags: [String] = []
+    var sortTitle: String? = nil
+    /// Collection / box set this movie belongs to, if any.
+    var collection: TMDBCollection? = nil
 }
 
 /// Given a TMDB id, fetch metadata and map it to the protocol's enrichment
@@ -69,7 +77,24 @@ struct Enricher: Sendable {
             directors: details.directors,
             writers: details.writers,
             countries: details.countries,
-            externalIds: details.imdbId.map { ["imdb": $0] } ?? [:]
+            externalIds: details.imdbId.map { ["imdb": $0] } ?? [:],
+            logoImage: TMDBImage.url(details.logoPath, size: "w500"),
+            bannerImage: TMDBImage.url(details.bannerPath, size: "w1280"),
+            trailers: details.trailers,
+            tags: details.tags,
+            sortTitle: Self.sortTitle(from: details.title),
+            collection: details.collection
         )
+    }
+
+    /// Derive a sort title by dropping a leading English article ("The "/"A "/"An ").
+    /// Returns nil when the title has no leading article (so we don't store a
+    /// redundant copy of the title).
+    static func sortTitle(from title: String) -> String? {
+        for article in ["The ", "A ", "An "] where title.hasPrefix(article) {
+            let stripped = String(title.dropFirst(article.count)).trimmingCharacters(in: .whitespaces)
+            return stripped.isEmpty ? nil : stripped
+        }
+        return nil
     }
 }

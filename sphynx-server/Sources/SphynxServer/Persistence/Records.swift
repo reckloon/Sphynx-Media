@@ -218,6 +218,10 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var libraryId: String?
     /// Parent item for hierarchy (series → season → episode); nil = top-level.
     var parentId: String?
+    /// Collection / box-set membership (the collection itself is a `collection`-typed
+    /// item; movies also carry `parentId == collectionId` so `items?parent=` lists them).
+    var collectionId: String?
+    var collectionTitle: String?
     var year: Int?
     var createdAt: Double
     var updatedAt: Double
@@ -241,8 +245,18 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var primaryImage: String?
     var backdropImage: String?
     var thumbImage: String?
+    /// Title-logo (clearlogo) artwork.
+    var logoImage: String?
+    /// Wide banner artwork.
+    var bannerImage: String?
     var placeholderURL: String?
     var castJSON: String?
+    /// JSON array of trailer URLs (full-detail).
+    var trailersJSON: String?
+    /// JSON array of free-form tag/keyword strings (full-detail).
+    var tagsJSON: String?
+    /// A title to sort by (leading article dropped); full-detail.
+    var sortTitle: String?
     /// Identification confidence (0...1).
     var confidence: Double?
     /// When enrichment last succeeded; nil = never enriched.
@@ -291,8 +305,11 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// placeholder, year); `full` adds enrichment (overview, genres, ratings,
     /// runtime, cast). A skeleton is distinguished by the absence of enrichment.
     func toProtocol(full: Bool = false) -> Item {
-        let images: ItemImages? = (primaryImage != nil || backdropImage != nil || thumbImage != nil)
-            ? ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage)
+        let hasImages = primaryImage != nil || backdropImage != nil || thumbImage != nil
+            || logoImage != nil || bannerImage != nil
+        let images: ItemImages? = hasImages
+            ? ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage,
+                         logo: logoImage, banner: bannerImage)
             : nil
 
         var item = Item(
@@ -309,6 +326,8 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             episodeIndex: episodeIndex,
             childCount: childCount,
             parentId: parentId,
+            collectionId: collectionId,
+            collectionTitle: collectionTitle,
             extra: decodedExtra()
         )
         // Last change to client-rendered data: the max of the per-field change
@@ -326,6 +345,9 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             item.communityRating = communityRating
             item.officialRating = officialRating
             item.cast = decodedCast()
+            item.sortTitle = sortTitle
+            item.tags = decodedStringList(tagsJSON)
+            item.trailers = decodedStringList(trailersJSON)
             // Extended TMDB metadata (omitted fields stay nil — nothing breaks).
             if let ext = extended() {
                 item.originalTitle = ext.originalTitle
@@ -346,6 +368,14 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     private func decodedGenres() -> [String]? {
         guard let genresJSON, let data = genresJSON.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode([String].self, from: data)
+    }
+
+    /// Decode a JSON array of strings (nil/empty → nil so the wire omits it).
+    private func decodedStringList(_ json: String?) -> [String]? {
+        guard let json, let data = json.data(using: .utf8),
+              let list = try? JSONDecoder().decode([String].self, from: data), !list.isEmpty
+        else { return nil }
+        return list
     }
 
     private func decodedCast() -> [CastMember]? {

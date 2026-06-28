@@ -275,6 +275,20 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m16_item_collections_and_metadata") { db in
+            // Collection / box-set membership plus M8 metadata fills (logo/banner
+            // artwork, trailers, tags, sortTitle), projected onto the canonical Item.
+            try db.alter(table: "item") { t in
+                t.add(column: "collectionId", .text)
+                t.add(column: "collectionTitle", .text)
+                t.add(column: "logoImage", .text)
+                t.add(column: "bannerImage", .text)
+                t.add(column: "trailersJSON", .text)
+                t.add(column: "tagsJSON", .text)
+                t.add(column: "sortTitle", .text)
+            }
+        }
+
         return migrator
     }
 }

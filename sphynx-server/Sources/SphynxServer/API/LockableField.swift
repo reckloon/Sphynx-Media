@@ -20,11 +20,13 @@ enum LockableField {
     /// The low-res placeholder.
     static let placeholder = "placeholder"
     static let cast = "cast"
+    static let trailers = "trailers"
+    static let tags = "tags"
 
     /// Every well-known lock key (for validation/UX; locking is not restricted to
     /// these — unknown keys are accepted and simply protect nothing today).
     static let wellKnown: [String] = [
         title, overview, year, runtime, genres, communityRating, officialRating,
-        images, placeholder, cast,
+        images, placeholder, cast, trailers, tags,
     ]
 }

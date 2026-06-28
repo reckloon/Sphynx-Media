@@ -70,6 +70,7 @@ struct EnrichmentService: Sendable {
 
             let fields = try await enricher.enrichMovie(tmdbId: resolvedId)
             apply(fields, to: &updated)
+            try await linkCollection(fields.collection, to: &updated)
             updated.enrichedAt = now
             updated.updatedAt = now
             try await catalog.updateItem(updated)
@@ -158,6 +159,30 @@ struct EnrichmentService: Sendable {
         return count
     }
 
+    /// Create-or-fetch the `collection` item this movie belongs to and link the
+    /// movie to it via BOTH `collectionId`/`collectionTitle` AND the generic
+    /// `parentId` (so `GET /v1/items?parent=<collectionId>` lists members). The
+    /// collection lives in the movie's owning library; dedup is by TMDB collection
+    /// id across movies. No-op when the movie isn't in a collection or has no
+    /// resolvable library. Honors the `images` lock for the collection link unit
+    /// is unnecessary — membership is structural, not an editable field.
+    private func linkCollection(_ collection: TMDBCollection?, to item: inout ItemRecord) async throws {
+        guard let collection else { return }
+        guard let libraryId = try await catalog.owningLibraryId(of: item) else { return }
+        let record = try await catalog.upsertCollection(
+            libraryId: libraryId,
+            tmdbCollectionId: collection.id,
+            title: collection.name,
+            primaryImage: TMDBImage.url(collection.posterPath, size: "w500"),
+            backdropImage: TMDBImage.url(collection.backdropPath, size: "w1280"),
+            placeholderURL: TMDBImage.url(collection.posterPath, size: "w92")
+        )
+        item.collectionId = record.id
+        item.collectionTitle = record.title
+        // The generic parent link drives `items?parent=<collectionId>` listing.
+        item.parentId = record.id
+    }
+
     private func apply(_ fields: EnrichedFields, to item: inout ItemRecord) {
         // Manual edits win: never overwrite a field the admin has locked.
         let locked = item.lockedFields()
@@ -170,9 +195,20 @@ struct EnrichmentService: Sendable {
             item.primaryImage = fields.primaryImage
             item.backdropImage = fields.backdropImage
             item.thumbImage = fields.thumbImage
+            // Logo + banner artwork share the `images` lock unit.
+            item.logoImage = fields.logoImage
+            item.bannerImage = fields.bannerImage
         }
         if !locked.contains(LockableField.placeholder) { item.placeholderURL = fields.placeholderURL }
         if !locked.contains(LockableField.cast) { item.castJSON = Self.encode(fields.cast) }
+        if !locked.contains(LockableField.trailers) {
+            item.trailersJSON = fields.trailers.isEmpty ? nil : Self.encode(fields.trailers)
+        }
+        if !locked.contains(LockableField.tags) {
+            item.tagsJSON = fields.tags.isEmpty ? nil : Self.encode(fields.tags)
+        }
+        // sortTitle is derived from the title, so it follows the title lock.
+        if !locked.contains(LockableField.title) { item.sortTitle = fields.sortTitle }
 
         // Extended metadata (server-owned; projected onto the canonical Item).
         let extended = StoredExtended(
