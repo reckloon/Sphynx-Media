@@ -100,6 +100,16 @@ public struct Item: Codable, Hashable, Sendable {
     public var episodeIndex: Int?
     public var childCount: Int?
 
+    /// Generic parent link. The container this item nests under when it isn't the
+    /// TV season/series relationship above — e.g. a bonus/extra under its movie or
+    /// show, or a movie under its collection. A client browses an item's children
+    /// with `GET /v1/items?parent=<id>`. Absent for top-level items.
+    public var parentId: String?
+    /// Collection / box-set membership, when the item belongs to one (mirrors
+    /// `seriesId`/`seriesTitle`). The collection itself is a `collection`-typed item.
+    public var collectionId: String?
+    public var collectionTitle: String?
+
     // Enrichment (present at detail=full).
     public var genres: [String]?
     /// Audience rating, typically 0…10 (e.g. TMDB vote average).
@@ -182,6 +192,9 @@ public struct Item: Codable, Hashable, Sendable {
         seasonIndex: Int? = nil,
         episodeIndex: Int? = nil,
         childCount: Int? = nil,
+        parentId: String? = nil,
+        collectionId: String? = nil,
+        collectionTitle: String? = nil,
         genres: [String]? = nil,
         communityRating: Double? = nil,
         criticRating: Double? = nil,
@@ -224,6 +237,9 @@ public struct Item: Codable, Hashable, Sendable {
         self.seasonIndex = seasonIndex
         self.episodeIndex = episodeIndex
         self.childCount = childCount
+        self.parentId = parentId
+        self.collectionId = collectionId
+        self.collectionTitle = collectionTitle
         self.genres = genres
         self.communityRating = communityRating
         self.criticRating = criticRating

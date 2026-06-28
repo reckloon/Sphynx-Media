@@ -10,6 +10,11 @@ public enum ItemType: OpenEnum {
     case episode
     case person
     case collection
+    // Bonus / extra content, nested under a parent movie or show via `parentId`.
+    case trailer
+    case featurette
+    case deletedScene
+    case behindTheScenes
     case other
     case unknown(String)
 
@@ -21,6 +26,10 @@ public enum ItemType: OpenEnum {
         case "episode": self = .episode
         case "person": self = .person
         case "collection": self = .collection
+        case "trailer": self = .trailer
+        case "featurette": self = .featurette
+        case "deletedScene": self = .deletedScene
+        case "behindTheScenes": self = .behindTheScenes
         case "other": self = .other
         default: return nil
         }
@@ -34,6 +43,10 @@ public enum ItemType: OpenEnum {
         case .episode: "episode"
         case .person: "person"
         case .collection: "collection"
+        case .trailer: "trailer"
+        case .featurette: "featurette"
+        case .deletedScene: "deletedScene"
+        case .behindTheScenes: "behindTheScenes"
         case .other: "other"
         case .unknown(let value): value
         }

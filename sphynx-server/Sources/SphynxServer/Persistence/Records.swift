@@ -308,6 +308,7 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             seasonIndex: seasonIndex,
             episodeIndex: episodeIndex,
             childCount: childCount,
+            parentId: parentId,
             extra: decodedExtra()
         )
         // Last change to client-rendered data: the max of the per-field change

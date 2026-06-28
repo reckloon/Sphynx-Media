@@ -36,6 +36,23 @@ struct BrowseTypesTests {
         #expect(!json.contains("nextCursor"))
     }
 
+    @Test("Item carries parentId + collection membership + extras types")
+    func parentAndCollection() throws {
+        // A bonus clip nested under its movie.
+        try assertRoundTrips(Item(id: "it_x", type: .featurette, title: "The Making Of", parentId: "it_movie"))
+        // A film that belongs to a collection.
+        try assertRoundTrips(Item(id: "it_m", type: .movie, title: "Part One",
+                                  collectionId: "it_coll", collectionTitle: "The Saga"))
+        // The four new extras types map to/from their wire strings.
+        for t: ItemType in [.trailer, .featurette, .deletedScene, .behindTheScenes] {
+            #expect(ItemType(rawValue: t.rawValue) == t)
+        }
+        // An unknown future type still decodes (forward-compat).
+        #expect(ItemType(rawValue: "interview") == nil)
+        let decoded = try JSONDecoder().decode(ItemType.self, from: Data("\"interview\"".utf8))
+        #expect(decoded == .unknown("interview"))
+    }
+
     @Test("Home response round-trips with typed shelves + aspect")
     func home() throws {
         let response = HomeResponse(shelves: [
