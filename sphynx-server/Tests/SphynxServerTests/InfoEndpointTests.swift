@@ -21,6 +21,16 @@ struct InfoEndpointTests {
                 // The additive event stream is advertised so clients can opt in.
                 #expect(info.capabilities.events == true)
                 #expect(info.capabilities.playstate == true)
+                // The server advertises the Item fields it can populate, and the
+                // list is honest: it includes what it fills and omits what it
+                // doesn't, so clients can flag unsupported features.
+                let fields = info.capabilities.fields
+                for present in ["title", "overview", "genres", "cast", "images", "parentId", "resumePosition"] {
+                    #expect(fields.contains(present), "should advertise \(present)")
+                }
+                for absent in ["criticRating", "tags", "trailers", "chapters", "sortTitle"] {
+                    #expect(!fields.contains(absent), "must not over-claim \(absent)")
+                }
             }
         }
     }

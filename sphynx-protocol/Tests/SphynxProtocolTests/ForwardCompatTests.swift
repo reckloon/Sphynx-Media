@@ -61,6 +61,21 @@ struct ForwardCompatTests {
         #expect(caps.metadata.isEmpty)
     }
 
+    @Test("The fields coverage list round-trips; absent ⇒ supportsField is permissive")
+    func fieldsCapability() throws {
+        // Advertised coverage: a listed field is supported, an omitted one is not.
+        let caps = Capabilities(fields: ["title", "overview", "cast"])
+        let decoded = try JSONDecoder().decode(Capabilities.self, from: JSONEncoder().encode(caps))
+        #expect(decoded.fields == ["title", "overview", "cast"])
+        #expect(decoded.supportsField("overview"))
+        #expect(!decoded.supportsField("trailers"))   // advertised list omits it ⇒ unsupported
+
+        // No coverage advertised ⇒ unknown, so supportsField is permissive (assume it might).
+        let none = try JSONDecoder().decode(Capabilities.self, from: #"{ "playstate": true }"#.data(using: .utf8)!)
+        #expect(none.fields.isEmpty)
+        #expect(none.supportsField("trailers"))
+    }
+
     @Test("The events capability round-trips and is read when advertised")
     func eventsCapabilityRoundTrips() throws {
         let caps = Capabilities(playstate: true, events: true)
