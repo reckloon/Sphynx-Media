@@ -52,6 +52,8 @@ curl http://localhost:8080/v1/info
 | `SPHYNX_MARKERS_STALE_AFTER` | `604800` (7d)         | Age after which markers are reported `stale` for client refresh |
 | `SPHYNX_PLAYSTATE_RETENTION` | `31536000` (365d)     | Playstate retention; older entries purged by maintenance |
 | `SPHYNX_MAINTENANCE_INTERVAL`| `86400` (1d)          | Background maintenance interval; `0` disables it |
+| `SPHYNX_PLAYSTATE_REPORT_INTERVAL` | `5`              | Preferred client progress-report cadence (seconds), advertised in `/v1/info` |
+| `SPHYNX_EVENTS_HEARTBEAT`    | `15`                      | Keep-alive ping interval for the `/v1/events` SSE stream (seconds) |
 
 Only the **startup/secret** vars (`SPHYNX_HOST`, `SPHYNX_PORT`, `SPHYNX_DB_PATH`,
 `SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. The rest are

@@ -615,6 +615,23 @@ episodes), then prunes any container the deletion leaves empty. **204** on succe
 An item still listed by its source reappears on the next scan — the source is the
 source of truth.
 
+### Diagnostics — all `GET`, admin-only
+
+These power the web admin's activity dashboard, log viewer, and database browser.
+They are server-specific (not part of the wire protocol).
+
+- **`GET /v1/admin/status`** → an activity snapshot (current parse/enrich activity
+  and recent counters).
+- **`GET /v1/admin/logs?after=<seq>&limit=<n>&level=<level>`** → recent diagnostics
+  log lines: `{ "lines": [ … ], "latestSeq": <n> }`. `after` pages by sequence
+  (default-ish `limit` 200, max 1000); `level` filters by log level.
+- **`GET /v1/admin/db/tables`** → `{ "tables": [ { "name": "item", "rowCount": 42 } ] }`
+  for the user tables.
+- **`GET /v1/admin/db/query?table=<name>&limit=<n>&offset=<n>`** → a read-only page of
+  one table: `{ "table", "columns", "rows", "total", "limit", "offset", "redactedColumns" }`.
+  The table name is whitelisted against the real schema (no SQL injection) and
+  secret columns (credentials) are redacted. `limit` max 200.
+
 ---
 
 ## Errors
@@ -673,12 +690,21 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
 }
 ```
 
+The example above shows the **full protocol shape** — every field is optional and
+omitted when empty. The **reference server** currently populates the TMDB-derived
+fields (overview, year, runtime, genres, `communityRating`, `officialRating`, cast
+— including **TV** series/episodes — directors/writers, studios, countries, tagline,
+status, premiereDate/endDate, `externalIds.imdb`, images) plus per-user state. It
+does **not** populate `criticRating`, `tags`, `trailers`, `chapters`, `sortTitle`,
+or the `logo`/`banner` image roles — those are reserved for richer servers or
+extensions (or ride in `extra`); clients must render fine without them.
+
 `images` carries neutral roles (all optional): `primary` (portrait poster; for an
 episode, its landscape still), `backdrop` (wide / **horizontal** art), `thumb` (a
 small variant), `logo`, `banner`. The reference server fills movies with primary +
 backdrop + thumb; series with primary + backdrop; **seasons** and **episodes** also
 inherit the show's `backdrop`, so every enriched item has both a portrait
-(`primary`) and a horizontal (`backdrop`) option.
+(`primary`) and a horizontal (`backdrop`) option. It leaves `logo`/`banner` unset.
 
 `updatedAt` (RFC 3339) is the last change to **client-rendered** data for the item
 (title, images, enrichment, markers, …) — the max of the server's per-field change
@@ -711,8 +737,12 @@ clients keep working. `extra` is omitted entirely when empty.
 
 ## Planned
 
-Defined in the protocol or roadmap but not yet implemented:
+Defined in the protocol but not yet implemented by the reference server:
 
-- Per-user watched/favorite state; browse sort & filter.
-- `GET /v1/search`.
-- Ranked `candidates` in the `/resolve` descriptor.
+- `GET /v1/search` (`capabilities.search`).
+- Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
+- **Collections / box sets** — `ItemType.collection` and the `boxSets`/`collection`
+  library kinds exist on the wire, but the server never creates collection items or
+  links movies (TMDB `belongs_to_collection` is not fetched).
+- Remote source-driver **listing** — WebDAV/SMB/FTP resolve, but their directory
+  listing is not implemented yet (HTTP and local work fully).

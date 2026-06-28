@@ -115,6 +115,9 @@ Built spine-first. Working today:
 - **Web admin** — a built-in `/admin` page for settings, libraries, sources, and
   users, plus a live activity dashboard (items being parsed/enriched), a read-only
   database browser, and a diagnostics log.
+- **Live updates** — an additive server→client SSE event stream (`GET /v1/events`)
+  for playstate, per-user state, markers, and library changes; clients opt in via
+  `capabilities.events` and otherwise poll.
 
 ### Roadmap
 
@@ -129,9 +132,11 @@ rely on. In priority order:
   lifetime; a typed browse sort/filter contract (+ `totalCount`); rate-limit
   backoff hints; a clear-resume action; the playstate source-of-truth rule in the
   types.
-- **Lower / by-design** — typed search shape; real-time (WebSocket/SSE) updates;
-  marker DELETE + per-segment provenance; `Accept-Language` negotiation; typed
-  collection/person traversal; more source drivers.
+- **Lower / by-design** — typed search shape; a server-mediated co-watch/party
+  channel (the one-way SSE event stream already ships — see Features above; only a
+  bidirectional party channel is unbuilt); marker DELETE + per-segment provenance;
+  `Accept-Language` negotiation; typed collection/person traversal; more source
+  drivers.
 
 A pre-built Docker image is also planned. The full roadmap lives in the
 [complete guide](https://reckloon.github.io/Sphynx-Media/#roadmap).
