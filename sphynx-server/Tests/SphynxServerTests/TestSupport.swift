@@ -49,7 +49,11 @@ func jsonHeaders(bearer: String? = nil, device: String? = nil) -> HTTPFields {
 extension TestResponse {
     /// Decode the response body as a protocol/JSON type.
     func decoded<T: Decodable>(_ type: T.Type = T.self) throws -> T {
-        try JSONDecoder().decode(T.self, from: self.body)
+        // `body` is a `ByteBuffer`; the `decode(_:from: ByteBuffer)` overload comes
+        // from NIOFoundationCompat, which is only implicitly visible under the macOS
+        // toolchain. Convert via NIOCore's `readableBytesView` so this compiles on
+        // Linux (Swift 6.3) too — plain Foundation `Data(_: some Sequence<UInt8>)`.
+        try JSONDecoder().decode(T.self, from: Data(self.body.readableBytesView))
     }
 }
 

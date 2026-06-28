@@ -38,7 +38,17 @@ enum FilenameParser {
     static func parse(_ key: String) -> Parsed {
         // Last path component, extension stripped.
         let lastComponent = key.split(separator: "/").last.map(String.init) ?? key
-        let noExtension = stripExtension(lastComponent)
+        var noExtension = stripExtension(lastComponent)
+
+        // Drop leading `[group]` release/fansub tags (`[pcela] Suzume (2022)…`) so
+        // the tag never leaks into the title as a bogus first word. Only *leading*
+        // groups are stripped, and never the whole name — a bracket later in the
+        // string is release metadata the junk filter handles. Mirrors the leading
+        // strip `PathParser.cleanSeriesName` already does for series folders.
+        while let r = noExtension.range(of: #"^\s*\[[^\]]*\]\s*"#, options: .regularExpression),
+              r.upperBound < noExtension.endIndex {
+            noExtension.removeSubrange(r)
+        }
 
         // Normalise separators (incl. brackets and CJK punctuation/full-width
         // separators) to spaces, and fold full-width digits to ASCII so a

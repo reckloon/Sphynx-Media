@@ -76,6 +76,22 @@ struct FilenameParserTests {
         #expect(p.year == 2018)
     }
 
+    @Test("a leading [release-group] tag is stripped, not kept as the first word")
+    func leadingGroupTag() {
+        // Real-world scene/fansub naming: the `[pcela]` group tag must not become
+        // part of the title (`pcela Suzume`), or the TMDB search misses.
+        let p = FilenameParser.parse("[pcela] Suzume (2022) - [HKG UHD Bluray 2160p Remux][HDR10].mkv")
+        #expect(p.title == "Suzume")
+        #expect(p.year == 2022)
+    }
+
+    @Test("a name that is only a [group] tag keeps it rather than emptying the title")
+    func bracketOnlyTitle() {
+        let p = FilenameParser.parse("[OnlyTag].mkv")
+        #expect(p.title == "OnlyTag")
+        #expect(p.year == nil)
+    }
+
     @Test("a full-width-digit year is recognised")
     func fullWidthYear() {
         let p = FilenameParser.parse("君の名は。２０１６.mkv")
