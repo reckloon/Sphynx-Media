@@ -414,12 +414,15 @@ struct AdminController: Sendable {
         return refreshed.toProtocol(full: true)
     }
 
-    /// Enrich every item that needs it.
+    /// Enrich every item that needs it. `?force=true` ignores the freshness TTL and
+    /// re-fetches every identified item — e.g. to backfill new artwork roles after a
+    /// server upgrade ("refresh all artwork").
     @Sendable
     func enrichAll(_ request: Request, context: SphynxRequestContext) async throws -> EnrichSummary {
         try requireAdmin(context)
         let enrichment = try requireEnrichment()
-        let count = try await enrichment.enrichAll(force: false)
+        let force = (try? request.uri.decodeQuery(as: ForceQuery.self, context: context))?.force == true
+        let count = try await enrichment.enrichAll(force: force)
         return EnrichSummary(enriched: count)
     }
 
@@ -649,4 +652,10 @@ struct SetIdentityRequest: Codable, Sendable {
 
 struct EnrichSummary: Codable, Sendable, ResponseEncodable {
     var enriched: Int
+}
+
+/// `?force=true` on bulk enrich: ignore the freshness TTL and re-fetch every
+/// identified item (e.g. backfill new artwork roles after an upgrade).
+struct ForceQuery: Codable, Sendable {
+    var force: Bool?
 }

@@ -669,6 +669,8 @@ Force re-identification + enrichment of one item. **200** → the enriched item.
 ### `POST /v1/admin/enrich`
 
 Enrich every item that needs it (new or stale). **200** → `{ "enriched": 7 }`.
+`?force=true` ignores the freshness TTL and re-fetches **every** identified item —
+use it to backfill new artwork roles after a server upgrade ("refresh all artwork").
 
 > The three enrichment endpoints require TMDB to be configured
 > (`SPHYNX_TMDB_API_KEY`); otherwise they return **400** `bad_request`.

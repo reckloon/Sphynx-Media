@@ -130,6 +130,22 @@ struct EnrichmentFlowTests {
         }
     }
 
+    @Test("bulk enrich is TTL-gated; ?force=true re-enriches fresh items")
+    func bulkForceReEnriches() async throws {
+        try await loginCreateScan { client, token, _, _ in
+            // Without force, everything is fresh → nothing re-enriched.
+            let lazy: EnrichSummary = try await client.execute(
+                uri: "/v1/admin/enrich", method: .post, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(lazy.enriched == 0)
+            // With force, the TTL is ignored → identified items are re-fetched.
+            let forced: EnrichSummary = try await client.execute(
+                uri: "/v1/admin/enrich?force=true", method: .post, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(forced.enriched > 0)
+        }
+    }
+
     @Test("admin identity override pins a TMDB id and re-enriches")
     func identityOverride() async throws {
         let app = try await buildApplication(
