@@ -9,12 +9,15 @@ import SphynxProtocol
 struct BrowseController: Sendable {
     let catalog: Catalog
     let playstate: PlaystateService
+    let userState: UserStateService
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.get("libraries", use: libraries)
         group.get("items", use: items)
         group.get("items/:itemId", use: item)
         group.get("home/continue", use: continueWatching)
+        group.get("home/recent", use: recentlyAdded)
+        group.get("home/favorites", use: favorites)
     }
 
     /// §7 "continue watching": the user's in-progress items, most-recent first,
@@ -44,6 +47,8 @@ struct BrowseController: Sendable {
             item.resumePosition = state.position
             items.append(item)
         }
+        let states = try await userState.states(userId: identity.userId, itemIds: items.map(\.id))
+        items = items.map { var i = $0; UserStateService.fold(states[i.id], into: &i); return i }
 
         return ItemsResponse(
             items: items,
@@ -74,11 +79,18 @@ struct BrowseController: Sendable {
 
         // `parent` is either a library (top-level items) or an item (its
         // children). Resolve the owning library and gate read access on it.
+        // Sort + genre filter apply to a library's top level; children of an item
+        // (seasons/episodes) keep their natural episode order.
+        let sort = Catalog.ItemSort(rawValue: query.sort ?? "") ?? .added
+        let ascending: Bool? = query.order.map { $0.lowercased() == "asc" }
         let records: [ItemRecord]
         let libraryId: String?
         if try await catalog.library(id: parent) != nil {
             libraryId = parent
-            records = try await catalog.topLevelItems(libraryId: parent, limit: limit, offset: offset)
+            records = try await catalog.topLevelItems(
+                libraryId: parent, limit: limit, offset: offset,
+                sort: sort, ascending: ascending, genre: query.genre
+            )
         } else if let parentItem = try await catalog.item(id: parent) {
             libraryId = try await catalog.owningLibraryId(of: parentItem)
             records = try await catalog.childItems(parentId: parent, limit: limit, offset: offset)
@@ -91,21 +103,81 @@ struct BrowseController: Sendable {
         }
 
         let hasMore = records.count > limit
-        let page = hasMore ? Array(records.prefix(limit)) : records
+        var page = hasMore ? Array(records.prefix(limit)) : records
 
-        // Fold the authenticated user's resume positions into the tiles.
-        var items = page.map { $0.toProtocol(full: full) }
-        let positions = try await playstate.positions(userId: identity.userId, itemIds: items.map(\.id))
-        items = items.map { item in
-            var item = item
-            if let position = positions[item.id], position > 0 { item.resumePosition = position }
-            return item
+        // Optional "unwatched" filter (per-user; post-fetch).
+        if query.unwatched == true {
+            let watched = try await userState.watchedItemIds(userId: identity.userId)
+            page = page.filter { !watched.contains($0.id) }
         }
 
+        let items = try await foldUserData(page.map { $0.toProtocol(full: full) }, userId: identity.userId)
         return ItemsResponse(
             items: items,
             nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
         )
+    }
+
+    /// §5 "recently added": top-level items (movies + series) newest first, with
+    /// per-user state folded in. Skips libraries the user can't read.
+    @Sendable
+    func recentlyAdded(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
+        let identity = try context.requireIdentity()
+        let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
+        let full = query.detail == "full"
+        let limit = Cursor.clampLimit(query.limit)
+        let offset = Cursor.offset(from: query.cursor)
+
+        let records = try await catalog.recentItems(limit: limit + 1, offset: offset)
+        let hasMore = records.count > limit
+        let page = hasMore ? Array(records.prefix(limit)) : records
+
+        var items: [Item] = []
+        for record in page where try await canRead(record, identity) {
+            items.append(record.toProtocol(full: full))
+        }
+        return ItemsResponse(
+            items: try await foldUserData(items, userId: identity.userId),
+            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
+        )
+    }
+
+    /// The user's favourites, most-recently-played first.
+    @Sendable
+    func favorites(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
+        let identity = try context.requireIdentity()
+        let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
+        let full = query.detail == "full"
+        let limit = Cursor.clampLimit(query.limit)
+        let offset = Cursor.offset(from: query.cursor)
+
+        let ids = try await userState.favoriteItemIds(userId: identity.userId, limit: limit, offset: offset)
+        let hasMore = ids.count > limit
+        let page = hasMore ? Array(ids.prefix(limit)) : ids
+
+        let byId = try await catalog.items(ids: page)
+        var items: [Item] = []
+        for id in page {  // preserve the favourites order
+            guard let record = byId[id], try await canRead(record, identity) else { continue }
+            items.append(record.toProtocol(full: full))
+        }
+        return ItemsResponse(
+            items: try await foldUserData(items, userId: identity.userId),
+            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
+        )
+    }
+
+    /// Fold the user's resume position + watched/favorite/play-count onto a page.
+    private func foldUserData(_ items: [Item], userId: String) async throws -> [Item] {
+        let ids = items.map(\.id)
+        let positions = try await playstate.positions(userId: userId, itemIds: ids)
+        let states = try await userState.states(userId: userId, itemIds: ids)
+        return items.map { item in
+            var item = item
+            if let position = positions[item.id], position > 0 { item.resumePosition = position }
+            UserStateService.fold(states[item.id], into: &item)
+            return item
+        }
     }
 
     @Sendable
@@ -126,6 +198,7 @@ struct BrowseController: Sendable {
            position > 0 {
             item.resumePosition = position
         }
+        UserStateService.fold(try await userState.get(userId: identity.userId, itemId: itemId), into: &item)
         return item
     }
 
@@ -144,6 +217,14 @@ struct ItemsQuery: Codable, Sendable {
     var detail: String?
     var limit: Int?
     var cursor: String?
+    /// Sort a library's top level: `added` (default) | `name` | `rating`.
+    var sort: String?
+    /// `asc` | `desc`; default depends on the sort (name asc, added/rating desc).
+    var order: String?
+    /// Filter a library's top level to items carrying this genre.
+    var genre: String?
+    /// Filter out items the user has marked watched.
+    var unwatched: Bool?
 }
 
 struct DetailQuery: Codable, Sendable {

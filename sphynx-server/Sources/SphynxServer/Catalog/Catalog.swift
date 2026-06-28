@@ -267,13 +267,40 @@ struct Catalog: Sendable {
         return nil
     }
 
-    /// Top-level items of a library (no parent), ordered stably. Fetches
-    /// `limit + 1` so the caller can tell whether another page exists.
-    func topLevelItems(libraryId: String, limit: Int, offset: Int) async throws -> [ItemRecord] {
+    /// How a library's top level is sorted.
+    enum ItemSort: String, Sendable { case added, name, rating }
+
+    /// Top-level items of a library (no parent), with optional sort + genre filter.
+    /// Fetches `limit + 1` so the caller can tell whether another page exists.
+    func topLevelItems(
+        libraryId: String, limit: Int, offset: Int,
+        sort: ItemSort = .added, ascending: Bool? = nil, genre: String? = nil
+    ) async throws -> [ItemRecord] {
+        try await db.writer.read { db in
+            var request = ItemRecord.filter(Column("libraryId") == libraryId && Column("parentId") == nil)
+            if let genre, !genre.isEmpty {
+                // genresJSON is a JSON array of strings, e.g. ["Action","Drama"].
+                request = request.filter(sql: "genresJSON LIKE ?", arguments: ["%\"\(genre)\"%"])
+            }
+            // name defaults ascending; added/rating default descending (newest /
+            // highest first). `dir` is a fixed literal — never user input.
+            let dir = (ascending ?? (sort == .name)) ? "ASC" : "DESC"
+            switch sort {
+            case .added:  request = request.order(sql: "createdAt \(dir), id")
+            case .name:   request = request.order(sql: "title COLLATE NOCASE \(dir), id")
+            case .rating: request = request.order(sql: "communityRating \(dir), id")
+            }
+            return try request.limit(limit + 1, offset: offset).fetchAll(db)
+        }
+    }
+
+    /// Top-level items across all libraries, newest first — the "Recently Added"
+    /// feed. The caller filters by readability + folds per-user state.
+    func recentItems(limit: Int, offset: Int) async throws -> [ItemRecord] {
         try await db.writer.read { db in
             try ItemRecord
-                .filter(Column("libraryId") == libraryId && Column("parentId") == nil)
-                .order(Column("createdAt"), Column("id"))
+                .filter(Column("parentId") == nil)
+                .order(Column("createdAt").desc, Column("id"))
                 .limit(limit + 1, offset: offset)
                 .fetchAll(db)
         }

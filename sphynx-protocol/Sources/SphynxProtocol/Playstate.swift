@@ -1,5 +1,18 @@
 import Foundation
 
+/// `PUT /v1/items/<itemId>/state` body: update the caller's per-user state for an
+/// item. Only the provided fields change. `watched` / `isFavorite` are explicit
+/// user actions; play count + last-played are tracked server-side from playback.
+public struct ItemStateUpdate: Codable, Hashable, Sendable {
+    public var watched: Bool?
+    public var isFavorite: Bool?
+
+    public init(watched: Bool? = nil, isFavorite: Bool? = nil) {
+        self.watched = watched
+        self.isFavorite = isFavorite
+    }
+}
+
 /// `POST /v1/playstate/<itemId>/start` body (§7). Position in **seconds**.
 public struct PlaystateStartBody: Codable, Hashable, Sendable {
     public var position: Double

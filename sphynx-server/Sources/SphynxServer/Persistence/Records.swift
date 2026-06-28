@@ -139,6 +139,24 @@ struct SettingRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var value: String
 }
 
+/// Per-user item state (watched / favorite / play count / last-played),
+/// row-scoped to `(userId, itemId)`.
+struct UserStateRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "useritemstate"
+
+    var userId: String
+    var itemId: String
+    var watched: Bool
+    var playCount: Int
+    var isFavorite: Bool
+    var lastPlayedAt: Double?
+
+    /// An empty state for `(userId, itemId)` (nothing recorded yet).
+    static func empty(userId: String, itemId: String) -> UserStateRecord {
+        UserStateRecord(userId: userId, itemId: itemId, watched: false, playCount: 0, isFavorite: false, lastPlayedAt: nil)
+    }
+}
+
 /// Per-user resume position, row-scoped to `(userId, itemId)`.
 struct PlaystateRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "playstate"

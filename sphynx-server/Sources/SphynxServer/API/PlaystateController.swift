@@ -6,6 +6,8 @@ import SphynxProtocol
 /// row-scoped to the authenticated subject.
 struct PlaystateController: Sendable {
     let playstate: PlaystateService
+    /// Per-user item state — a successful stop bumps play count + last-played.
+    let userState: UserStateService
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.post("playstate/:itemId/start", use: start)
@@ -37,6 +39,10 @@ struct PlaystateController: Sendable {
         let body = try await request.decode(as: PlaystateStopBody.self, context: context)
         // A failed stop must not clobber a good resume point — handled in the service.
         try await playstate.stop(userId: userId, itemId: itemId, position: body.position, failed: body.failed)
+        // A real (non-failed) stop counts as a play: bump count + last-played.
+        if !body.failed {
+            try await userState.recordPlay(userId: userId, itemId: itemId)
+        }
         return Response(status: .noContent)
     }
 

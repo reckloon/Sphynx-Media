@@ -15,6 +15,7 @@ func buildRouter(
     indexer: Indexer,
     enrichment: EnrichmentService?,
     playstate: PlaystateService,
+    userState: UserStateService,
     policy: AccessPolicy,
     settings: SettingsStore
 ) -> Router<SphynxRequestContext> {
@@ -34,9 +35,10 @@ func buildRouter(
     // Secured surface: everything else requires a valid bearer token.
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
     authController.addSecuredRoutes(to: securedV1)
-    BrowseController(catalog: catalog, playstate: playstate).addRoutes(to: securedV1)
+    BrowseController(catalog: catalog, playstate: playstate, userState: userState).addRoutes(to: securedV1)
     ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
-    PlaystateController(playstate: playstate).addRoutes(to: securedV1)
+    PlaystateController(playstate: playstate, userState: userState).addRoutes(to: securedV1)
+    UserStateController(catalog: catalog, userState: userState).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
                     settings: settings, configuration: configuration).addRoutes(to: securedV1)
@@ -106,6 +108,7 @@ func buildApplication(
         tv: tmdb.map { TVEnricher(tmdb: $0) }
     )
     let playstate = PlaystateService(db: database)
+    let userState = UserStateService(db: database)
     let policy = AccessPolicy.fromConfiguration(configuration)
 
     let router = buildRouter(
@@ -116,6 +119,7 @@ func buildApplication(
         indexer: indexer,
         enrichment: enrichment,
         playstate: playstate,
+        userState: userState,
         policy: policy,
         settings: settingsStore
     )

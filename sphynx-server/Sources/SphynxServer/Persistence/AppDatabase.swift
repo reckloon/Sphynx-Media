@@ -261,6 +261,20 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m15_user_item_state") { db in
+            // Per-user item state (watched / favorite / play count / last-played),
+            // row-scoped to (userId, itemId) like playstate.
+            try db.create(table: "useritemstate") { t in
+                t.column("userId", .text).notNull()
+                t.column("itemId", .text).notNull()
+                t.column("watched", .boolean).notNull().defaults(to: false)
+                t.column("playCount", .integer).notNull().defaults(to: 0)
+                t.column("isFavorite", .boolean).notNull().defaults(to: false)
+                t.column("lastPlayedAt", .double)
+                t.primaryKey(["userId", "itemId"])
+            }
+        }
+
         return migrator
     }
 }

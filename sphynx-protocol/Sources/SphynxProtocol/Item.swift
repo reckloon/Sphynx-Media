@@ -138,6 +138,14 @@ public struct Item: Codable, Hashable, Sendable {
     /// Per-user state, folded in when known. Position in **seconds**; absent or 0
     /// means "from start".
     public var resumePosition: Double?
+    /// Per-user: the user has marked this watched. Absent ⇒ unknown / unwatched.
+    public var watched: Bool?
+    /// Per-user: how many times the user has played it.
+    public var playCount: Int?
+    /// Per-user: the user favorited it.
+    public var isFavorite: Bool?
+    /// Per-user: when the user last played it (RFC 3339).
+    public var lastPlayedAt: String?
 
     /// Wall-clock RFC 3339 timestamp of the last change to **client-rendered**
     /// data for this item (title, images, enrichment, markers, …) — the max of
@@ -192,6 +200,10 @@ public struct Item: Codable, Hashable, Sendable {
         dateAdded: String? = nil,
         externalIds: [String: String]? = nil,
         resumePosition: Double? = nil,
+        watched: Bool? = nil,
+        playCount: Int? = nil,
+        isFavorite: Bool? = nil,
+        lastPlayedAt: String? = nil,
         updatedAt: String? = nil,
         extra: [String: JSONValue]? = nil
     ) {
@@ -230,6 +242,10 @@ public struct Item: Codable, Hashable, Sendable {
         self.dateAdded = dateAdded
         self.externalIds = externalIds
         self.resumePosition = resumePosition
+        self.watched = watched
+        self.playCount = playCount
+        self.isFavorite = isFavorite
+        self.lastPlayedAt = lastPlayedAt
         self.updatedAt = updatedAt
         self.extra = extra
     }

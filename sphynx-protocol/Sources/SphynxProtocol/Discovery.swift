@@ -51,17 +51,24 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
+    /// Preferred client playback-report cadence, in **seconds**. A client that
+    /// reports progress periodically SHOULD use this interval; absent ⇒ the client
+    /// falls back to the protocol default (~5s). Push-only: the server stores what
+    /// the client sends and never polls the client.
+    public var playstateReportInterval: Double?
 
     public init(
         search: Bool = false,
         playstate: Bool = false,
         candidates: Bool = false,
-        metadata: [String: MetadataAccess] = [:]
+        metadata: [String: MetadataAccess] = [:],
+        playstateReportInterval: Double? = nil
     ) {
         self.search = search
         self.playstate = playstate
         self.candidates = candidates
         self.metadata = metadata
+        self.playstateReportInterval = playstateReportInterval
     }
 
     public init(from decoder: any Decoder) throws {
@@ -70,6 +77,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.playstate = try container.decodeIfPresent(Bool.self, forKey: .playstate) ?? false
         self.candidates = try container.decodeIfPresent(Bool.self, forKey: .candidates) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
+        self.playstateReportInterval = try container.decodeIfPresent(Double.self, forKey: .playstateReportInterval)
     }
 
     /// Access level the server advertises for a field (`.none` if unlisted).
@@ -78,7 +86,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, metadata
+        case search, playstate, candidates, metadata, playstateReportInterval
     }
 }
 

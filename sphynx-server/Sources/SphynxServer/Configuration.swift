@@ -44,6 +44,11 @@ struct ServerConfiguration: Sendable {
     /// seconds. 0 disables the background pass. Default 1 day.
     var maintenanceInterval: Double
 
+    /// Preferred client playback-report cadence advertised in `/v1/info`, seconds.
+    /// Default 5. Push-only: clients SHOULD report progress this often; the server
+    /// never polls.
+    var playstateReportInterval: Double = 5
+
     static func fromEnvironment() -> ServerConfiguration {
         let env = ProcessInfo.processInfo.environment
         return ServerConfiguration(
@@ -64,7 +69,8 @@ struct ServerConfiguration: Sendable {
             markersAccess: env["SPHYNX_MARKERS_ACCESS"] ?? "readwrite",
             markersStaleAfter: env["SPHYNX_MARKERS_STALE_AFTER"].flatMap(Double.init) ?? 604_800,    // 7 days
             playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days
-            maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400    // 1 day
+            maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
+            playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5
         )
     }
 }

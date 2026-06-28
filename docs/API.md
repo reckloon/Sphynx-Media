@@ -42,10 +42,16 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "search": false,
     "playstate": true,
     "candidates": false,
-    "metadata": { "markers": "readwrite", "images": "read" }
+    "metadata": { "markers": "readwrite", "images": "read" },
+    "playstateReportInterval": 5
   }
 }
 ```
+`playstateReportInterval` (seconds) is the server's preferred client playback-report
+cadence: a client that reports progress periodically SHOULD `POST` to
+`/v1/playstate/{id}/progress` this often (default ~5s if absent). **Push-only** —
+the server stores what the client sends and never polls the client. Reporting is
+optional for the client; progress reports don't bump `Item.updatedAt`.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
@@ -140,6 +146,15 @@ Children of a container. Query parameters:
 | `detail` | `skeleton` | `skeleton` (tile fields) or `full` (adds enrichment, once available) |
 | `limit` | `50` | Page size (1–200) |
 | `cursor` | — | Opaque pagination cursor from a previous `nextCursor` |
+| `sort` | `added` | A library's top level: `added` \| `name` \| `rating` |
+| `order` | *(by sort)* | `asc` \| `desc` (default: name asc, added/rating desc) |
+| `genre` | — | Top level only: keep items carrying this genre |
+| `unwatched` | — | `true` ⇒ drop items the caller has marked watched |
+
+Items fold the caller's per-user state: `resumePosition`, `watched`, `playCount`,
+`isFavorite`, `lastPlayedAt` (see [Item shape](#item-shape)). `sort`/`genre` apply
+to a library's top level; children of an item (seasons/episodes) keep their
+natural order.
 
 **200**
 ```json
@@ -273,6 +288,28 @@ ordered by recency) — **the client owns presentation and policy**: it has each
 item's runtime, so it decides what counts as "finished", whether to hide it, how
 to sort, etc. A client that wants raw timestamps for its own logic can read them
 via `GET /v1/playstate?items=…` (each entry carries `updatedAt`).
+
+### `GET /v1/home/recent` — auth required
+
+**Recently Added**: top-level items (movies + series) newest first, per-user state
+folded in. Cursor-paginated; `detail` selects skeleton/full. Same `ItemsResponse`
+shape.
+
+### `GET /v1/home/favorites` — auth required
+
+The caller's favourited items, most-recently-played first. Cursor-paginated; same
+`ItemsResponse` shape.
+
+## Per-user state
+
+### `PUT /v1/items/{itemId}/state` — auth required
+
+Set the caller's state for an item (row-scoped to the subject). **Body** (any
+subset) `{ "watched": true, "isFavorite": true }` → **200** with the item, the new
+state folded in. `403` if the caller can't read the item's library. Play count and
+last-played are tracked server-side from playback (a non-failed
+`POST /v1/playstate/{id}/stop` bumps them); `watched` / `isFavorite` are explicit
+here.
 
 ---
 
@@ -569,7 +606,7 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
   "status": "Released", "premiereDate": "2017-10-06", "endDate": "…",
   "dateAdded": "2026-06-27T12:00:00Z",
   "externalIds": { "imdb": "tt1856101", "tvdb": "…" },
-  "resumePosition": 1342.5,
+  "resumePosition": 1342.5, "watched": true, "playCount": 3, "isFavorite": true, "lastPlayedAt": "2026-06-27T12:00:00Z",
   "updatedAt": "2026-06-27T12:00:00Z",
   "extra": { "anything": [1, 2, 3] }
 }
