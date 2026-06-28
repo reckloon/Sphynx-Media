@@ -57,8 +57,10 @@ struct SettingsFlowTests {
                 #expect(body.contains("<!DOCTYPE html>"))
                 #expect(body.contains("Libraries"))            // tab present
                 #expect(body.contains("Sources"))              // tab present
+                #expect(body.contains("Users &amp; permissions")) // users tab
                 #expect(body.contains("/v1/admin/settings"))   // settings API
                 #expect(body.contains("/v1/admin/sources"))    // sources API
+                #expect(body.contains("/v1/admin/users"))      // users API
                 #expect(body.contains("libraryMap"))           // maps movie+tv libraries
             }
         }

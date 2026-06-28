@@ -91,6 +91,8 @@ struct TVFlowTests {
             #expect(season.seasonIndex == 1)
             #expect(season.childCount == 2)  // two episodes
             #expect(season.images?.primary == "https://image.tmdb.org/t/p/w500/s1.jpg")
+            // Seasons inherit the show's wide art (horizontal image).
+            #expect(season.images?.backdrop == "https://image.tmdb.org/t/p/w1280/bd.jpg")
 
             // Season → two episodes (skeleton): ordered, with tile fields.
             let episodes: ItemsResponse = try await client.execute(
@@ -103,7 +105,8 @@ struct TVFlowTests {
             #expect(ep1.seriesId == series.id)
             #expect(ep1.seriesTitle == "Severance")
             #expect(ep1.seasonIndex == 1)
-            #expect(ep1.images?.primary == "https://image.tmdb.org/t/p/w780/e1.jpg")
+            #expect(ep1.images?.primary == "https://image.tmdb.org/t/p/w780/e1.jpg")  // still (landscape)
+            #expect(ep1.images?.backdrop == "https://image.tmdb.org/t/p/w1280/bd.jpg")  // show backdrop
 
             // Full detail carries the episode enrichment.
             let ep1Full: Item = try await client.execute(

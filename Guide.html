@@ -446,7 +446,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
 </div>
 <div class="callout tip">
-  <p><strong>Web admin page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and manage the server in your browser, no env vars or <code>curl</code> needed. It has three tabs: <strong>Settings</strong> (the runtime settings above), <strong>Libraries</strong> (add / delete), and <strong>Sources</strong> (add / scan / delete, mapping a Movies library and a TV library per source). It's a static page that drives the <code>/v1/admin/*</code> API.</p>
+  <p><strong>Web admin page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and manage the server in your browser, no env vars or <code>curl</code> needed. Four tabs: <strong>Settings</strong> (the runtime settings above), <strong>Libraries</strong> (add / delete), <strong>Sources</strong> (add / scan / delete, mapping a Movies library and a TV library per source), and <strong>Users</strong> (a grid of every account with a checkbox per permission, plus add / delete). It's a static page that drives the <code>/v1/admin/*</code> API.</p>
 </div>
 
 <div class="callout tip">
@@ -1026,6 +1026,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 }</span></code></pre>
 <p>Every field above is optional and omitted when empty — a server that doesn't have <code>criticRating</code> or <code>chapters</code> simply omits them, and a client renders gracefully without them. The reference server fills the TMDB-derived ones (tagline, studios, directors/writers, <code>externalIds.imdb</code>, premiereDate, status, …) for movies; it leaves the rest for richer servers or extensions. <code>externalIds</code> is an open map keyed by namespace (<code>imdb</code>, <code>tvdb</code>, …); <code>dateAdded</code> powers a "Recently Added" view.</p>
 <p><code>resumePosition</code>, <code>watched</code>, <code>playCount</code>, <code>isFavorite</code>, and <code>lastPlayedAt</code> are <strong>per-user</strong> state, folded in for the authenticated caller (set via <code>PUT /v1/items/{id}/state</code>). Like <code>resumePosition</code> they are <strong>not</strong> enrichment, so they appear in both skeleton and full and never make a skeleton look "enriched".</p>
+<p><strong>Image roles.</strong> <code>images</code> carries several neutral roles so a client can pick the shape it wants (all optional): <code>primary</code> (portrait poster — for an episode this is its landscape still), <code>backdrop</code> (wide / <strong>horizontal</strong> art), <code>thumb</code> (a small variant), <code>logo</code> (transparent title logo), <code>banner</code>. The reference server fills, per type: <strong>movies</strong> → primary + backdrop + thumb; <strong>series</strong> → primary + backdrop; <strong>seasons</strong> → season poster as primary <em>and the show's backdrop</em> (so season screens have a horizontal image); <strong>episodes</strong> → the still as primary/thumb (landscape) <em>and the show's backdrop</em>. So every enriched item has both a portrait (<code>primary</code>) and a horizontal (<code>backdrop</code>) option for clients that want them.</p>
 <p><code>updatedAt</code> (RFC 3339) is the last change to <strong>client-rendered</strong> data for the item (title, images, enrichment, markers…) — the max of the server's per-field change times. A client can diff this one value to decide "changed since I cached it?" without comparing every field. It <strong>excludes</strong> per-user playstate (<code>resumePosition</code>), so progress reports don't invalidate the cache.</p>
 <p><code>placeholder</code> is a self-describing one-of that may carry <strong>any</strong> low-res form. The reference server emits the <code>url</code> form — a small pre-sized image link — so it stores and processes no image bytes; the protocol equally allows <code>{ "blurHash":"…" }</code> or a future form. <strong>Clients should support both <code>blurHash</code> and <code>url</code></strong>, using whichever the server sent, and fall back to a plain background for forms they don't recognize.</p>
 
@@ -1321,15 +1322,40 @@ item.extra[<span class="str">"subtitles"</span>] = [
 </ul>
 
 <h3>Coming soon <span class="badge soon">planned</span></h3>
+<p>The reference server already ships a Docker build and a built-in <code>/admin</code> page; the work below is the protocol- and client-facing roadmap next. Most of these are <strong>wire-contract</strong> additions — a server may already do some of it as private convention, but the protocol doesn't model it yet, so clients can't rely on it. Ordered by priority.</p>
+
 <div class="callout soon">
-  <p><strong>Published Docker image.</strong> A pre-built image you can <code>docker run</code> without cloning. For now, <a href="#docker">build it yourself</a> from the included Dockerfile.</p>
+  <p><strong>Published Docker image &amp; fuller control panel.</strong> A pre-built image you can <code>docker run</code> without cloning (for now, <a href="#docker">build it yourself</a>), and growing the <code>/admin</code> page into a full browser control panel — users, libraries, sources, and scans.</p>
 </div>
-<div class="callout soon">
-  <p><strong>Fuller web control panel.</strong> A basic <a href="#config">web admin page</a> (Settings / Libraries / Sources) already ships at <code>/admin</code>; still to come is browser-based <strong>user management</strong> and editing item metadata, so nothing needs the <a href="#api-admin">admin API</a> by hand.</p>
-</div>
-<div class="callout soon">
-  <p><strong>Search</strong> (<code>GET /v1/search</code>), <strong>ranked <code>candidates</code></strong> in the resolve descriptor, and <strong>more source drivers</strong> (completing WebDAV/SMB/FTP listing).</p>
-</div>
+
+<h4>High impact</h4>
+<ul>
+  <li><strong>Typed home / shelf feed.</strong> A <em>Shelf</em> (hub) model — id, title, <strong>kind</strong>, ordering, and <strong>item aspect</strong> — with typed <strong>Continue Watching</strong>, <strong>Next Up</strong>, and <strong>Recently Added</strong>. Today those feeds reuse the generic items response, so which rows are landscape is server convention rather than contract.</li>
+  <li><strong>Per-image placeholder &amp; aspect metadata.</strong> Per-image BlurHash, intrinsic dimensions, an aspect-ratio hint, and size variants on <code>images</code> — so a backdrop carries its own low-res placeholder and a known shape, not just the poster.</li>
+  <li><strong>Richer track &amp; subtitle info in resolve.</strong> Language, codec, and human label on audio/subtitle tracks, plus external/sidecar subtitle URLs — enough to render an "Audio: English / Subtitles: Spanish" picker without probing the container.</li>
+  <li><strong>Multiple versions &amp; editions.</strong> A user-choosable model for "4K vs 1080p" or "Director's Cut vs Theatrical," distinct from the existing ranked fallback <code>candidates</code>.</li>
+  <li><strong>Changes feed &amp; deletion tombstones.</strong> <code>GET /v1/changes?since=</code> with tombstones, so a client syncs incrementally instead of re-listing the whole library to detect a removal.</li>
+</ul>
+
+<h4>Medium impact</h4>
+<ul>
+  <li><strong>TV-friendly login</strong> — a device-code / QR / token-paste flow, so signing in on an Apple TV doesn't mean typing a password with the remote.</li>
+  <li><strong>Advertised refresh-token lifetime</strong> — so a client can pre-empt a forced re-login instead of failing one day.</li>
+  <li><strong>Typed browse sort &amp; filter</strong> — modeling the sort/filter query the server already honors, plus a <code>totalCount</code> and an echoed page size.</li>
+  <li><strong>Rate-limit timing</strong> — a <code>Retry-After</code> / backoff hint on errors, so clients back off instead of guessing.</li>
+  <li><strong>Clear-resume action</strong> — explicitly reset resume or remove an item from Continue Watching, short of a stop at position 0.</li>
+  <li><strong>Playstate coordination</strong> — spelling out the cached-item vs <code>/v1/playstate</code> source-of-truth rule directly in the types.</li>
+</ul>
+
+<h4>Lower priority / likely by-design</h4>
+<ul>
+  <li><strong>Search</strong> (<code>GET /v1/search</code>) — a typed request/response shape behind the existing <code>capabilities.search</code> flag.</li>
+  <li><strong>Real-time updates</strong> — a WebSocket/SSE channel for cross-device Continue Watching, or an explicit statement that polling is the intended model for a control-plane server.</li>
+  <li><strong>Marker editing</strong> — a DELETE for a wrong marker and per-segment provenance/confidence (today contributions are PUT-only and whole-set).</li>
+  <li><strong>Metadata-language negotiation</strong> (<code>Accept-Language</code>) for multi-language libraries.</li>
+  <li><strong>Typed collection / person traversal</strong> — a contract for a collection's items or a person's filmography, today inferred from <code>/v1/items</code>.</li>
+  <li><strong>More source drivers</strong> — completing WebDAV/SMB/FTP listing.</li>
+</ul>
 </section>
 
 <!-- ========================= FAQ ========================= -->

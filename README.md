@@ -105,14 +105,33 @@ Built spine-first. Working today:
 - **Browse hierarchy** — libraries → series → seasons → episodes via `parent=`.
 - **Resolve** — direct playback location + headers, resolved fresh per play and
   never stored (never proxied; optional expiry only for time-bounded source links).
-- **Playstate** — resume tracking (start/progress/stop) with failed-stop
-  protection, `resumePosition` folded into browse, and a continue-watching feed.
+- **Playstate & per-user state** — resume tracking (start/progress/stop) with
+  failed-stop protection; watched / favorite / play-count / last-played; Continue
+  Watching, Recently Added, and Favorites feeds; browse sort (name/added/rating) +
+  genre/unwatched filter.
 - **Bi-directional metadata** — server-configurable, per-field read/write access;
   contributable intro/credit markers; an open `extra` bag for arbitrary
   server-defined metadata. See the [complete guide](https://reckloon.github.io/Sphynx-Media/).
 
-Roadmap: watched/favorites + sort/filter, search, ranked resolve fallbacks, and
-more source drivers.
+### Roadmap
+
+Next up is **protocol contract hardening** — wire-contract additions clients can
+rely on. In priority order:
+
+- **High** — a typed home/shelf feed (Continue Watching / Next Up / Recently Added
+  with kind + aspect); per-image placeholder & aspect metadata; track
+  languages/labels + external subtitles in resolve; multiple versions/editions;
+  a `GET /v1/changes?since=` delta feed with deletion tombstones.
+- **Medium** — TV-friendly login (device-code / QR); advertised refresh-token
+  lifetime; a typed browse sort/filter contract (+ `totalCount`); rate-limit
+  backoff hints; a clear-resume action; the playstate source-of-truth rule in the
+  types.
+- **Lower / by-design** — typed search shape; real-time (WebSocket/SSE) updates;
+  marker DELETE + per-segment provenance; `Accept-Language` negotiation; typed
+  collection/person traversal; more source drivers.
+
+A pre-built Docker image and a fuller web control panel are also planned. The full
+roadmap lives in the [complete guide](https://reckloon.github.io/Sphynx-Media/#roadmap).
 
 ## Building / testing
 

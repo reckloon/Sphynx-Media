@@ -53,7 +53,7 @@ cadence: a client that reports progress periodically SHOULD `POST` to
 `/v1/playstate/{id}/progress` this often (default ~5s if absent). **Push-only** —
 the server stores what the client sends and never polls the client. Reporting is
 optional for the client; progress reports don't bump `Item.updatedAt`.
-`events` advertises the additive server→client event stream (see [Events](#events-serversent)).
+`events` advertises the additive server→client event stream (see [Events](#events-server-sent)).
 Absent ⇒ `false`: the client falls back to polling.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
@@ -672,6 +672,13 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
   "extra": { "anything": [1, 2, 3] }
 }
 ```
+
+`images` carries neutral roles (all optional): `primary` (portrait poster; for an
+episode, its landscape still), `backdrop` (wide / **horizontal** art), `thumb` (a
+small variant), `logo`, `banner`. The reference server fills movies with primary +
+backdrop + thumb; series with primary + backdrop; **seasons** and **episodes** also
+inherit the show's `backdrop`, so every enriched item has both a portrait
+(`primary`) and a horizontal (`backdrop`) option.
 
 `updatedAt` (RFC 3339) is the last change to **client-rendered** data for the item
 (title, images, enrichment, markers, …) — the max of the server's per-field change
