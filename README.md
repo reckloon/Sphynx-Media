@@ -134,18 +134,20 @@ page loads, **you've got a working Sphynx server.** 🎉
 
 Everything from here on is done in that web panel — no config files, no `curl`.
 
-You'll see five tabs along the top:
+You'll see four tabs along the top:
 
 - **Settings** — your server's name and behavior (covered [below](#settings-without-the-terminal)).
 - **Libraries** — the shelves your media gets sorted onto (Movies, TV Shows, …).
-- **Sources** — *where* your media actually lives, and how to find it.
 - **Users** — accounts for each person who'll use a player app.
-- **Extensions** — optional add-ons, each with its own controls: a live activity
-  dashboard, a database peek, and logs for when you're curious or something's stuck,
-  plus a **media probe** (uses [ffmpeg](https://ffmpeg.org/)'s `ffprobe`) that reads
-  each title's real audio/subtitle tracks — languages, codecs, channels, and any
-  subtitle files sitting next to the video — so your player can show a proper
-  "Audio: English 5.1 / Subtitles: Spanish" picker.
+- **Extensions** — optional add-ons, each with its own controls:
+  - **Storage** — *where* your media actually lives and how to reach it (one clean
+    connection form per driver: local, http, webdav, smb, ftp).
+  - **Diagnostics** — a live activity dashboard, a database peek, and logs for when
+    you're curious or something's stuck.
+  - **Media probe** — uses [ffmpeg](https://ffmpeg.org/)'s `ffprobe` to read each
+    title's real audio/subtitle tracks (languages, codecs, channels), any subtitle
+    files next to the video, and embedded chapters — so your player can show a proper
+    "Audio: English 5.1 / Subtitles: Spanish" picker.
 
 That's the whole server. No config files to hand-edit, no JSON to memorize.
 
@@ -161,10 +163,10 @@ clicks-worth of setup, then Sphynx does the rest.
 Click **Libraries → Add library**. Give it a **Title** (like "Movies") and pick a
 **Kind** (Movies, TV Shows, etc.). Done — that's an empty shelf waiting for media.
 
-### Step 2 — Tell it where your media lives (Sources tab)
+### Step 2 — Tell it where your media lives (Extensions → Storage)
 
-Click **Sources → Add source**. A *source* is just "here's where my files are and
-how to reach them." Fill in:
+Open **Extensions → Storage** and add a source. A *source* is just "here's where my
+files are and how to reach them." Fill in:
 
 - **Label** — any name you'll recognize ("My NAS", "Cloud bucket").
 - **Driver** — how Sphynx reaches the files. Pick **HTTP** for media at web URLs,
@@ -187,7 +189,7 @@ Click **Add source** to save it.
 
 ### Step 3 — Press the button (Scan)
 
-Find your new source in the Sources list and click **Scan**. Sphynx walks through
+Find your new source in the **Extensions → Storage** list and click **Scan**. Sphynx walks through
 everything, adds each title to the right shelf, and — if you set a TMDB key —
 fetches posters, descriptions, cast, and episode art. Pop over to the
 **Extensions → Activity** view to watch it work in real time.

@@ -1290,6 +1290,22 @@ item.markersUpdatedAt = now
 </ol>
 <p>If the field is niche/server-specific, skip the canonical schema and use <code>item.extra</code> instead — clients read it without any protocol change.</p>
 
+<h4 id="ext-criticrating">Worked example: filling <code>criticRating</code> from a critic source (e.g. OMDb)</h4>
+<p>This is the one canonical <a href="#api-item">Item</a> field the reference server <strong>never</strong> populates, because TMDB has no critic data — it exposes only an audience score (<code>vote_average</code>, which the server maps to <code>communityRating</code>). A <em>critic</em> aggregate (Rotten Tomatoes, Metacritic) needs a different source, and it has a ready-made home in the spec: <code>criticRating</code>, a <strong>0–100</strong> review-aggregator score (distinct from the 0–10 <code>communityRating</code>). Add it as an opt-in extension, exactly like the built-in <a href="#extending">media-probe</a>:</p>
+<ol>
+  <li><strong>Pick a source.</strong> <a href="https://www.omdbapi.com/">OMDb</a> is the obvious one — its response carries a <code>Ratings</code> array with Rotten Tomatoes (e.g. <code>"87%"</code>) and Metacritic (e.g. <code>"74/100"</code>), plus a <code>Metascore</code>. A free API key gates it, so make the extension opt-in with its key in <a href="#config">settings</a> (the media-probe extension's <code>ext.mediaProbe.*</code> keys are the template).</li>
+  <li><strong>Key the lookup by IMDb id.</strong> The server already stores it — enriched items carry <code>externalIds.imdb</code> (<code>tt…</code>), which is exactly OMDb's <code>i=</code> parameter. No new identity work.</li>
+  <li><strong>Normalize to 0–100.</strong> Rotten Tomatoes is already a percentage; Metacritic's <code>x/100</code> is too; pick one (or average) and round to an <code>Int</code>.</li>
+  <li><strong>Write the field, honoring the lock.</strong> Reuse the enrichment apply pattern so a manual admin edit still wins:
+  <pre><code><span class="kw">var</span> item = <span class="kw">try await</span> catalog.item(id: itemId)!
+<span class="kw">if</span> !item.lockedFields().contains(LockableField.criticRating) {
+    item.criticRating = <span class="num">87</span>      <span class="cmt">// 0–100, from OMDb</span>
+    <span class="kw">try await</span> catalog.updateItem(item)
+}</code></pre></li>
+  <li><strong>Advertise it.</strong> Add <code>"criticRating"</code> to <code>InfoController.supportedItemFields</code> so <code>capabilities.fields</code> stays honest, and a client knows it can show a critic score.</li>
+</ol>
+<p>That's the whole shape — fetch by <code>externalIds.imdb</code>, write a 0–100 <code>criticRating</code> (lock-respecting), advertise it. The reference server stops at documenting the seam; it ships no OMDb integration and stores no third-party key by default.</p>
+
 <h3 id="ext-freshness">4. Freshness &amp; expiry</h3>
 
 <div class="callout note">
@@ -1449,7 +1465,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
 <ul>
   <li><strong>Multiple versions &amp; editions.</strong> A user-choosable model for "4K vs 1080p" or "Director's Cut vs Theatrical," distinct from the existing ranked fallback <code>candidates</code>.</li>
 </ul>
-<p class="hint" style="margin-top:0;"><strong>Recently shipped:</strong> richer track &amp; subtitle info in <a href="#api-resolve">resolve</a> — per-stream language/codec/channels + sidecar subtitle URLs, populated by the <a href="#extending">media-probe extension</a> and folded into <code>tracks</code>.</p>
+<p class="hint" style="margin-top:0;"><strong>Recently shipped:</strong> richer track &amp; subtitle detail in <a href="#api-resolve">resolve</a> (language/codec/channels + sidecar subtitles), embedded <code>chapters</code>, and content <code>officialRating</code> ("PG-13"/"TV-MA"); real-time <a href="#api-events">SSE events</a> (<code>/v1/events</code>); and an <a href="#search">optional, standardized search</a> shape.</p>
 
 <h4>Medium impact</h4>
 <ul>
@@ -1459,11 +1475,10 @@ item.extra[<span class="str">"subtitles"</span>] = [
 
 <h4>Lower priority / likely by-design</h4>
 <ul>
-  <li><strong>Search</strong> (<code>GET /v1/search</code>) — a typed request/response shape behind the existing <code>capabilities.search</code> flag.</li>
-  <li><strong>Real-time updates</strong> — a WebSocket/SSE channel for cross-device Continue Watching, or an explicit statement that polling is the intended model for a control-plane server.</li>
   <li><strong>Marker editing</strong> — a DELETE for a wrong marker and per-segment provenance/confidence (today contributions are PUT-only and whole-set).</li>
   <li><strong>Metadata-language negotiation</strong> (<code>Accept-Language</code>) for multi-language libraries.</li>
   <li><strong>More source drivers</strong> — additional backends (e.g. S3) beyond the local / http / webdav / smb / ftp set.</li>
+  <li><strong>A built-in critic rating</strong> — the <code>criticRating</code> field is ready; populating it just needs a critic source. The <a href="#ext-criticrating">guide shows how</a> to wire one (e.g. OMDb) as an opt-in extension.</li>
 </ul>
 </section>
 

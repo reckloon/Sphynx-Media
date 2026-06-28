@@ -964,10 +964,13 @@ images incl. `logo`/`banner`) plus `parentId`/`collectionId` and per-user state.
 the US entry of TMDB's `release_dates` (movies) / `content_ratings` (TV).
 `chapters` are filled for any item probed by the **media-probe extension**
 (`ffprobe -show_chapters` — TMDB carries no chapters). The one field it never fills
-is `criticRating`: TMDB has only an audience score (`vote_average` →
-`communityRating`), not a critic aggregate, so a critic rating needs a different
-source (e.g. an OMDb-backed extension) or rides in `extra`; clients render fine
-without it.
+is `criticRating` (a **0–100** review-aggregator score, distinct from the 0–10
+audience `communityRating`): TMDB has no critic data, so it needs a different
+source — typically an **OMDb-backed extension** keyed by the `externalIds.imdb`
+the server already stores (OMDb returns Rotten Tomatoes / Metacritic). The
+[guide](https://reckloon.github.io/Sphynx-Media/#ext-criticrating) walks through
+adding it; the reference server ships only the documented seam. Until then it
+rides in `extra`, and clients render fine without it.
 (See `capabilities.fields` in [`/v1/info`](#-get-v1info--unauthenticated) for the
 machine-readable coverage list.)
 
@@ -1064,11 +1067,11 @@ clients keep working. `extra` is omitted entirely when empty.
 
 Defined in the protocol but not yet implemented by the reference server:
 
-- **Search** (`GET /v1/search` → `SearchResponse`, `capabilities.search`) — the
-  shape is standardized and **optional**; the reference server deliberately leaves
-  it to the client (see [Search](#search--optional) above). A different server may
-  implement it; this one advertises `search: false`.
 - Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
+
+(**Search** is also defined-but-unimplemented here, but it's a deliberate
+non-goal rather than a to-do — see [Search — optional](#search--optional). And
+`criticRating` is left for a critic-source extension — see [Item shape](#item-shape).)
 
 All five source drivers now both resolve **and** list: `local`, `http`
 (JSON manifest), `webdav` (`PROPFIND` over the built-in HTTP client), `smb` (via
