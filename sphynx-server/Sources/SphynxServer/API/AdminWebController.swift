@@ -244,6 +244,7 @@ enum AdminWebController {
               <label for="local-rootpath">Folder path on the server</label><input id="local-rootpath" placeholder="/srv/media">
               <p class="hint">An absolute path the server can read, e.g. <code>/srv/media</code>.</p>
               <p class="hint">⚠️ <strong>Local is for testing on this machine only — Sphynx doesn't serve the files.</strong> They resolve to a <code>file://</code> path that only plays on the server host. To stream to phones, TVs, or other devices, run an SMB share, WebDAV, or an HTTP file server over your folder and add it with that driver instead.</p>
+              <p class="hint">💡 <strong><code>.strm</code> files work in Local mode</strong> and are the exception to the warning above: a <code>.strm</code> file's contents are a URL, so it resolves to that URL (not a <code>file://</code> path) and <em>does</em> stream to other devices. Name them after the real media — <code>Movie.mkv.strm</code> indexes as an <code>mkv</code> — and put one URL per file.</p>
               <div class="row">
                 <div><label for="local-lib-movie">Movies library</label><select id="local-lib-movie" class="lib-movie"></select></div>
                 <div><label for="local-lib-tv">TV library</label><select id="local-lib-tv" class="lib-tv"></select></div>
