@@ -102,6 +102,9 @@ struct Indexer: Sendable {
                 record.primaryImage = TMDBImage.url(details.posterPath, size: "w500")
                 record.thumbImage = TMDBImage.url(details.posterPath, size: "w342")
                 record.placeholderURL = TMDBImage.url(details.posterPath, size: "w92")
+                // Seasons have no backdrop of their own — inherit the show's wide
+                // art so season screens have a horizontal image too.
+                record.backdropImage = series.backdropImage
                 record.overview = details.overview
                 record.enrichedAt = now
                 record.updatedAt = now
@@ -151,8 +154,12 @@ struct Indexer: Sendable {
                     if let episodeMeta {
                         record.overview = episodeMeta.overview
                         record.runtime = episodeMeta.runtimeMinutes.map { Double($0) * 60 }
+                        // Episode `primary` is the still (already 16:9 / landscape);
+                        // `backdrop` carries the show's wide art for clients that
+                        // want a hero image on the episode screen.
                         record.primaryImage = TMDBImage.url(episodeMeta.stillPath, size: "w780")
                         record.thumbImage = TMDBImage.url(episodeMeta.stillPath, size: "w300")
+                        record.backdropImage = series.backdropImage
                         record.placeholderURL = TMDBImage.url(episodeMeta.stillPath, size: "w92")
                         record.enrichedAt = now
                         record.updatedAt = now

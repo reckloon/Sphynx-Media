@@ -612,6 +612,13 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
 }
 ```
 
+`images` carries neutral roles (all optional): `primary` (portrait poster; for an
+episode, its landscape still), `backdrop` (wide / **horizontal** art), `thumb` (a
+small variant), `logo`, `banner`. The reference server fills movies with primary +
+backdrop + thumb; series with primary + backdrop; **seasons** and **episodes** also
+inherit the show's `backdrop`, so every enriched item has both a portrait
+(`primary`) and a horizontal (`backdrop`) option.
+
 `updatedAt` (RFC 3339) is the last change to **client-rendered** data for the item
 (title, images, enrichment, markers, …) — the max of the server's per-field change
 times. A client can diff this one value to decide "changed since I cached it?"

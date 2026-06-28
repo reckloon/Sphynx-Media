@@ -64,6 +64,13 @@ enum AdminWebController {
   .muted { color:var(--muted); }
   .empty { color:var(--muted); font-size:14px; padding:6px 0; }
   .addbox { margin-top:18px; padding-top:6px; border-top:1px solid var(--line); }
+  .urow { display:grid; grid-template-columns:1.4fr repeat(4, 1fr) 70px; align-items:center; gap:8px; padding:9px 11px; border:1px solid var(--line); border-radius:10px; margin-bottom:6px; background:var(--sub); }
+  .urow.uhead { background:transparent; border:0; padding:2px 11px; margin-bottom:2px; }
+  .urow.uhead span { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .uname { font-weight:500; overflow:hidden; text-overflow:ellipsis; }
+  .uperm { text-align:center; }
+  .uperm input { width:auto; }
+  .uact { text-align:right; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -88,6 +95,7 @@ enum AdminWebController {
         <button class="tab active" data-tab="settings">Settings</button>
         <button class="tab" data-tab="libraries">Libraries</button>
         <button class="tab" data-tab="sources">Sources</button>
+        <button class="tab" data-tab="users">Users</button>
       </div>
       <button id="logout-btn" class="secondary" style="margin:0;">Sign out</button>
     </div>
@@ -182,6 +190,22 @@ enum AdminWebController {
         <p class="hint">A source can map a Movies library and a TV library; one scan walks the folder once and routes movies and TV to the right library.</p>
       </div>
     </section>
+
+    <section id="tab-users" hidden>
+      <h2>Users &amp; permissions</h2>
+      <p class="hint" style="margin-top:0;">Tick a box to grant a permission; it saves immediately. The admin holds every permission and can't be changed or deleted.</p>
+      <div id="user-list"></div>
+      <div class="addbox">
+        <div class="group-title">Add a user</div>
+        <div class="row">
+          <div><label for="usr-name">Username</label><input id="usr-name" autocomplete="off"></div>
+          <div><label for="usr-pass">Password</label><input id="usr-pass" type="password" autocomplete="new-password"></div>
+        </div>
+        <button id="usr-add-btn">Add user</button>
+        <div id="usr-msg" class="msg"></div>
+        <p class="hint">New users start with "Browse &amp; play" so they can use the library right away.</p>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -210,7 +234,7 @@ enum AdminWebController {
   function logout() { token = ''; sessionStorage.removeItem('sphynxToken'); $('#panel').hidden = true; $('#login').hidden = false; }
   function enter() {
     $('#login').hidden = true; $('#panel').hidden = false;
-    loadSettings(); loadLibraries(); loadSources();
+    loadSettings(); loadLibraries(); loadSources(); loadUsers();
   }
 
   // ---- tabs ----
@@ -218,7 +242,7 @@ enum AdminWebController {
     t.onclick = function () {
       document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
       t.classList.add('active');
-      ['settings', 'libraries', 'sources'].forEach(function (name) { $('#tab-' + name).hidden = (name !== t.dataset.tab); });
+      ['settings', 'libraries', 'sources', 'users'].forEach(function (name) { $('#tab-' + name).hidden = (name !== t.dataset.tab); });
     };
   });
 
@@ -331,11 +355,65 @@ enum AdminWebController {
     else if (scan) scanSource(scan);
   };
 
+  // ---- users & permissions ----
+  var PERMS = [
+    ['library.read', 'Browse &amp; play'],
+    ['metadata.markers.write', 'Add markers'],
+    ['metadata.images.write', 'Add artwork'],
+    ['metadata.edit', 'Edit metadata']
+  ];
+  function loadUsers() {
+    api('/v1/admin/users', 'GET').then(function (res) { return res.ok ? res.json() : { users: [] }; }).then(function (d) {
+      var users = d.users || [];
+      var head = '<div class="urow uhead"><span class="uname">User</span>' +
+        PERMS.map(function (p) { return '<span class="uperm">' + p[1] + '</span>'; }).join('') + '<span class="uact"></span></div>';
+      var rows = users.map(function (u) {
+        var checks = PERMS.map(function (p) {
+          var on = (u.permissions || []).indexOf(p[0]) >= 0;
+          var attrs = u.isAdmin ? ' checked disabled' : (on ? ' checked' : '');
+          return '<span class="uperm"><input type="checkbox" data-uid="' + esc(u.id) + '" data-perm="' + p[0] + '"' + attrs + '></span>';
+        }).join('');
+        var act = u.isAdmin
+          ? '<span class="uact"><span class="meta">owner</span></span>'
+          : '<span class="uact"><button class="mini danger" data-del-user="' + esc(u.id) + '">Delete</button></span>';
+        return '<div class="urow"><span class="uname" title="' + esc(u.username) + '">' + esc(u.username) + '</span>' + checks + act + '</div>';
+      }).join('');
+      $('#user-list').innerHTML = head + rows;
+    });
+  }
+  function savePermsFor(uid) {
+    var boxes = document.querySelectorAll('#user-list input[data-uid="' + uid + '"]');
+    var perms = [];
+    Array.prototype.forEach.call(boxes, function (b) { if (b.checked) perms.push(b.getAttribute('data-perm')); });
+    api('/v1/admin/users/' + uid + '/permissions', 'PUT', { permissions: perms }).then(function (res) {
+      if (res.status === 401) { logout(); }
+    });
+  }
+  function addUser() {
+    msg('usr-msg', '');
+    var name = $('#usr-name').value, pass = $('#usr-pass').value;
+    if (!name || !pass) { msg('usr-msg', 'Username and password are required.'); return; }
+    api('/v1/admin/users', 'POST', { username: name, password: pass }).then(function (res) {
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { res.json().then(function (e) { msg('usr-msg', (e && e.error && e.error.message) || 'Could not add user.'); }).catch(function () { msg('usr-msg', 'Could not add user.'); }); return; }
+      $('#usr-name').value = ''; $('#usr-pass').value = ''; msg('usr-msg', 'Added.', true); loadUsers();
+    });
+  }
+  $('#user-list').onclick = function (e) {
+    var del = e.target.getAttribute && e.target.getAttribute('data-del-user');
+    if (del) { if (confirm('Delete this user?')) api('/v1/admin/users/' + del, 'DELETE').then(function () { loadUsers(); }); }
+  };
+  $('#user-list').onchange = function (e) {
+    var uid = e.target.getAttribute && e.target.getAttribute('data-uid');
+    if (uid) savePermsFor(uid);
+  };
+
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
   $('#lib-add-btn').onclick = addLibrary;
   $('#src-add-btn').onclick = addSource;
+  $('#usr-add-btn').onclick = addUser;
   $('#src-driver').onchange = driverBlocks;
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   if (token) enter();
