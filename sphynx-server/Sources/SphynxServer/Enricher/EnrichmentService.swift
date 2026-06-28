@@ -21,11 +21,21 @@ struct EnrichmentService: Sendable {
     /// not thrown, so one bad item never aborts a scan.
     @discardableResult
     func process(_ item: ItemRecord, force: Bool) async -> Bool {
+        let kind = Self.tvTypes.contains(item.type) ? "tv" : "movie"
+        let token = await DiagnosticsCenter.shared.begin(itemId: item.id, title: item.title, kind: kind)
+        let outcome = await runProcess(item, force: force)
+        await DiagnosticsCenter.shared.finish(token, result: outcome)
+        return outcome == .enriched
+    }
+
+    /// The actual identify + enrich. `process` wraps this to report activity to
+    /// the diagnostics center (the web admin Activity tab).
+    private func runProcess(_ item: ItemRecord, force: Bool) async -> DiagnosticsCenter.JobResult {
         let now = Date().timeIntervalSince1970
 
         // Skip fresh, already-identified items unless forced.
         if !force, let enrichedAt = item.enrichedAt, item.tmdbId != nil, now - enrichedAt < ttl {
-            return false
+            return .skipped
         }
 
         // TV items use the TV endpoints, not the movie endpoint.
@@ -55,7 +65,7 @@ struct EnrichmentService: Sendable {
 
             guard let resolvedId else {
                 // Unidentified — leave as a skeleton; a later forced run can retry.
-                return false
+                return .skipped
             }
 
             let fields = try await enricher.enrichMovie(tmdbId: resolvedId)
@@ -63,18 +73,18 @@ struct EnrichmentService: Sendable {
             updated.enrichedAt = now
             updated.updatedAt = now
             try await catalog.updateItem(updated)
-            return true
+            return .enriched
         } catch {
             logger.warning("Enrichment failed for item \(item.id): \(error)")
-            return false
+            return .failed
         }
     }
 
     /// Enrich a TV item (series / season / episode) via the TV endpoints, honoring
     /// admin field locks. Series resolve their own TMDB id (pinned or searched);
     /// seasons/episodes inherit the series id stored on the row.
-    private func processTV(_ item: ItemRecord, now: Double) async -> Bool {
-        guard let tv else { return false }  // TV enrichment needs TMDB configured
+    private func processTV(_ item: ItemRecord, now: Double) async -> DiagnosticsCenter.JobResult {
+        guard let tv else { return .skipped }  // TV enrichment needs TMDB configured
         do {
             var updated = item
             switch item.type {
@@ -88,14 +98,14 @@ struct EnrichmentService: Sendable {
                 } else {
                     resolvedId = try await tv.identifySeries(title: item.seriesTitle ?? item.title)
                 }
-                guard let resolvedId else { return false }
+                guard let resolvedId else { return .skipped }
                 updated.tmdbId = String(resolvedId)
                 // Series fields map onto the same EnrichedFields the movie path
                 // uses, so the shared `apply` honors locks identically.
                 apply(try await tv.seriesFields(tmdbId: resolvedId), to: &updated)
 
             case "season":
-                guard let seriesId = item.tmdbId.flatMap(Int.init), let season = item.seasonIndex else { return false }
+                guard let seriesId = item.tmdbId.flatMap(Int.init), let season = item.seasonIndex else { return .skipped }
                 let details = try await tv.season(tmdbId: seriesId, season: season)
                 let locked = updated.lockedFields()
                 if !locked.contains(LockableField.overview) { updated.overview = details.overview }
@@ -109,9 +119,9 @@ struct EnrichmentService: Sendable {
 
             case "episode":
                 guard let seriesId = item.tmdbId.flatMap(Int.init),
-                      let season = item.seasonIndex, let episode = item.episodeIndex else { return false }
+                      let season = item.seasonIndex, let episode = item.episodeIndex else { return .skipped }
                 let details = try await tv.season(tmdbId: seriesId, season: season)
-                guard let meta = details.episodes.first(where: { $0.episodeNumber == episode }) else { return false }
+                guard let meta = details.episodes.first(where: { $0.episodeNumber == episode }) else { return .skipped }
                 let locked = updated.lockedFields()
                 if !locked.contains(LockableField.overview) { updated.overview = meta.overview }
                 if !locked.contains(LockableField.runtime) { updated.runtime = meta.runtimeMinutes.map { Double($0) * 60 } }
@@ -124,15 +134,15 @@ struct EnrichmentService: Sendable {
                 }
 
             default:
-                return false
+                return .skipped
             }
             updated.enrichedAt = now
             updated.updatedAt = now
             try await catalog.updateItem(updated)
-            return true
+            return .enriched
         } catch {
             logger.warning("TV enrichment failed for item \(item.id): \(error)")
-            return false
+            return .failed
         }
     }
 

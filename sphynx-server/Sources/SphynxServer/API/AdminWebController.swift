@@ -34,7 +34,7 @@ enum AdminWebController {
   :root { --bg:#0f1115; --card:#171a21; --sub:#1d212b; --line:#262b36; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#6ea8fe; --ok:#54d18c; --err:#ff7a7a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-  .wrap { max-width:720px; margin:5vh auto; padding:0 20px; }
+  .wrap { max-width:860px; margin:5vh auto; padding:0 20px; }
   .brand { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
   .brand h1 { font-size:22px; margin:0; }
   .logo { font-size:26px; }
@@ -72,6 +72,38 @@ enum AdminWebController {
   .uperm input { width:auto; }
   .uact { text-align:right; }
   [hidden] { display:none !important; }
+  /* diagnostics: activity */
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin:6px 0 18px; }
+  .stat { background:var(--sub); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .stat .n { font-size:23px; font-weight:600; }
+  .stat .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .stat.warn .n { color:var(--err); }
+  .phase { display:inline-flex; align-items:center; gap:8px; font-size:13px; padding:6px 12px; border-radius:999px; background:var(--sub); border:1px solid var(--line); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .dot.scanning { background:var(--accent); } .dot.enriching { background:var(--ok); }
+  .dot.pulse { animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
+  .chip.movie { color:var(--accent); } .chip.tv { color:#c89bf0; }
+  .res-enriched { color:var(--ok); } .res-skipped { color:var(--muted); } .res-failed { color:var(--err); }
+  /* diagnostics: database browser */
+  .tablist { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .tablist button { margin:0; }
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .toolbar .spacer { flex:1; }
+  .tablebox { overflow:auto; border:1px solid var(--line); border-radius:10px; max-height:52vh; }
+  table.db { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.db th, table.db td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; max-width:340px; overflow:hidden; text-overflow:ellipsis; }
+  table.db th { position:sticky; top:0; background:var(--sub); color:var(--muted); font-weight:500; z-index:1; }
+  table.db td.null { color:#5a6473; font-style:italic; }
+  .pager { display:flex; gap:10px; align-items:center; margin-top:10px; font-size:13px; color:var(--muted); }
+  /* diagnostics: logs */
+  .logbox { background:#0b0e13; border:1px solid var(--line); border-radius:10px; padding:10px 12px; height:54vh; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; line-height:1.55; }
+  .logline { white-space:pre-wrap; word-break:break-word; }
+  .logline .t { color:#5a6473; }
+  .logline .lvl { display:inline-block; min-width:62px; font-weight:600; }
+  .lvl-info { color:var(--accent); } .lvl-notice { color:var(--ok); } .lvl-warning { color:#e8c468; }
+  .lvl-error, .lvl-critical { color:var(--err); } .lvl-debug, .lvl-trace { color:var(--muted); }
 </style>
 </head>
 <body>
@@ -96,6 +128,9 @@ enum AdminWebController {
         <button class="tab" data-tab="libraries">Libraries</button>
         <button class="tab" data-tab="sources">Sources</button>
         <button class="tab" data-tab="users">Users</button>
+        <button class="tab" data-tab="activity">Activity</button>
+        <button class="tab" data-tab="database">Database</button>
+        <button class="tab" data-tab="logs">Logs</button>
       </div>
       <button id="logout-btn" class="secondary" style="margin:0;">Sign out</button>
     </div>
@@ -206,6 +241,64 @@ enum AdminWebController {
         <p class="hint">New users start with "Browse &amp; play" so they can use the library right away.</p>
       </div>
     </section>
+
+    <section id="tab-activity" hidden>
+      <div class="bar" style="margin-bottom:14px;">
+        <span id="act-phase" class="phase"><span class="dot"></span> Idle</span>
+        <span class="hint" id="act-uptime" style="margin:0;"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="act-active">0</div><div class="l">Active</div></div>
+        <div class="stat"><div class="n" id="act-queued">0</div><div class="l">Queued</div></div>
+        <div class="stat"><div class="n" id="act-enriched">0</div><div class="l">Enriched</div></div>
+        <div class="stat"><div class="n" id="act-skipped">0</div><div class="l">Skipped</div></div>
+        <div class="stat warn"><div class="n" id="act-failed">0</div><div class="l">Failed</div></div>
+      </div>
+      <div class="group-title">In progress</div>
+      <div id="act-jobs"><div class="empty">Nothing processing right now.</div></div>
+      <div class="group-title">Recently finished</div>
+      <div id="act-recent"><div class="empty">No recent jobs.</div></div>
+      <div class="group-title">Recent scans</div>
+      <div id="act-scans"><div class="empty">No scans yet.</div></div>
+    </section>
+
+    <section id="tab-database" hidden>
+      <h2>Database</h2>
+      <p class="hint" style="margin-top:0;">Read-only. Sensitive columns (password &amp; token hashes, source secrets, request headers) are redacted 🔒.</p>
+      <div class="tablist" id="db-tables"><div class="empty">Loading tables…</div></div>
+      <div id="db-view" hidden>
+        <div class="toolbar">
+          <strong id="db-title"></strong>
+          <span class="hint" id="db-count" style="margin:0;"></span>
+          <span class="spacer"></span>
+          <button class="mini secondary" id="db-refresh">Refresh</button>
+        </div>
+        <div class="tablebox"><table class="db"><thead id="db-head"></thead><tbody id="db-body"></tbody></table></div>
+        <div class="pager">
+          <button class="mini secondary" id="db-prev">‹ Prev</button>
+          <span id="db-range"></span>
+          <button class="mini secondary" id="db-next">Next ›</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-logs" hidden>
+      <h2>Logs</h2>
+      <div class="toolbar">
+        <label style="margin:0;">Level</label>
+        <select id="log-level" style="width:auto;">
+          <option value="">all</option>
+          <option value="trace">trace</option><option value="debug">debug</option>
+          <option value="info" selected>info</option><option value="notice">notice</option>
+          <option value="warning">warning</option><option value="error">error</option><option value="critical">critical</option>
+        </select>
+        <button class="mini secondary" id="log-pause">Pause</button>
+        <button class="mini secondary" id="log-clear">Clear view</button>
+        <span class="spacer"></span>
+        <span class="hint" id="log-status" style="margin:0;"></span>
+      </div>
+      <div class="logbox" id="log-box"><div class="empty">Waiting for logs…</div></div>
+    </section>
   </div>
 </div>
 
@@ -231,19 +324,27 @@ enum AdminWebController {
       .then(function (data) { if (!data) return; token = data.accessToken; sessionStorage.setItem('sphynxToken', token); enter(); })
       .catch(function () { msg('login-msg', 'Could not reach the server.'); });
   }
-  function logout() { token = ''; sessionStorage.removeItem('sphynxToken'); $('#panel').hidden = true; $('#login').hidden = false; }
+  function logout() { stopPoll(); token = ''; sessionStorage.removeItem('sphynxToken'); $('#panel').hidden = true; $('#login').hidden = false; }
   function enter() {
     $('#login').hidden = true; $('#panel').hidden = false;
     loadSettings(); loadLibraries(); loadSources(); loadUsers();
   }
 
   // ---- tabs ----
+  var TABS = ['settings', 'libraries', 'sources', 'users', 'activity', 'database', 'logs'];
+  var poll = null;
+  function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
+  function startPoll(fn, ms) { stopPoll(); fn(); poll = setInterval(fn, ms); }
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
+    TABS.forEach(function (n) { $('#tab-' + n).hidden = (n !== name); });
+    stopPoll();
+    if (name === 'activity') startPoll(loadStatus, 1500);
+    else if (name === 'logs') { logState.after = 0; $('#log-box').innerHTML = ''; startPoll(loadLogs, 2000); }
+    else if (name === 'database') loadDbTables();
+  }
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
-    t.onclick = function () {
-      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
-      ['settings', 'libraries', 'sources', 'users'].forEach(function (name) { $('#tab-' + name).hidden = (name !== t.dataset.tab); });
-    };
+    t.onclick = function () { showTab(t.dataset.tab); };
   });
 
   // ---- settings ----
@@ -407,6 +508,94 @@ enum AdminWebController {
     var uid = e.target.getAttribute && e.target.getAttribute('data-uid');
     if (uid) savePermsFor(uid);
   };
+
+  // ---- diagnostics: activity ----
+  function fmtMs(ms) { if (ms == null) return ''; return ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's'; }
+  function fmtDur(s) { s = Math.floor(s); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + x + 's'; }
+  function jobRow(j, withResult) {
+    var right = withResult ? '<span class="meta res-' + esc(j.result) + '">' + esc(j.result) + ' · ' + fmtMs(j.durationMs) + '</span>' : '<span class="meta">' + fmtMs(j.durationMs) + '</span>';
+    return '<div class="item"><span><span class="chip ' + esc(j.kind) + '">' + esc(j.kind) + '</span> ' + esc(j.title) + '</span>' + right + '</div>';
+  }
+  function loadStatus() {
+    api('/v1/admin/status', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (s) {
+      if (!s) return;
+      var live = s.phase !== 'idle';
+      $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
+      $('#act-uptime').textContent = 'uptime ' + fmtDur(s.uptimeSeconds) + ' · ' + s.processed + ' processed';
+      $('#act-active').textContent = s.active; $('#act-queued').textContent = s.queued;
+      $('#act-enriched').textContent = s.enriched; $('#act-skipped').textContent = s.skipped; $('#act-failed').textContent = s.failed;
+      $('#act-jobs').innerHTML = s.jobs.length ? s.jobs.map(function (j) { return jobRow(j, false); }).join('') : '<div class="empty">Nothing processing right now.</div>';
+      $('#act-recent').innerHTML = s.recent.length ? s.recent.map(function (j) { return jobRow(j, true); }).join('') : '<div class="empty">No recent jobs.</div>';
+      $('#act-scans').innerHTML = s.scans.length ? s.scans.map(function (sc) {
+        return '<div class="item"><span>' + esc(sc.sourceId) + '</span><span class="meta">scanned ' + sc.scanned + ' · +' + sc.added + ' ~' + sc.updated + ' −' + sc.removed + ' · enriched ' + sc.enriched + ' · ' + fmtMs(sc.durationMs) + '</span></div>';
+      }).join('') : '<div class="empty">No scans yet.</div>';
+    }).catch(function () {});
+  }
+
+  // ---- diagnostics: database browser ----
+  var dbState = { table: null, offset: 0, limit: 50, total: 0 };
+  function loadDbTables() {
+    api('/v1/admin/db/tables', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : { tables: [] }; }).then(function (d) {
+      if (!d) return;
+      $('#db-tables').innerHTML = d.tables.length ? d.tables.map(function (t) {
+        return '<button class="tab' + (dbState.table === t.name ? ' active' : '') + '" data-table="' + esc(t.name) + '">' + esc(t.name) + ' <span class="meta">' + t.rowCount + '</span></button>';
+      }).join('') : '<div class="empty">No tables.</div>';
+      if (dbState.table) loadDbRows();
+    });
+  }
+  function openTable(name) { dbState.table = name; dbState.offset = 0; loadDbRows();
+    Array.prototype.forEach.call(document.querySelectorAll('#db-tables .tab'), function (b) { b.classList.toggle('active', b.dataset.table === name); }); }
+  function loadDbRows() {
+    if (!dbState.table) return;
+    var q = '/v1/admin/db/query?table=' + encodeURIComponent(dbState.table) + '&limit=' + dbState.limit + '&offset=' + dbState.offset;
+    api(q, 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (d) {
+      if (!d) return;
+      dbState.total = d.total;
+      $('#db-view').hidden = false;
+      $('#db-title').textContent = d.table;
+      $('#db-count').textContent = d.total + ' rows' + (d.redactedColumns.length ? ' · ' + d.redactedColumns.length + ' redacted' : '');
+      $('#db-head').innerHTML = '<tr>' + d.columns.map(function (c) { return '<th>' + esc(c) + (d.redactedColumns.indexOf(c) >= 0 ? ' 🔒' : '') + '</th>'; }).join('') + '</tr>';
+      $('#db-body').innerHTML = d.rows.length ? d.rows.map(function (r) {
+        return '<tr>' + r.map(function (v) { return v === null ? '<td class="null">null</td>' : '<td title="' + esc(v) + '">' + esc(v) + '</td>'; }).join('') + '</tr>';
+      }).join('') : '<tr><td class="null">no rows</td></tr>';
+      var from = d.total ? d.offset + 1 : 0, to = Math.min(d.offset + d.limit, d.total);
+      $('#db-range').textContent = from + '–' + to + ' of ' + d.total;
+      $('#db-prev').disabled = d.offset <= 0; $('#db-next').disabled = to >= d.total;
+    });
+  }
+  $('#db-tables').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.table) openTable(b.dataset.table); };
+  $('#db-prev').onclick = function () { dbState.offset = Math.max(0, dbState.offset - dbState.limit); loadDbRows(); };
+  $('#db-next').onclick = function () { if (dbState.offset + dbState.limit < dbState.total) { dbState.offset += dbState.limit; loadDbRows(); } };
+  $('#db-refresh').onclick = function () { loadDbTables(); };
+
+  // ---- diagnostics: logs ----
+  var logState = { after: 0, paused: false };
+  function loadLogs() {
+    if (logState.paused) return;
+    var lvl = $('#log-level').value;
+    var q = '/v1/admin/logs?limit=300' + (logState.after ? '&after=' + logState.after : '') + (lvl ? '&level=' + lvl : '');
+    api(q, 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (d) {
+      if (!d) return;
+      var box = $('#log-box');
+      var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      if (d.lines.length) {
+        var empty = box.querySelector('.empty'); if (empty) box.innerHTML = '';
+        d.lines.forEach(function (l) {
+          if (l.seq > logState.after) logState.after = l.seq;
+          var div = document.createElement('div');
+          div.className = 'logline';
+          var t = (l.time || '').replace('T', ' ').replace(/(\.\d+)?(Z|[+-]\d\d:?\d\d)?$/, '');
+          div.innerHTML = '<span class="t">' + esc(t) + '</span> <span class="lvl lvl-' + esc(l.level) + '">' + esc(l.level) + '</span> ' + esc(l.message);
+          box.appendChild(div);
+        });
+        if (atBottom) box.scrollTop = box.scrollHeight;
+      }
+      $('#log-status').textContent = 'seq ' + d.latestSeq + (logState.paused ? ' · paused' : '');
+    }).catch(function () {});
+  }
+  $('#log-level').onchange = function () { logState.after = 0; $('#log-box').innerHTML = ''; loadLogs(); };
+  $('#log-pause').onclick = function () { logState.paused = !logState.paused; $('#log-pause').textContent = logState.paused ? 'Resume' : 'Pause'; };
+  $('#log-clear').onclick = function () { $('#log-box').innerHTML = '<div class="empty">cleared</div>'; };
 
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;

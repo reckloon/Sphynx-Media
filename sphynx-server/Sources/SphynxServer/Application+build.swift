@@ -2,6 +2,21 @@ import Hummingbird
 import Logging
 import ServiceLifecycle
 
+/// Bootstraps the logging system once per process so that, alongside normal
+/// stdout output, every record is mirrored into `LogStore` for the web admin
+/// **Logs** tab. A global `let` runs its initializer exactly once, lazily and
+/// thread-safely, so repeated `buildApplication` calls (e.g. the test suite) are
+/// safe — `LoggingSystem.bootstrap` may only be called once.
+private let loggingBootstrap: Void = {
+    LoggingSystem.bootstrap { label in
+        var stdout = StreamLogHandler.standardOutput(label: label)
+        stdout.logLevel = .info
+        var capture = CapturingLogHandler(label: label, store: LogStore.shared)
+        capture.logLevel = .info
+        return MultiplexLogHandler([stdout, capture])
+    }
+}()
+
 /// Builds the router mapping the Sphynx protocol surface onto handlers.
 ///
 /// Two route groups share the `/v1` prefix:
@@ -44,6 +59,8 @@ func buildRouter(
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
                     settings: settings, configuration: configuration, events: events).addRoutes(to: securedV1)
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
+    DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
+                          logStore: LogStore.shared).addRoutes(to: securedV1)
 
     return router
 }
@@ -57,6 +74,7 @@ func buildApplication(
     httpFetcher: (any HTTPFetching)? = nil,
     tmdbClient: (any TMDBClient)? = nil
 ) async throws -> some ApplicationProtocol {
+    _ = loggingBootstrap  // ensure stdout + LogStore capture are wired before any logging
     var logger = Logger(label: "sphynx")
     logger.logLevel = .info
 

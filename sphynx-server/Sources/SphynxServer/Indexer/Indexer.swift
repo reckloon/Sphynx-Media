@@ -14,7 +14,25 @@ struct Indexer: Sendable {
     /// Present when TMDB is configured; TV identify + enrich during reconcile.
     let tv: TVEnricher?
 
+    /// Scan one source, reporting scan activity to the diagnostics center (the web
+    /// admin Activity tab) and ensuring the in-flight flag is cleared even on error.
     func scan(sourceId: String) async throws -> IndexSummary {
+        let startedAt = Date()
+        await DiagnosticsCenter.shared.scanBegan()
+        do {
+            let summary = try await runScan(sourceId: sourceId)
+            await DiagnosticsCenter.shared.scanEnded(
+                sourceId: summary.sourceId, scanned: summary.scanned, added: summary.added,
+                updated: summary.updated, removed: summary.removed, enriched: summary.enriched,
+                durationMs: Date().timeIntervalSince(startedAt) * 1000)
+            return summary
+        } catch {
+            await DiagnosticsCenter.shared.scanFailed()
+            throw error
+        }
+    }
+
+    private func runScan(sourceId: String) async throws -> IndexSummary {
         guard let source = try await catalog.source(id: sourceId) else {
             throw SphynxError.notFound("No source '\(sourceId)'")
         }
@@ -244,8 +262,9 @@ struct Indexer: Sendable {
         // Movie identify + enrich (best-effort; skips fresh and non-movie items).
         var enriched = 0
         if let enrichment {
-            for item in try await catalog.itemsBySource(sourceId: sourceId)
-            where await enrichment.process(item, force: false) {
+            let candidates = try await catalog.itemsBySource(sourceId: sourceId)
+            await DiagnosticsCenter.shared.enqueue(candidates.count)
+            for item in candidates where await enrichment.process(item, force: false) {
                 enriched += 1
             }
         }
