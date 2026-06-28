@@ -59,10 +59,11 @@ struct LibraryRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var createdAt: Double
     /// Minimum number of present members a collection must have to be shown as a
     /// box-set tile at this library's top level. Below it, the collection is hidden
-    /// and its members appear individually. `1` (the default) groups any collection
-    /// with at least one member — the historical behavior. Server-internal: the
-    /// grouping is resolved before items reach the wire, so it isn't on `Library`.
-    var collectionThreshold: Int = 1
+    /// and its members appear individually. The default of `2` keeps a single owned
+    /// movie from collapsing into a one-item box set; set it to `1` to group any
+    /// non-empty collection. Server-internal: the grouping is resolved before items
+    /// reach the wire, so it isn't on `Library`.
+    var collectionThreshold: Int = 2
 
     func toProtocol() -> Library {
         Library(id: id, title: title, kind: LibraryKind(rawValue: kind) ?? .unknown(kind))

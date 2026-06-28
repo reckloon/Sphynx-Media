@@ -330,6 +330,15 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m21_collection_threshold_default_2") { db in
+            // Raise the grouping default from 1 to 2 so a library doesn't show a
+            // box-set tile for a single owned movie. Only libraries still on the old
+            // default (1) are bumped — an admin who deliberately set 1 keeps it.
+            // (New libraries get 2 from the record's own default, since GRDB writes
+            // the column on insert; this only backfills rows created under m20.)
+            try db.execute(sql: "UPDATE library SET collectionThreshold = 2 WHERE collectionThreshold = 1")
+        }
+
         return migrator
     }
 }

@@ -114,7 +114,13 @@ struct CollectionsTests {
     @Test("collectionThreshold ungroups a small box set; its members surface at top level")
     func collectionThresholdUngroupsSmallSets() async throws {
         try await loginCreateScan { client, token, libraryId in
-            // Default threshold (1): the 2-member saga groups into one tile.
+            // New libraries default to a threshold of 2.
+            let libs: AdminLibrariesResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(libs.libraries.first { $0.id == libraryId }?.collectionThreshold == 2)
+
+            // At the default (2), the 2-member saga still groups into one tile.
             let grouped: ItemsResponse = try await client.execute(
                 uri: "/v1/items?parent=\(libraryId)", method: .get, headers: jsonHeaders(bearer: token)
             ) { try $0.decoded() }

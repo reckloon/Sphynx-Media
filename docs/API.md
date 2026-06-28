@@ -234,7 +234,8 @@ governed **server-side** by the owning library's `collectionThreshold` (set via 
 admin API; see *Admin → libraries*). A collection appears at the top level only when
 it has at least `collectionThreshold` present members; below that, the tile is hidden
 and its member movies are listed individually at the top level instead. The default
-is `1` (any non-empty collection groups). Raising it ungroups small box sets with no
+is `2` (so a single owned movie isn't shown as a one-item box set); set it to `1` to
+group any non-empty collection. Raising it ungroups small box sets with no
 re-indexing — the `collectionId`/`parentId` links are untouched, so the collection is
 still directly browsable via `?parent=<collectionId>`. Clients do nothing here: they
 render whatever the top-level browse returns. The threshold is **not** carried on the
@@ -643,20 +644,20 @@ on it), set in the GUI instead of (or in addition to) the environment.
 ### `POST /v1/admin/libraries`
 
 **Body** `{ "title": "Movies", "kind": "movies" }` (`kind` defaults to `other`).
-**200** → `{ "id": "lib_…", "title": "Movies", "kind": "movies", "collectionThreshold": 1 }`.
-New libraries start at `collectionThreshold: 1`.
+**200** → `{ "id": "lib_…", "title": "Movies", "kind": "movies", "collectionThreshold": 2 }`.
+New libraries start at `collectionThreshold: 2`.
 
 ### `GET /v1/admin/libraries`
 
-List all libraries. **200** → `{ "libraries": [ { "id": "lib_…", "title": "…", "kind": "…", "collectionThreshold": 1 }, … ] }`.
+List all libraries. **200** → `{ "libraries": [ { "id": "lib_…", "title": "…", "kind": "…", "collectionThreshold": 2 }, … ] }`.
 
 ### `PATCH /v1/admin/libraries/{libraryId}`
 
 Update a library. **Body** (any subset) `{ "title": "…", "kind": "…", "collectionThreshold": 2 }`
 → **200** with the updated library. `collectionThreshold` is the minimum number of
 present members a collection needs to surface as a box-set tile at this library's top
-level (see *Collections / box sets*); it is clamped to `>= 0`, and `1` (the default)
-groups any non-empty collection.
+level (see *Collections / box sets*); it is clamped to `>= 0`. The default is `2`;
+set it to `1` to group any non-empty collection.
 
 ### `DELETE /v1/admin/libraries/{libraryId}`
 
