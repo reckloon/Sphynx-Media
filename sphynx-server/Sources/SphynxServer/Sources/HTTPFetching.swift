@@ -5,10 +5,25 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// Fetches *metadata* documents (e.g. source manifests) over HTTP — never media
-/// bytes. Abstracted so tests can inject a stub instead of hitting the network.
+/// Fetches *metadata* documents (e.g. source manifests, WebDAV `PROPFIND`
+/// listings) over HTTP — never media bytes. Abstracted so tests can inject a stub
+/// instead of hitting the network.
 protocol HTTPFetching: Sendable {
     func getData(url: String, headers: [String: String]) async throws -> Data
+    /// Issue an arbitrary HTTP method (e.g. `PROPFIND` for WebDAV listing) with an
+    /// optional request body, returning the response body.
+    func sendRequest(method: String, url: String, headers: [String: String], body: Data?) async throws -> Data
+}
+
+extension HTTPFetching {
+    /// Default: only GET is supported (delegating to `getData`); a fetcher that
+    /// needs other methods overrides this. Keeps simple test stubs (GET-only) valid.
+    func sendRequest(method: String, url: String, headers: [String: String], body: Data?) async throws -> Data {
+        guard method.uppercased() == "GET" else {
+            throw SphynxError.noMediaSource("This fetcher does not support \(method) requests")
+        }
+        return try await getData(url: url, headers: headers)
+    }
 }
 
 /// Production fetcher for metadata documents. Restricted to **http/https** —
@@ -31,6 +46,10 @@ struct URLSessionFetcher: HTTPFetching {
     var maxBackoff = 30.0
 
     func getData(url: String, headers: [String: String]) async throws -> Data {
+        try await sendRequest(method: "GET", url: url, headers: headers, body: nil)
+    }
+
+    func sendRequest(method: String, url: String, headers: [String: String], body: Data?) async throws -> Data {
         guard let parsed = URL(string: url) else {
             throw SphynxError.badRequest("Invalid URL '\(url)'")
         }
@@ -38,6 +57,8 @@ struct URLSessionFetcher: HTTPFetching {
             throw SphynxError.badRequest("Only http/https URLs are allowed")
         }
         var request = URLRequest(url: parsed)
+        request.httpMethod = method
+        request.httpBody = body
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }

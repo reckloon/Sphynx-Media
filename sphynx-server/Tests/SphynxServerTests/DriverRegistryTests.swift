@@ -81,15 +81,4 @@ struct DriverRegistryTests {
         #expect(!json.contains("s3cret"))               // credential value never leaks
         #expect(!json.lowercased().contains("password"))
     }
-
-    @Test("scaffold drivers refuse to list (clear, not a crash)")
-    func scaffoldListingNotImplemented() async throws {
-        let factory = DriverFactory(fetcher: StubFetcher([:]))
-        for src in [source(driver: "webdav", config: ["baseURL": "https://x"]),
-                    source(driver: "smb", config: ["host": "h", "share": "s"]),
-                    source(driver: "ftp", config: ["host": "h"])] {
-            let driver = try factory.makeDriver(for: src)
-            await #expect(throws: SphynxError.self) { _ = try await driver.list() }
-        }
-    }
 }

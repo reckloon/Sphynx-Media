@@ -625,7 +625,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <p>The canonical fields above are the neutral contract: each has a fixed meaning and unit; a client only maps the <em>name</em> to whatever it calls the field internally. For anything beyond the canonical set, an item may carry an <code>extra</code> object of arbitrary server-defined metadata. A client reads the keys it understands and ignores the rest. Together with the forward-compatibility rules, this is what lets a server serve whatever metadata it wants while older clients keep working. <code>extra</code> is omitted entirely when empty.</p>
 
 <h4>Planned</h4>
-<p>Defined in the protocol but not yet implemented by the reference server: <code>GET /v1/search</code> (<code>capabilities.search</code>); ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>); and remote source-driver <strong>listing</strong> (WebDAV/SMB/FTP resolve, but don't list yet).</p>
+<p>Defined in the protocol but not yet implemented by the reference server: <code>GET /v1/search</code> (<code>capabilities.search</code>); ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>).</p>
 </section>
 
 <!-- ========================= PROTOCOL ========================= -->
@@ -1293,11 +1293,11 @@ item.markersUpdatedAt = now
   <tr><th>Kind</th><th><code>resolve</code> (handoff)</th><th><code>list</code> (enumerate)</th></tr>
   <tr><td><code>http</code> / <code>https</code></td><td>✅ direct URL + headers</td><td>✅ via a JSON manifest</td></tr>
   <tr><td><code>local</code></td><td>✅ <code>.strm</code> → its URL; else <code>file://</code></td><td>✅ filesystem walk</td></tr>
-  <tr><td><code>webdav</code></td><td>✅ <code>https://</code> + auth header</td><td>🚧 scaffold — <code>PROPFIND</code> over existing HTTP client</td></tr>
-  <tr><td><code>smb</code></td><td>✅ <code>smb://host/share/key</code></td><td>🚧 scaffold — needs an SMB client library</td></tr>
-  <tr><td><code>ftp</code></td><td>✅ <code>ftp://host/key</code></td><td>🚧 scaffold — needs an FTP client library</td></tr>
+  <tr><td><code>webdav</code></td><td>✅ <code>https://</code> + auth header</td><td>✅ recursive <code>PROPFIND</code> over the built-in HTTP client</td></tr>
+  <tr><td><code>smb</code></td><td>✅ <code>smb://host/share/key</code></td><td>✅ via <code>smbclient</code> (per-directory <code>ls</code> walk)</td></tr>
+  <tr><td><code>ftp</code></td><td>✅ <code>ftp://host/key</code></td><td>✅ via <code>curl</code> (per-directory <code>LIST</code> walk)</td></tr>
 </table>
-<p>The scaffolded drivers resolve today; their <code>list()</code> returns a clear "not implemented yet" until the listing piece lands. Resolving for all of them already honours the core rule: the server hands back a location and moves no bytes.</p>
+<p>All five drivers now both resolve and list. <code>webdav</code> lists natively over the HTTP client; <code>smb</code> and <code>ftp</code> shell out to <code>smbclient</code> / <code>curl</code> (which must be on the server's <code>PATH</code> — listing fails with a clear message if absent, while resolve/playback still work). Every driver honours the core rule: the server hands back a location and moves no bytes. Configure them in the web admin's <strong>Extensions → Storage</strong> tabs (one per driver, with a clean connection form) or via <code>POST /v1/admin/sources</code>.</p>
 
 <h4>Authoring a driver</h4>
 <ol>
@@ -1404,7 +1404,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Live updates</strong> — an additive server→client <a href="#api-events">event stream</a> (<code>GET /v1/events</code>, SSE) for playstate, per-user state, markers, and library changes, access-filtered per subscriber; clients opt in via <code>capabilities.events</code> and otherwise poll.</li>
   <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable <strong>recap / intro / credits / preview</strong> markers (extensible to any segment type); an open <code>extra</code> bag.</li>
   <li><strong>Extras, collections &amp; people</strong> — bonus content (trailers, featurettes, deleted scenes, behind-the-scenes) classified as its own item types and <strong>nested under its movie or show</strong> via a generic <code>parentId</code>; <strong>collections / box sets</strong> created from TMDB and browsed via <code>items?parent=</code>; a <strong>person filmography</strong> endpoint (<code>GET /v1/people/{id}/items</code>, newest-first across movies and TV). Plus artwork &amp; metadata fills: <code>logo</code>/<code>banner</code>, <code>trailers</code>, <code>tags</code>, <code>sortTitle</code>.</li>
-  <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
+  <li><strong>Source drivers</strong> — <code>local</code>, <code>http</code> (manifest), <code>webdav</code> (PROPFIND), <code>smb</code> (smbclient), and <code>ftp</code> (curl) all resolve <em>and</em> list. Configured in the web admin's <strong>Extensions → Storage</strong> tabs, one clean connection form per driver.</li>
 </ul>
 
 <h3>Coming soon <span class="badge soon">planned</span></h3>
@@ -1432,7 +1432,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Real-time updates</strong> — a WebSocket/SSE channel for cross-device Continue Watching, or an explicit statement that polling is the intended model for a control-plane server.</li>
   <li><strong>Marker editing</strong> — a DELETE for a wrong marker and per-segment provenance/confidence (today contributions are PUT-only and whole-set).</li>
   <li><strong>Metadata-language negotiation</strong> (<code>Accept-Language</code>) for multi-language libraries.</li>
-  <li><strong>More source drivers</strong> — completing WebDAV/SMB/FTP listing.</li>
+  <li><strong>More source drivers</strong> — additional backends (e.g. S3) beyond the local / http / webdav / smb / ftp set.</li>
 </ul>
 </section>
 

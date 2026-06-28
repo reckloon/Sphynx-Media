@@ -979,5 +979,10 @@ Defined in the protocol but not yet implemented by the reference server:
 
 - `GET /v1/search` (`capabilities.search`).
 - Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
-- Remote source-driver **listing** — WebDAV/SMB/FTP resolve, but their directory
-  listing is not implemented yet (HTTP and local work fully).
+
+All five source drivers now both resolve **and** list: `local`, `http`
+(JSON manifest), `webdav` (`PROPFIND` over the built-in HTTP client), `smb` (via
+`smbclient`), and `ftp` (via `curl`). SMB/FTP listing needs `smbclient`/`curl` on
+the server's `PATH`; resolve/playback work without them. Configure sources in the
+web admin's **Extensions → Storage** tabs (one per driver) or via
+`POST /v1/admin/sources`.
