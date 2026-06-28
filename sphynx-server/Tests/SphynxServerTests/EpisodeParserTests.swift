@@ -50,4 +50,18 @@ struct EpisodeParserTests {
         // 1280x720 must not parse as season 80 / episode 72, etc.
         #expect(EpisodeParser.parse("BigBuckBunny_1280x720.mp4") == nil)
     }
+
+    @Test("a 3-4 digit episode number is not truncated (long-running anime)")
+    func largeEpisodeNumber() {
+        let p = EpisodeParser.parse("One Piece.S01E1071.mkv")
+        #expect(p?.season == 1)
+        #expect(p?.episode == 1071)  // not "E10" → 10
+    }
+
+    @Test("a year-as-season marker parses (daily shows)")
+    func yearAsSeason() {
+        let p = EpisodeParser.parse("Doctor Who S2024E01.mkv")
+        #expect(p?.season == 2024)
+        #expect(p?.episode == 1)
+    }
 }

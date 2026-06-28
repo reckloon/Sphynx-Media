@@ -19,10 +19,23 @@ enum PathParser {
         case episode(series: String, season: Int, episode: Int, episodeTitle: String?, year: Int?)
     }
 
-    /// Container folders that never carry a title (top-level library buckets).
+    /// Container folders that never carry a title (top-level library buckets),
+    /// across the languages a real library is organised in. A bucket here is
+    /// skipped so the *real* title (folder-below or filename) is used instead of
+    /// the library root. Lowercased compare; see `isInformativeFolder`.
     private static let genericFolders: Set<String> = [
+        // English + common organisational folders
         "movies", "movie", "films", "film", "video", "videos", "media",
-        "tv", "shows", "show", "series", "tv shows", "tvshows",
+        "tv", "shows", "show", "series", "tv shows", "tvshows", "tv series",
+        "anime", "cartoons", "kids", "documentaries", "documentary",
+        "downloads", "download", "complete", "incoming", "library",
+        "plex", "jellyfin", "emby", "collections", "collection",
+        // Other languages (фильмы=ru, 映画/ドラマ/アニメ=ja, 电影/电视剧=zh, 영화/드라마=ko, …)
+        "películas", "peliculas", "filmes", "filme", "cine", "videos",
+        "фильмы", "кино", "сериалы", "мультфильмы",
+        "映画", "ドラマ", "アニメ", "番組",
+        "电影", "电视剧", "剧集", "动漫", "综艺",
+        "영화", "드라마", "예능",
     ]
 
     static func parse(_ key: String) -> Parsed {
@@ -52,18 +65,44 @@ enum PathParser {
             return .episode(series: series.title, season: season, episode: loose.episode, episodeTitle: loose.title, year: series.year)
         }
 
+        // Date-stamped episode (daily/talk/news): `Show/2024-01-15.mkv`. Season is
+        // the air year, episode a stable MMDD ordinal so same-year airings sort.
+        if let date = dateEpisode(in: stem) {
+            let series = seriesTitle(dirs: dirs, seasonFolderIndex: seasonFolder?.index, filenameStem: stem, markerStart: date.range.lowerBound)
+            return .episode(series: series.title, season: date.season, episode: date.episode, episodeTitle: nil, year: series.year)
+        }
+
+        // Absolute-numbered episode (anime): `One Piece - 1071`. Gated to avoid
+        // hijacking a movie that merely ends in a number (`Ocean's 11`).
+        if let abs = absoluteEpisode(in: stem, hasSeasonFolder: seasonFolder != nil) {
+            let series = seriesTitle(dirs: dirs, seasonFolderIndex: seasonFolder?.index, filenameStem: stem, markerStart: abs.range.lowerBound)
+            return .episode(series: series.title, season: seasonFolder?.season ?? 1, episode: abs.episode, episodeTitle: abs.title, year: series.year)
+        }
+
         // --- Movie ---
         // Prefer the immediate parent folder when it's informative; the folder
         // carries the clean, canonical title even when the filename is foreign.
+        let file = FilenameParser.parse(filename)
         if let parent = dirs.last, isInformativeFolder(parent) {
             let folder = FolderName.parse(parent)
             if !folder.title.isEmpty {
-                return .movie(title: folder.title, year: folder.year)
+                // Guard against an unlisted localized library root masquerading as
+                // a title folder: if it carries no year, is unrelated to the
+                // filename's own title, and the filename *does* carry a year, the
+                // file is the richer source — use it. Otherwise the folder wins
+                // (and can borrow the file's year when it has none of its own).
+                let bucketish = folder.year == nil && file.year != nil
+                    && !file.title.isEmpty && !related(folder.title, file.title)
+                if !bucketish {
+                    return .movie(title: folder.title, year: folder.year ?? file.year)
+                }
             }
         }
-        let fallback = FilenameParser.parse(filename)
-        return .movie(title: fallback.title, year: fallback.year)
+        return .movie(title: file.title, year: file.year)
     }
+
+    /// Plausible upper bound for a year token (next calendar year).
+    private static let maxYear: Int = Calendar.current.component(.year, from: Date()) + 1
 
     // MARK: - Series title
 
@@ -83,8 +122,12 @@ enum PathParser {
             let parsed = FolderName.parse(showFolder)
             if !parsed.title.isEmpty { return (parsed.title, parsed.year) }
         }
-        // Fall back to the cleaned filename prefix before the marker.
-        let prefix = markerStart.map { String(filenameStem[filenameStem.startIndex..<$0]) } ?? filenameStem
+        // Fall back to the cleaned filename prefix before the marker, dropping a
+        // leading `[group]` fansub tag (`[SubsPlease] One Piece` → `One Piece`).
+        var prefix = markerStart.map { String(filenameStem[filenameStem.startIndex..<$0]) } ?? filenameStem
+        if let r = prefix.range(of: #"^\s*\[[^\]]+\]\s*"#, options: .regularExpression) {
+            prefix.removeSubrange(r)
+        }
         let parsed = FilenameParser.parse(prefix)
         return (parsed.title.isEmpty ? prefix : parsed.title, parsed.year)
     }
@@ -133,7 +176,7 @@ enum PathParser {
     /// Explicit `SxxExx` / `s1e2` / `1x05` in the filename. The `NxNN` form guards
     /// digit boundaries so a resolution (`1280x720`) is never mistaken for it.
     private static func episodeMarker(in stem: String) -> Marker? {
-        for pattern in ["[sS](\\d{1,2})[eE](\\d{1,2})", "(?<![0-9])(\\d{1,2})[xX](\\d{2})(?![0-9])"] {
+        for pattern in ["[sS](\\d{1,4})[eE](\\d{1,4})", "(?<![0-9])(\\d{1,2})[xX](\\d{2})(?![0-9])"] {
             guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let range = NSRange(stem.startIndex..<stem.endIndex, in: stem)
             guard let m = regex.firstMatch(in: stem, range: range),
@@ -167,6 +210,70 @@ enum PathParser {
             return (n, title)
         }
         return nil
+    }
+
+    // MARK: - Date-stamped & absolute-numbered episodes
+
+    private struct DateEp { var season: Int; var episode: Int; var range: Range<String.Index> }
+
+    /// A `YYYY-MM-DD` / `YYYY.MM.DD` air date (daily shows). Season = year,
+    /// episode = `MM*100 + DD` so same-year airings keep their calendar order.
+    private static func dateEpisode(in stem: String) -> DateEp? {
+        let pattern = #"(?<![0-9])((?:19|20)\d{2})[-._](0[1-9]|1[0-2])[-._](0[1-9]|[12]\d|3[01])(?![0-9])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = NSRange(stem.startIndex..<stem.endIndex, in: stem)
+        guard let m = regex.firstMatch(in: stem, range: ns),
+              let y = Range(m.range(at: 1), in: stem).flatMap({ Int(stem[$0]) }),
+              let mo = Range(m.range(at: 2), in: stem).flatMap({ Int(stem[$0]) }),
+              let d = Range(m.range(at: 3), in: stem).flatMap({ Int(stem[$0]) }),
+              let full = Range(m.range, in: stem)
+        else { return nil }
+        return DateEp(season: y, episode: mo * 100 + d, range: full)
+    }
+
+    private struct AbsEp { var episode: Int; var title: String?; var range: Range<String.Index> }
+
+    /// An absolute episode number behind a ` - N` delimiter (`One Piece - 1071`).
+    /// The space-dash-space requirement keeps a movie's trailing number
+    /// (`Ocean's 11`, `Blade Runner 2049`) out. It only fires with positive TV
+    /// signal: a season-folder ancestor, a leading `[group]` fansub tag, or a
+    /// multi-digit number that isn't a plausible release year.
+    private static func absoluteEpisode(in stem: String, hasSeasonFolder: Bool) -> AbsEp? {
+        let pattern = #"\s[-–]\s0*(\d{1,4})(?=[\s_.\[\(]|$)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = NSRange(stem.startIndex..<stem.endIndex, in: stem)
+        guard let m = regex.firstMatch(in: stem, range: ns),
+              let r = Range(m.range(at: 1), in: stem), let n = Int(stem[r]), n > 0,
+              let full = Range(m.range, in: stem)
+        else { return nil }
+
+        let digits = stem.distance(from: r.lowerBound, to: r.upperBound)
+        // A 4-digit value in year range is a release year, not an episode.
+        if digits == 4 && (1900...maxYear).contains(n) { return nil }
+
+        let hasGroupTag = matches(stem, #"^\s*\[[^\]]+\]"#)
+        guard hasSeasonFolder || hasGroupTag || digits >= 2 else { return nil }
+
+        let title = cleanTitleTail(String(stem[full.upperBound...]))
+        return AbsEp(episode: n, title: title, range: full)
+    }
+
+    /// Whether two titles plainly refer to the same thing (containment or a shared
+    /// word after normalisation) — used to tell a real title folder from a library
+    /// bucket when neither carries a year.
+    private static func related(_ a: String, _ b: String) -> Bool {
+        let na = normalizeForCompare(a), nb = normalizeForCompare(b)
+        guard !na.isEmpty, !nb.isEmpty else { return false }
+        if na.contains(nb) || nb.contains(na) { return true }
+        let ta = Set(na.split(separator: " ")), tb = Set(nb.split(separator: " "))
+        return !ta.intersection(tb).isEmpty
+    }
+
+    private static func normalizeForCompare(_ s: String) -> String {
+        s.lowercased().unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) || $0 == " " }
+            .map(Character.init).reduce(into: "") { $0.append($1) }
+            .split(separator: " ").joined(separator: " ")
     }
 
     /// Episode title from a curated ` - SxxExx - Title [junk]` filename. Requires
@@ -248,6 +355,13 @@ enum PathParser {
 /// stays intact.
 enum FolderName {
     static func parse(_ name: String) -> (title: String, year: Int?) {
+        // A scene-style dotted release folder (`Cars.2006.1080p.BluRay.x264-GROUP`)
+        // is not curator-clean — parse it like a release filename instead.
+        if looksLikeReleaseName(name) {
+            let p = FilenameParser.parse(name)
+            return (p.title, p.year)
+        }
+
         let maxYear = Calendar.current.component(.year, from: Date()) + 1
         var title = name
         var year: Int?
@@ -277,5 +391,14 @@ enum FolderName {
             .trimmingCharacters(in: CharacterSet(charactersIn: " -–·"))
             .trimmingCharacters(in: .whitespaces)
         return (title, year)
+    }
+
+    /// A dot/underscore-delimited folder carrying release junk (resolution, codec,
+    /// source tag). A curated `Title (Year)` folder uses spaces, so this never
+    /// fires on `Rogue One - A Star Wars Story (2016)` or `Big Hero 6 (2014)`.
+    private static func looksLikeReleaseName(_ name: String) -> Bool {
+        guard name.contains("."), !name.contains(" ") else { return false }
+        let tokens = name.lowercased().split(whereSeparator: { "._-+".contains($0) }).map(String.init)
+        return tokens.contains { FilenameParser.isJunk($0) }
     }
 }

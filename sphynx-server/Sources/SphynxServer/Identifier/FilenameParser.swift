@@ -24,7 +24,12 @@ enum FilenameParser {
 
     /// Whether a token is release junk (resolution, codec, source tag, …).
     /// Exposed so folder-aware parsing can trim a title at the first junk token.
-    static func isJunk(_ token: String) -> Bool { junk.contains(token.lowercased()) }
+    static func isJunk(_ token: String) -> Bool {
+        let t = token.lowercased()
+        if junk.contains(t) { return true }
+        // A `WxH` resolution token (`1280x720`, `1920x1080`) is also release junk.
+        return t.range(of: #"^\d{3,4}x\d{3,4}$"#, options: .regularExpression) != nil
+    }
 
     /// Year must be plausible (1900 .. nextYear) to avoid matching numbers that
     /// merely look like years (e.g. "2049" in a title).
@@ -35,16 +40,27 @@ enum FilenameParser {
         let lastComponent = key.split(separator: "/").last.map(String.init) ?? key
         let noExtension = stripExtension(lastComponent)
 
-        // Normalise separators (including bracket characters) to spaces.
+        // Normalise separators (incl. brackets and CJK punctuation/full-width
+        // separators) to spaces, and fold full-width digits to ASCII so a
+        // full-width year (`２０１６`) is recognised. CJK titles with no ASCII
+        // spaces still tokenise around their year via these separators.
         let normalised = noExtension.map { ch -> Character in
-            "._-+()[]{}".contains(ch) ? " " : ch
+            if "._-+()[]{}·・。、　．".contains(ch) { return " " }
+            if let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1,
+               (0xFF10...0xFF19).contains(scalar.value) {
+                return Character(UnicodeScalar(scalar.value - 0xFF10 + 0x30)!)  // ０-９ → 0-9
+            }
+            return ch
         }
         let tokens = String(normalised).split(separator: " ").map(String.init).filter { !$0.isEmpty }
 
-        // First plausible 4-digit year marks the boundary; title is what precedes it.
+        // The release year is the first plausible 4-digit token that is *not* the
+        // leading token: a year at index 0 belongs to the title (`1917`,
+        // `2001 A Space Odyssey`), not the boundary. Title is what precedes it.
         var year: Int?
         var yearIndex: Int?
-        for (index, token) in tokens.enumerated() {
+        for index in tokens.indices where index >= 1 {
+            let token = tokens[index]
             if token.count == 4, let value = Int(token), (1900...maxYear).contains(value) {
                 year = value
                 yearIndex = index
@@ -52,10 +68,13 @@ enum FilenameParser {
             }
         }
 
-        let titleTokens = (yearIndex.map { Array(tokens[..<$0]) } ?? tokens)
-            .filter { !junk.contains($0.lowercased()) }
+        let titleTokens = yearIndex.map { Array(tokens[..<$0]) } ?? tokens
+        // Drop release junk — but if that leaves nothing, the title *is* a
+        // junk-vocabulary word (`Cam`, `Web`, `Cut`), so keep it unfiltered.
+        let filtered = titleTokens.filter { !isJunk($0) }
+        let kept = filtered.isEmpty ? titleTokens : filtered
 
-        let title = titleTokens.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        let title = kept.joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return Parsed(title: title.isEmpty ? noExtension : title, year: year)
     }
 
