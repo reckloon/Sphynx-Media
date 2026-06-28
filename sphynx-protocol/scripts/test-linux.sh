@@ -15,6 +15,12 @@ docker build \
     --no-cache \
     --progress=plain \
     --target test \
+    -t sphynx-protocol-test \
     -f "$DIR/Dockerfile.test" \
     "$DIR"
 echo "==> Linux tests passed."
+
+# Reusing the tag above means each run replaces the previous image rather than
+# orphaning an ~8GB untagged one. Sweep any now-dangling predecessor so repeated
+# runs don't accumulate disk.
+docker image prune -f >/dev/null 2>&1 || true
