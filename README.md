@@ -134,20 +134,31 @@ page loads, **you've got a working Sphynx server.** 🎉
 
 Everything from here on is done in that web panel — no config files, no `curl`.
 
-You'll see four tabs along the top:
+An **Activity panel** sits at the top of every page — it shows, at a glance, how
+many items your sources hold versus how many are in the database, and how many
+have fetched posters/descriptions ("enriched"), plus what's scanning right now.
 
+Below it you'll see five tabs:
+
+- **Libraries** — the shelves your media gets sorted onto (Movies, TV Shows, …),
+  *and* the storage sources that feed them (where your files live + a **Scan**
+  button). One clean connection form per driver: local, http, webdav, smb, ftp.
+- **Users** — accounts for each person who'll use a player app, with a permission
+  editor (global or per-library) and per-user password resets.
+- **Items** — fix a title's metadata by hand: edit its name, year, poster, etc.
+  Anything you change is **locked** so a re-scan won't overwrite it. You can also
+  re-point a title at the right TMDB id.
 - **Settings** — your server's name and behavior (covered [below](#settings-without-the-terminal)).
-- **Libraries** — the shelves your media gets sorted onto (Movies, TV Shows, …).
-- **Users** — accounts for each person who'll use a player app.
-- **Extensions** — optional add-ons, each with its own controls:
-  - **Storage** — *where* your media actually lives and how to reach it (one clean
-    connection form per driver: local, http, webdav, smb, ftp).
-  - **Diagnostics** — a live **Activity** dashboard, a database peek, and logs for when
-    you're curious or something's stuck.
+- **Extensions** — optional add-ons:
+  - **Diagnostics** — a database peek and logs for when something's stuck.
   - **Media probe** — uses [ffmpeg](https://ffmpeg.org/)'s `ffprobe` to read each
     title's real audio/subtitle tracks (languages, codecs, channels), any subtitle
     files next to the video, and embedded chapters — so your player can show a proper
     "Audio: English 5.1 / Subtitles: Spanish" picker.
+
+There's also a separate **http://localhost:8080/user** page where each of your
+users can sign in and manage their own profile — display name, profile picture,
+password, and a one-click "reset my watch history everywhere."
 
 That's the whole server. No config files to hand-edit, no JSON to memorize.
 
@@ -163,10 +174,10 @@ clicks-worth of setup, then Sphynx does the rest.
 Click **Libraries → Add library**. Give it a **Title** (like "Movies") and pick a
 **Kind** (Movies, TV Shows, etc.). Done — that's an empty shelf waiting for media.
 
-### Step 2 — Tell it where your media lives (Extensions → Storage)
+### Step 2 — Tell it where your media lives (Libraries → Storage sources)
 
-Open **Extensions → Storage** and add a source. A *source* is just "here's where my
-files are and how to reach them." Fill in:
+Scroll down the **Libraries** tab to **Storage sources** and add one. A *source* is
+just "here's where my files are and how to reach them." Fill in:
 
 - **Label** — any name you'll recognize ("My NAS", "Cloud bucket").
 - **Driver** — how Sphynx reaches the files. Pick **HTTP** for media at web URLs,
@@ -189,10 +200,11 @@ Click **Add source** to save it.
 
 ### Step 3 — Press the button (Scan)
 
-Find your new source in the **Extensions → Storage** list and click **Scan**. Sphynx walks through
-everything, adds each title to the right shelf, and — if you set a TMDB key —
-fetches posters, descriptions, cast, and episode art. Pop over to the
-**Extensions → Diagnostics** module's **Activity** view to watch it work in real time.
+Find your new source in the **Libraries → Storage sources** list and click **Scan**.
+Sphynx walks through everything, adds each title to the right shelf, and — if you
+set a TMDB key — fetches posters, descriptions, cast, and episode art. Watch the
+**Activity** panel at the top of the page count it up in real time (items in
+source → in database → enriched).
 
 When the scan finishes, your library is live. **That's it** — there's nothing
 left to configure to start watching.
