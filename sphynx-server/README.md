@@ -48,6 +48,8 @@ curl http://localhost:9410/v1/info
 | `SPHYNX_REFRESH_TTL`    | `2592000`                  | Refresh-token lifetime (seconds) |
 | `SPHYNX_TMDB_API_KEY`   | *(empty)*                  | TMDB v3 key; empty disables identification/enrichment. Initial **seed** only — also settable in the admin GUI (Settings, `GET`/`PATCH /v1/admin/tmdb`), persisted in the DB; a change applies on the next restart |
 | `SPHYNX_ENRICH_TTL`     | `7776000` (90d)            | Server-owned enrichment freshness; re-fetched by maintenance |
+| `SPHYNX_METADATA_LANGUAGE` | `en-US`                 | TMDB metadata language (`language-COUNTRY`); normalizes enriched titles/overviews. Runtime-tunable in Settings |
+| `SPHYNX_AVATAR_MAX_BYTES` | `2000000` (2 MB)         | Max accepted user-avatar upload size (bytes) |
 | `SPHYNX_MARKERS_ACCESS` | `readwrite`                | Marker access: `none` \| `read` \| `readwrite` (writes still granted per-user) |
 | `SPHYNX_MARKERS_STALE_AFTER` | `604800` (7d)         | Age after which markers are reported `stale` for client refresh |
 | `SPHYNX_PLAYSTATE_RETENTION` | `31536000` (365d)     | Playstate retention; older entries purged by maintenance |

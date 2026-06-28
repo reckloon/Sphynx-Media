@@ -51,11 +51,18 @@ self-service `ProfileUpdateRequest` + server-hosted avatars, `PlaystateResetResp
 for a full watch-history reset, `SessionInfo`/`SessionsResponse` for per-device
 sign-out, optional passkey/WebAuthn sign-in (`capabilities.passkeys`,
 `PasskeyInfo`/`PasskeyListResponse`/`PasskeyRenameRequest`; the ceremony payloads
-themselves are standard W3C WebAuthn JSON and intentionally not modelled here)), the
-`Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
-one-of, cast, TV positioning, `parentId`/`collectionId`, open `extra`), browse +
-pagination, the typed home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`),
-resolve (`ResolveDescriptor`, tracks, candidates), playstate, bi-directional markers
+themselves are standard W3C WebAuthn JSON and intentionally not modelled here), and
+the QR / code **device-authorization** grant for TVs (`capabilities.deviceAuth`,
+`DeviceAuthResponse`/`DeviceTokenRequest`/`DeviceApproveRequest`/`DevicePendingResponse`)),
+the `Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
+one-of, cast, TV positioning, **music/audiobook positioning** — `artist`/`album`/`track`
+and `audiobook`/`chapter` types with `artistName`/`albumTitle`/`discNumber`/`trackNumber`,
+**selectable versions/editions** (`Item.versions`/`MediaVersion`), **per-user ratings**
+(`userRating`), `parentId`/`collectionId`, open `extra`), the typed **browse contract**
+(`BrowseCapabilities` sort/filter + `ItemsResponse.totalCount`/`pageSize`), the typed
+home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`), resolve
+(`ResolveDescriptor`, tracks incl. **lossless audio detail** `MediaStream.sampleRate`/
+`bitDepth`/`bitRate`, candidates), playstate, bi-directional markers
 (`MarkerContribution`, `MarkersInfo`), the error envelope, and the open-enum
 machinery. The test suite round-trips every type and proves unknown payloads decode
 without throwing.

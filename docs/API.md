@@ -58,10 +58,10 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
                "dateAdded", "updatedAt", "seriesId", "seriesTitle", "seasonIndex",
                "episodeIndex", "childCount", "parentId", "collectionId", "collectionTitle",
-               "extra", "overview", "runtime", "genres", "chapters", "communityRating", "officialRating",
+               "extra", "overview", "runtime", "genres", "communityRating", "officialRating",
                "cast", "originalTitle", "sortTitle", "tagline", "status", "premiereDate",
                "endDate", "studios", "directors", "writers", "countries", "tags", "trailers",
-               "externalIds", "versions", "resumePosition", "watched", "playCount",
+               "externalIds", "chapters", "versions", "resumePosition", "watched", "playCount",
                "isFavorite", "userRating", "lastPlayedAt"],
     "browse": { "sorts": ["added", "name", "rating"], "filters": ["genre", "year", "unwatched"] },
     "playstateReportInterval": 5

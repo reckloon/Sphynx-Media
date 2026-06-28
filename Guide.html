@@ -408,9 +408,10 @@
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "product":"Sphynx", "serverName":"Sphynx Reference Server", "id":"srv_reference",
   "version":"1.0", "protocol":["v1"],
-  "capabilities": { "search":false, "playstate":true, "candidates":true, "events":true, "passkeys":false,
+  "capabilities": { "search":false, "playstate":true, "candidates":true, "events":true, "passkeys":false, "deviceAuth":true,
     "metadata": { "markers":"readwrite", "images":"read" },
-    "fields": ["id","type","title","tmdbId","year","images","placeholder","dateAdded","updatedAt","seriesId","seriesTitle","seasonIndex","episodeIndex","childCount","parentId","collectionId","collectionTitle","extra","overview","runtime","genres","communityRating","officialRating","cast","originalTitle","sortTitle","tagline","status","premiereDate","endDate","studios","directors","writers","countries","tags","trailers","chapters","externalIds","resumePosition","watched","playCount","isFavorite","lastPlayedAt"],
+    "fields": ["id","type","title","tmdbId","year","images","placeholder","dateAdded","updatedAt","seriesId","seriesTitle","seasonIndex","episodeIndex","childCount","parentId","collectionId","collectionTitle","extra","overview","runtime","genres","communityRating","officialRating","cast","originalTitle","sortTitle","tagline","status","premiereDate","endDate","studios","directors","writers","countries","tags","trailers","chapters","versions","externalIds","resumePosition","watched","playCount","isFavorite","userRating","lastPlayedAt"],
+    "browse": { "sorts":["added","name","rating"], "filters":["genre","year","unwatched"] },
     "playstateReportInterval":5 } }</span></code></pre>
 <p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable. <strong><code>playstateReportInterval</code></strong> (seconds) is the server's preferred client playback-report cadence — a client reporting progress periodically SHOULD use it (default ~5s if absent). Push-only: the server never polls. <strong><code>events</code></strong> advertises the additive <a href="#api-events">server→client event stream</a> (SSE); absent ⇒ the client falls back to polling. <strong><code>passkeys</code></strong> advertises passwordless <a href="#api-passkeys">passkey (WebAuthn) sign-in</a>; absent/<code>false</code> ⇒ no Relying Party is configured, so the client hides passkey affordances and uses password login.</p>
 <div class="callout tip">
@@ -692,6 +693,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
   "images": { "primary":"…", "backdrop":"…", "thumb":"…", "logo":"…", "banner":"…" },
   "placeholder": { "url":"…/tiny.jpg" },
   "seriesId":"…", "seriesTitle":"…", "seasonIndex":1, "episodeIndex":3, "childCount":10,
+  "versions":[ { "id":"v_…", "label":"4K · HDR10 · Remux", "resolution":"4K", "container":"mkv" } ],
   "parentId":"it_…", "collectionId":"it_…", "collectionTitle":"…",
   "genres":["Sci-Fi"], "communityRating":8.0, "criticRating":88, "officialRating":"R",
   "cast":[ { "id":"pe_…", "name":"Ryan Gosling", "role":"K", "imageURL":"…",
