@@ -904,9 +904,12 @@ enum AdminWebController {
     var subs = p.externalSubtitles.length ? '<div class="group-title">External subtitles</div>' + p.externalSubtitles.map(function (x) {
       return '<div class="item"><span>' + esc(x.url) + '</span><span class="meta">' + esc(x.language || '') + ' · ' + esc(x.format) + '</span></div>';
     }).join('') : '';
+    var chapters = (p.chapters && p.chapters.length) ? '<div class="group-title">Chapters</div>' + p.chapters.map(function (c) {
+      return '<div class="item"><span>' + esc(c.title || 'Chapter') + '</span><span class="meta">' + Math.round(c.start) + 's</span></div>';
+    }).join('') : '';
     $('#mp-result').innerHTML =
-      '<div class="toolbar" style="margin-top:14px;"><strong>' + p.streams.length + ' streams</strong><span class="meta">' + esc(p.prober) + (p.durationSeconds ? ' · ' + Math.round(p.durationSeconds) + 's' : '') + '</span></div>' +
-      '<div class="tablebox"><table class="db"><thead><tr><th>#</th><th>kind</th><th>codec</th><th>lang</th><th>title</th><th></th></tr></thead><tbody>' + (rows || '<tr><td class="null">no streams</td></tr>') + '</tbody></table></div>' + subs;
+      '<div class="toolbar" style="margin-top:14px;"><strong>' + p.streams.length + ' streams</strong><span class="meta">' + esc(p.prober) + (p.durationSeconds ? ' · ' + Math.round(p.durationSeconds) + 's' : '') + (p.chapters && p.chapters.length ? ' · ' + p.chapters.length + ' chapters' : '') + '</span></div>' +
+      '<div class="tablebox"><table class="db"><thead><tr><th>#</th><th>kind</th><th>codec</th><th>lang</th><th>title</th><th></th></tr></thead><tbody>' + (rows || '<tr><td class="null">no streams</td></tr>') + '</tbody></table></div>' + subs + chapters;
   }
 
   $('#login-btn').onclick = login;

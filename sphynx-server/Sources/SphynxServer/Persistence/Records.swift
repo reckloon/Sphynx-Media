@@ -204,6 +204,9 @@ struct StoredCast: Codable, Sendable {
 struct StoredProbe: Codable, Sendable {
     var streams: [MediaStream]
     var externalSubtitles: [ExternalSubtitle]
+    /// Embedded container chapters (optional; absent on rows probed before chapter
+    /// support, so it decodes as nil rather than throwing).
+    var chapters: [Chapter]? = nil
     /// When the probe ran (epoch seconds).
     var probedAt: Double
 }
@@ -407,6 +410,8 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             item.sortTitle = sortTitle
             item.tags = decodedStringList(tagsJSON)
             item.trailers = decodedStringList(trailersJSON)
+            // Embedded chapters, when the item has been probed (media-probe ext).
+            item.chapters = storedChapters()
             // Extended TMDB metadata (omitted fields stay nil — nothing breaks).
             if let ext = extended() {
                 item.originalTitle = ext.originalTitle
@@ -491,6 +496,15 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             streams: streams.isEmpty ? nil : streams,
             externalSubtitles: subs.isEmpty ? nil : subs
         )
+    }
+
+    /// Embedded chapters from a cached probe, projected onto `Item.chapters`.
+    /// `ffprobe` is the only source — TMDB has no chapter data. Nil until probed.
+    func storedChapters() -> [Chapter]? {
+        guard let probedTracksJSON, let data = probedTracksJSON.data(using: .utf8),
+              let probe = try? JSONDecoder().decode(StoredProbe.self, from: data),
+              let chapters = probe.chapters, !chapters.isEmpty else { return nil }
+        return chapters
     }
 
     /// Markers + provenance for `GET /v1/items/<id>/markers`.

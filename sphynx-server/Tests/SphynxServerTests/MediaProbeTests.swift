@@ -22,6 +22,10 @@ struct MediaProbeTests {
             { "index": 3, "codec_name": "subrip", "codec_type": "subtitle",
               "tags": { "language": "spa" }, "disposition": { "default": 0, "forced": 1 } }
           ],
+          "chapters": [
+            { "id": 0, "start_time": "0.000000", "end_time": "600.000000", "tags": { "title": "Opening" } },
+            { "id": 1, "start_time": "600.000000", "end_time": "1234.000000", "tags": { "title": "Finale" } }
+          ],
           "format": { "format_name": "matroska,webm", "duration": "1234.567" }
         }
         """.utf8)
@@ -35,6 +39,12 @@ struct MediaProbeTests {
         #expect(result.formatName == "matroska,webm")
         #expect(result.durationSeconds == 1234.567)
         #expect(result.prober == "ffprobe 6.1")
+
+        // Embedded chapters (TMDB has none — ffprobe is the only source).
+        #expect(result.chapters.count == 2)
+        #expect(result.chapters.first?.start == 0)
+        #expect(result.chapters.first?.title == "Opening")
+        #expect(result.chapters.last?.start == 600)
 
         let video = try #require(result.streams.first { $0.kind == "video" })
         #expect(video.codec == "h264")

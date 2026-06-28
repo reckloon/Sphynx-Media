@@ -6,7 +6,8 @@ import SphynxProtocol
 // (`SphynxProtocol`) — the same shapes the resolve descriptor's `Tracks` carries,
 // so a probe result and `/resolve` speak one vocabulary.
 
-/// The full result of probing one item: its streams plus any sidecar subtitles.
+/// The full result of probing one item: its streams, any sidecar subtitles, and
+/// the container's embedded chapters.
 struct ProbeResult: Codable, Sendable, ResponseEncodable {
     var itemId: String
     /// The location that was probed (the resolved direct URL).
@@ -17,6 +18,9 @@ struct ProbeResult: Codable, Sendable, ResponseEncodable {
     var durationSeconds: Double?
     var streams: [MediaStream]
     var externalSubtitles: [ExternalSubtitle]
+    /// Embedded chapter markers (from `ffprobe -show_chapters`). These are
+    /// container-level — TMDB has no chapter data, so this is the only source.
+    var chapters: [Chapter]
 }
 
 /// Anything that can probe a media location into typed streams. Abstracted so the
@@ -47,6 +51,11 @@ enum FFprobeParser {
                 isForced: s.disposition?["forced"].map { $0 == 1 }
             )
         }
+        let chapters = (raw.chapters ?? []).compactMap { c -> Chapter? in
+            guard let start = c.start_time.flatMap(Double.init) else { return nil }
+            let title = c.tags?["title"]
+            return Chapter(start: start, title: (title?.isEmpty ?? true) ? nil : title)
+        }
         return ProbeResult(
             itemId: itemId,
             probedURL: probedURL,
@@ -54,13 +63,19 @@ enum FFprobeParser {
             formatName: raw.format?.format_name,
             durationSeconds: raw.format?.duration.flatMap(Double.init),
             streams: streams,
-            externalSubtitles: externalSubtitles
+            externalSubtitles: externalSubtitles,
+            chapters: chapters
         )
     }
 
     private struct RawFFprobe: Decodable {
         var streams: [RawStream]?
         var format: RawFormat?
+        var chapters: [RawChapter]?
+    }
+    private struct RawChapter: Decodable {
+        var start_time: String?
+        var tags: [String: String]?
     }
     private struct RawStream: Decodable {
         var index: Int
@@ -112,7 +127,7 @@ struct FFprobeProber: MediaProber {
     }
 
     func probe(url: String, headers: [String: String], itemId: String) async throws -> ProbeResult {
-        var args = ["-v", "quiet", "-print_format", "json", "-show_streams", "-show_format"]
+        var args = ["-v", "quiet", "-print_format", "json", "-show_streams", "-show_format", "-show_chapters"]
         // HTTP(S) sources may need auth headers; ffprobe takes them before the input.
         if !headers.isEmpty, url.hasPrefix("http") {
             let blob = headers.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"

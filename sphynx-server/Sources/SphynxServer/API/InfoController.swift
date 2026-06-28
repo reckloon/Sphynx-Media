@@ -35,8 +35,15 @@ struct InfoController: Sendable {
     }
 
     /// The canonical `Item` fields this reference server can populate, advertised in
-    /// `capabilities.fields` so clients know its coverage up front. Notably ABSENT
-    /// (the server does not currently fill these): `criticRating` and `chapters`.
+    /// `capabilities.fields` so clients know its coverage up front.
+    ///
+    /// `chapters` is populated **only when an item has been probed** by the
+    /// media-probe extension (ffprobe `-show_chapters` — TMDB has no chapter data);
+    /// it's advertised because the server *can* serve it. The one canonical field
+    /// the server never fills is `criticRating`: TMDB exposes only an audience score
+    /// (`vote_average` → `communityRating`), not a critic aggregate, so a critic
+    /// rating needs a different source (e.g. an OMDb-backed extension) or rides in
+    /// `extra` / is supplied by the client.
     ///
     /// Keep in sync with `ItemRecord.toProtocol(full:)` + the per-user fold.
     static let supportedItemFields: [String] = [
@@ -50,6 +57,8 @@ struct InfoController: Sendable {
         "overview", "runtime", "genres", "communityRating", "officialRating", "cast",
         "originalTitle", "sortTitle", "tagline", "status", "premiereDate", "endDate",
         "studios", "directors", "writers", "countries", "tags", "trailers", "externalIds",
+        // Embedded chapters (when probed by the media-probe extension)
+        "chapters",
         // Per-user state
         "resumePosition", "watched", "playCount", "isFavorite", "lastPlayedAt",
     ]

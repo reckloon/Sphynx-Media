@@ -47,6 +47,30 @@ struct ResolveTracksTests {
         #expect(surround.channels == 6)
     }
 
+    @Test("probed chapters project onto the item at full detail")
+    func foldsChapters() async throws {
+        let (catalog, _) = try makeResolver()
+        let item = try await catalog.createItem(
+            type: "movie", title: "X", sourceId: nil,
+            sourceKey: "https://cdn.example/movie.mkv", container: "mkv", tmdbId: nil)
+
+        let probe = StoredProbe(
+            streams: [], externalSubtitles: [],
+            chapters: [Chapter(start: 0, title: "Opening"), Chapter(start: 600, title: "Finale")],
+            probedAt: 0)
+        var record = try #require(try await catalog.item(id: item.id))
+        record.probedTracksJSON = String(data: try JSONEncoder().encode(probe), encoding: .utf8)
+        try await catalog.updateItem(record)
+
+        let refreshed = try #require(try await catalog.item(id: item.id))
+        let full = refreshed.toProtocol(full: true)
+        #expect(full.chapters?.count == 2)
+        #expect(full.chapters?.first?.title == "Opening")
+        #expect(full.chapters?.last?.start == 600)
+        // Skeleton omits chapters (enrichment-level field).
+        #expect(refreshed.toProtocol(full: false).chapters == nil)
+    }
+
     @Test("an un-probed item resolves with no tracks (back-compatible)")
     func noTracksWhenUnprobed() async throws {
         let (catalog, resolver) = try makeResolver()

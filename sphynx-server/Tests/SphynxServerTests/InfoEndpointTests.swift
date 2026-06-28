@@ -25,13 +25,14 @@ struct InfoEndpointTests {
                 // list is honest: it includes what it fills and omits what it
                 // doesn't, so clients can flag unsupported features.
                 let fields = info.capabilities.fields
+                // `chapters` is advertised — the server can fill it via the
+                // media-probe extension (ffprobe). `criticRating` is the lone
+                // absentee: TMDB has no critic aggregate, so it never fills it.
                 for present in ["title", "overview", "genres", "cast", "images", "parentId",
-                                "collectionId", "tags", "trailers", "sortTitle", "resumePosition"] {
+                                "collectionId", "tags", "trailers", "sortTitle", "resumePosition", "chapters"] {
                     #expect(fields.contains(present), "should advertise \(present)")
                 }
-                for absent in ["criticRating", "chapters"] {
-                    #expect(!fields.contains(absent), "must not over-claim \(absent)")
-                }
+                #expect(!fields.contains("criticRating"), "must not over-claim criticRating")
             }
         }
     }

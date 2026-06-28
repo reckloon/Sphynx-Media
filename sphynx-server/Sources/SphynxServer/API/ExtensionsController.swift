@@ -91,11 +91,12 @@ struct ExtensionsController: Sendable {
         let prober = FFprobeProber(ffprobePath: ffprobePath)
         let result = try await prober.probe(url: descriptor.url, headers: descriptor.headers, itemId: itemId)
 
-        // Cache the result on the item so `/v1/resolve` can serve rich `tracks`
-        // (languages / codecs / channels + sidecar subtitles) without re-probing.
+        // Cache the result on the item so `/v1/resolve` serves rich `tracks`
+        // (languages / codecs / channels + sidecar subtitles) and browse serves
+        // `chapters`, all without re-probing.
         if var item = try await catalog.item(id: itemId) {
             let stored = StoredProbe(streams: result.streams, externalSubtitles: result.externalSubtitles,
-                                     probedAt: Date().timeIntervalSince1970)
+                                     chapters: result.chapters, probedAt: Date().timeIntervalSince1970)
             if let data = try? JSONEncoder().encode(stored) {
                 item.probedTracksJSON = String(data: data, encoding: .utf8)
                 try await catalog.updateItem(item)

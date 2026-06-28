@@ -79,9 +79,12 @@ field names it can populate (distinct from `metadata`, which is the read/write
 
 An **absent or empty** `fields` means the server doesn't advertise coverage; a
 client must then assume nothing and simply render whatever each item actually
-carries. (The reference server advertises the full list above and deliberately
-omits `criticRating` and `chapters`, which it does not populate — see
-[Item shape](#item-shape).)
+carries. (The reference server advertises the full list above. It now serves
+`chapters` for any item probed by the [media-probe extension](#extensions--admin-only)
+— `ffprobe -show_chapters`, since TMDB has no chapter data. The one field it never
+fills is `criticRating`: TMDB exposes only an audience score (`vote_average` →
+`communityRating`), not a critic aggregate, so a critic rating needs a different
+source — see [Item shape](#item-shape).)
 
 ---
 
@@ -860,11 +863,12 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   the updated config. Persisted; applied live (no restart).
 - **`GET /v1/admin/extensions/media-probe/probe?itemId=<id>`** → resolves the item
   to its direct location (as a player would), runs `ffprobe`, and returns
-  `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ] }`.
+  `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ], "chapters": [ { "start", "title" } ] }`.
   Returns **400** when the extension is disabled or `ffprobe` isn't available.
   The result is **cached on the item**, so [`GET /v1/resolve/{id}`](#resolve) then
-  serves the same streams + external subtitles as its `tracks` — clients get the
-  rich detail without probing the container themselves.
+  serves the streams + external subtitles as its `tracks`, and the item's full
+  detail carries the embedded `chapters` — all without re-probing. (TMDB has no
+  chapter data; `ffprobe -show_chapters` is the only source.)
 
 ---
 
@@ -940,9 +944,13 @@ omitted when empty. The **reference server** currently populates the TMDB-derive
 fields (overview, year, runtime, genres, `communityRating`, `officialRating`, cast
 — including **TV** series/episodes — directors/writers, studios, countries, tagline,
 status, premiereDate/endDate, `externalIds.imdb`, `sortTitle`, `tags`, `trailers`,
-images incl. `logo`/`banner`) plus `parentId`/`collectionId` and per-user state. It
-does **not** populate `criticRating` or `chapters` — those are reserved for richer
-servers or extensions (or ride in `extra`); clients must render fine without them.
+images incl. `logo`/`banner`) plus `parentId`/`collectionId` and per-user state.
+`chapters` are filled for any item probed by the **media-probe extension**
+(`ffprobe -show_chapters` — TMDB carries no chapters). The one field it never fills
+is `criticRating`: TMDB has only an audience score (`vote_average` →
+`communityRating`), not a critic aggregate, so a critic rating needs a different
+source (e.g. an OMDb-backed extension) or rides in `extra`; clients render fine
+without it.
 (See `capabilities.fields` in [`/v1/info`](#-get-v1info--unauthenticated) for the
 machine-readable coverage list.)
 
