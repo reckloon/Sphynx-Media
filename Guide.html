@@ -429,7 +429,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
 </div>
 <div class="callout tip">
-  <p><strong>Web settings page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and edit the runtime settings above in your browser, no env vars or <code>curl</code> needed. It's a static page that drives the same API; changes apply on the next restart.</p>
+  <p><strong>Web admin page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and manage the server in your browser, no env vars or <code>curl</code> needed. It has three tabs: <strong>Settings</strong> (the runtime settings above), <strong>Libraries</strong> (add / delete), and <strong>Sources</strong> (add / scan / delete, mapping a Movies library and a TV library per source). It's a static page that drives the <code>/v1/admin/*</code> API.</p>
 </div>
 
 <div class="callout tip">
@@ -569,8 +569,8 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <span class="key">{ "product":"Sphynx", "serverName":"Sphynx Reference Server", "id":"srv_reference",
   "version":"1.0", "protocol":["v1"],
   "capabilities": { "search":false, "playstate":true, "candidates":false,
-    "metadata": { "markers":"readwrite", "images":"read" } } }</span></code></pre>
-<p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable.</p>
+    "metadata": { "markers":"readwrite", "images":"read" }, "playstateReportInterval":5 } }</span></code></pre>
+<p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable. <strong><code>playstateReportInterval</code></strong> (seconds) is the server's preferred client playback-report cadence — a client reporting progress periodically SHOULD use it (default ~5s if absent). Push-only: the server never polls.</p>
 
 <h3 id="api-auth">Authentication</h3>
 
@@ -618,11 +618,18 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
   <tr><td><code>detail</code></td><td><code>skeleton</code></td><td><code>skeleton</code> (tile fields) or <code>full</code> (adds enrichment)</td></tr>
   <tr><td><code>limit</code></td><td><code>50</code></td><td>Page size (1–200)</td></tr>
   <tr><td><code>cursor</code></td><td>—</td><td>Opaque pagination cursor from a previous <code>nextCursor</code></td></tr>
+  <tr><td><code>sort</code></td><td><code>added</code></td><td>A library's top level: <code>added</code> | <code>name</code> | <code>rating</code></td></tr>
+  <tr><td><code>order</code></td><td><em>(by sort)</em></td><td><code>asc</code> | <code>desc</code> (default: name asc, added/rating desc)</td></tr>
+  <tr><td><code>genre</code></td><td>—</td><td>Top level only: keep items carrying this genre</td></tr>
+  <tr><td><code>unwatched</code></td><td>—</td><td><code>true</code> ⇒ drop items the caller has marked watched</td></tr>
 </table>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "items": [ { "id":"it_…", "type":"movie", "title":"…", "year":2008 } ],
   "nextCursor": "b2Zmc2V0OjUw" }</span></code></pre>
-<p>An absent <code>nextCursor</code> means the end of the list.</p>
+<p>An absent <code>nextCursor</code> means the end of the list. Items fold the caller's per-user state (<code>resumePosition</code>, <code>watched</code>, <code>playCount</code>, <code>isFavorite</code>, <code>lastPlayedAt</code>). <code>sort</code>/<code>genre</code> apply to a library's top level; children of an item keep their natural order.</p>
+
+<div class="ep"><span class="method badge put">PUT</span><span class="path">/v1/items/{itemId}/state</span><span class="badge auth">auth</span></div>
+<p>Set the caller's per-user state for an item. <strong>Body</strong> (any subset) <code>{ "watched":true, "isFavorite":true }</code> → <strong>200</strong> with the item, state folded in. <strong>403</strong> if the caller can't read the item's library. Play count + last-played are tracked from playback (a non-failed <code>stop</code> bumps them); <code>watched</code>/<code>isFavorite</code> are explicit here.</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}?detail=full</span><span class="badge auth">auth</span></div>
 <p>A single item. <strong>404</strong> <code>not_found</code> if absent. See <a href="#api-item">Item shape</a>.</p>
@@ -688,6 +695,12 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>The user's in-progress items (stored position &gt; 0), <strong>most-recently-played first</strong>, each with <code>resumePosition</code> folded in. Cursor-paginated; <code>detail</code> selects skeleton/full. Returns the same <code>ItemsResponse</code> shape as <code>/v1/items</code>.</p>
 <p>The server only stores and exposes the data (per-user position + <code>updatedAt</code>, ordered by recency) — <strong>the client owns presentation and policy</strong>: it has each item's runtime, so it decides what counts as "finished", whether to hide it, how to sort.</p>
 
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/recent</span><span class="badge auth">auth</span></div>
+<p><strong>Recently Added</strong>: top-level items (movies + series) newest first, per-user state folded in. Cursor-paginated; <code>detail</code> selects skeleton/full. Same <code>ItemsResponse</code> shape.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/favorites</span><span class="badge auth">auth</span></div>
+<p>The caller's favourited items, most-recently-played first. Cursor-paginated; same <code>ItemsResponse</code> shape.</p>
+
 <h3 id="api-admin">Admin <span class="badge auth">server-specific, not part of the wire protocol</span></h3>
 <p>Catalog setup, indexing, manual entry, and server settings. <strong>Auth required</strong>, and the <strong>admin role</strong> unless noted — the item-edit <code>PATCH</code> is gated by the <code>metadata.edit</code> permission instead, so it can be granted to a non-admin. <code>403 forbidden</code> otherwise.</p>
 
@@ -708,13 +721,14 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 <p>Update a library. <strong>Body</strong> (any subset) <code>{ "title":"…", "kind":"…" }</code> → <strong>200</strong> with the updated library.</p>
 
 <div class="ep"><span class="method badge put">DELETE</span><span class="path">/v1/admin/libraries/{libraryId}</span></div>
-<p><strong>Cascade.</strong> Deletes the library, every item it holds (the whole tree), and the sources that feed it. <strong>204</strong> on success.</p>
+<p><strong>Cascade.</strong> Deletes the library and every item it holds, then <strong>unbinds</strong> it from any source that feeds it — a source that also feeds another library survives (with this library removed from its routing); a source left feeding no library is deleted. <strong>204</strong> on success.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources</span></div>
 <pre><code><span class="key">{ "label":"My CDN", "driver":"http", "baseURL":"https://cdn.example",
-  "headers":{ "Authorization":"…" }, "libraryId":"lib_…",
+  "headers":{ "Authorization":"…" },
+  "libraryMap":{ "movie":"lib_movies", "tv":"lib_tv" },
   "manifestURL":"https://cdn.example/manifest.json" }</span></code></pre>
-<p><code>driver</code> defaults to <code>http</code>. <code>libraryId</code> is the library this source feeds; <code>manifestURL</code> is where the indexer lists entries. <strong>200</strong> → <code>{ "id":"src_…", "label":"…", "driver":"http", "config":{…} }</code> — only non-secret fields are returned.</p>
+<p><code>driver</code> defaults to <code>http</code>; <code>manifestURL</code> is where the indexer lists entries. A source feeds a library by content <strong>category</strong>: <code>libraryMap</code> routes each item to a library by type (<code>movie</code> / <code>tv</code>), so <strong>one source + one scan</strong> fills a Movies library and a TV library from the same folder — one driver walk, items split by detected type. A single <code>libraryId</code> is still accepted and acts as the fallback for any unmapped category. <strong>200</strong> → <code>{ "id":"src_…", "label":"…", "driver":"http", "config":{…}, "libraryId":…, "libraryMap":{…} }</code> — only non-secret fields are returned.</p>
 <p>Drivers other than HTTP configure through two open maps: <strong><code>config</code></strong> for non-secret settings, and <strong><code>secrets</code></strong> for credentials. Secrets are stored but <strong>never</strong> returned or logged (for the HTTP driver, request <code>headers</code> are treated the same way).</p>
 <pre><code><span class="key">{ "label":"NAS", "driver":"webdav", "libraryId":"lib_…",
   "config":  { "baseURL":"https://nas.example/remote.php/dav" },
@@ -822,11 +836,12 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
   "trailers":["https://…"], "chapters":[ { "start":0.0, "title":"Intro" } ],
   "status":"Released", "premiereDate":"2017-10-06", "endDate":"…", "dateAdded":"2026-06-27T12:00:00Z",
   "externalIds": { "imdb":"tt1856101", "tvdb":"…" },
-  "resumePosition":1342.5,
+  "resumePosition":1342.5, "watched":true, "playCount":3, "isFavorite":true, "lastPlayedAt":"2026-06-27T12:00:00Z",
   "updatedAt":"2026-06-27T12:00:00Z",
   "extra": { "anything":[1,2,3] }
 }</span></code></pre>
 <p>Every field above is optional and omitted when empty — a server that doesn't have <code>criticRating</code> or <code>chapters</code> simply omits them, and a client renders gracefully without them. The reference server fills the TMDB-derived ones (tagline, studios, directors/writers, <code>externalIds.imdb</code>, premiereDate, status, …) for movies; it leaves the rest for richer servers or extensions. <code>externalIds</code> is an open map keyed by namespace (<code>imdb</code>, <code>tvdb</code>, …); <code>dateAdded</code> powers a "Recently Added" view.</p>
+<p><code>resumePosition</code>, <code>watched</code>, <code>playCount</code>, <code>isFavorite</code>, and <code>lastPlayedAt</code> are <strong>per-user</strong> state, folded in for the authenticated caller (set via <code>PUT /v1/items/{id}/state</code>). Like <code>resumePosition</code> they are <strong>not</strong> enrichment, so they appear in both skeleton and full and never make a skeleton look "enriched".</p>
 <p><code>updatedAt</code> (RFC 3339) is the last change to <strong>client-rendered</strong> data for the item (title, images, enrichment, markers…) — the max of the server's per-field change times. A client can diff this one value to decide "changed since I cached it?" without comparing every field. It <strong>excludes</strong> per-user playstate (<code>resumePosition</code>), so progress reports don't invalidate the cache.</p>
 <p><code>placeholder</code> is a self-describing one-of that may carry <strong>any</strong> low-res form. The reference server emits the <code>url</code> form — a small pre-sized image link — so it stores and processes no image bytes; the protocol equally allows <code>{ "blurHash":"…" }</code> or a future form. <strong>Clients should support both <code>blurHash</code> and <code>url</code></strong>, using whichever the server sent, and fall back to a plain background for forms they don't recognize.</p>
 
@@ -1112,10 +1127,10 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Discovery &amp; auth</strong> — <code>GET /v1/info</code>; password login with short access tokens + rotating refresh tokens; device-scoped sessions.</li>
   <li><strong>Browse</strong> — libraries and items (skeleton/full), cursor pagination, single-item detail.</li>
   <li><strong>Identity &amp; enrichment</strong> — movies and <strong>TV</strong> identified against TMDB; series → season → episode tree with posters, season art, episode stills/titles. A broad canonical field set (tagline, studios, directors/writers, <code>externalIds</code>, premiereDate, …) so clients have what they display.</li>
-  <li><strong>Admin catalog management</strong> — create / list / update / delete libraries, sources, and items, with <strong>cascade</strong> (deleting a library or source removes its items and prunes empty containers).</li>
+  <li><strong>Admin catalog management</strong> — create / list / update / delete libraries, sources, and items, with <strong>cascade</strong>. One source can map a Movies and a TV library, routing a mixed folder by type from a single scan. A built-in <strong>web admin page</strong> (<code>/admin</code>) drives settings, libraries, and sources from the browser.</li>
   <li><strong>Manual edits</strong> — admin <code>PATCH</code> of item metadata with per-field <strong>locks</strong> that survive every scan and refresh.</li>
   <li><strong>Resolve</strong> — direct playback location + headers, resolved fresh per play and never stored (never proxied; carries an optional expiry only for time-bounded source links).</li>
-  <li><strong>Playstate</strong> — start/progress/stop with failed-stop protection, <code>resumePosition</code> folded into browse, and a continue-watching feed.</li>
+  <li><strong>Playstate &amp; per-user state</strong> — start/progress/stop with failed-stop protection; watched / favorite / play-count / last-played; Continue Watching, Recently Added, and Favorites feeds; browse sort (name/added/rating) + genre/unwatched filter.</li>
   <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable <strong>recap / intro / credits / preview</strong> markers (extensible to any segment type); an open <code>extra</code> bag.</li>
   <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
 </ul>
