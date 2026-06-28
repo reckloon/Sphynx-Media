@@ -47,6 +47,12 @@ public struct PlaystateStopBody: Codable, Hashable, Sendable {
     }
 }
 
+/// `DELETE /v1/playstate/<itemId>` (§7) clears the caller's resume for an item:
+/// it deletes their stored row so the item's `resumePosition` reads back as 0 and
+/// it drops out of the continue-watching feed. Empty body, **204 No Content** on
+/// success, idempotent (deleting when nothing is stored is still 204), and
+/// row-scoped to the caller's own state. No request/response type is needed.
+
 /// Resume state for a single item (§7).
 public struct PlaystateResponse: Codable, Hashable, Sendable {
     /// Position in **seconds**; 0 means "from start".

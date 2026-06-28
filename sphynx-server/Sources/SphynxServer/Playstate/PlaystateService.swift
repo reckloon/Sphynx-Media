@@ -73,6 +73,18 @@ struct PlaystateService: Sendable {
         return Dictionary(uniqueKeysWithValues: records.map { ($0.itemId, $0.position) })
     }
 
+    /// Clear the caller's resume for one item: delete the row so its
+    /// `resumePosition` reads back as 0 and it drops out of continue-watching.
+    /// Idempotent — deleting when nothing is stored is a no-op. Row-scoped to the
+    /// user; only ever touches their own row.
+    func clear(userId: String, itemId: String) async throws {
+        try await db.writer.write { db in
+            _ = try PlaystateRecord
+                .filter(Column("userId") == userId && Column("itemId") == itemId)
+                .deleteAll(db)
+        }
+    }
+
     /// Purge playstate entries last updated before `cutoff` (epoch seconds).
     /// Returns the number removed. Used by the maintenance pass for retention.
     @discardableResult

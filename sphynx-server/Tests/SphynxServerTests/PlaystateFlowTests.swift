@@ -189,6 +189,57 @@ struct PlaystateFlowTests {
         }
     }
 
+    @Test("DELETE clears resume and drops the item from continue-watching (idempotent)")
+    func clearResume() async throws {
+        try await withItem { client, token, _, itemId in
+            // Progress past the start, so it has a resume point.
+            try await client.execute(
+                uri: "/v1/playstate/\(itemId)/progress", method: .post, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(PlaystateProgressBody(position: 321))
+            ) { #expect($0.status == .noContent) }
+
+            // It shows up in continue-watching and reads back the position.
+            let feed: ItemsResponse = try await client.execute(
+                uri: "/v1/home/continue", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(feed.items.contains { $0.id == itemId })
+
+            let before: PlaystateResponse = try await client.execute(
+                uri: "/v1/playstate/\(itemId)", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(before.position == 321)
+
+            // Clear it → 204.
+            try await client.execute(
+                uri: "/v1/playstate/\(itemId)", method: .delete, headers: jsonHeaders(bearer: token)
+            ) { #expect($0.status == .noContent) }
+
+            // Gone from continue-watching, reads back "from start".
+            let after: ItemsResponse = try await client.execute(
+                uri: "/v1/home/continue", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(!after.items.contains { $0.id == itemId })
+
+            let reset: PlaystateResponse = try await client.execute(
+                uri: "/v1/playstate/\(itemId)", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(reset.position == 0)
+
+            // Deleting again is still 204 (idempotent).
+            try await client.execute(
+                uri: "/v1/playstate/\(itemId)", method: .delete, headers: jsonHeaders(bearer: token)
+            ) { #expect($0.status == .noContent) }
+        }
+    }
+
+    @Test("clearing resume requires authentication")
+    func clearRequiresAuth() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/playstate/it_x", method: .delete) { #expect($0.status == .unauthorized) }
+        }
+    }
+
     @Test("continue-watching requires authentication")
     func continueRequiresAuth() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

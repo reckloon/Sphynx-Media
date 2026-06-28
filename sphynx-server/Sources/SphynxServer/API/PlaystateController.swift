@@ -17,6 +17,7 @@ struct PlaystateController: Sendable {
         group.post("playstate/:itemId/stop", use: stop)
         group.get("playstate/:itemId", use: get)
         group.get("playstate", use: batch)
+        group.delete("playstate/:itemId", use: clear)
     }
 
     @Sendable
@@ -77,6 +78,16 @@ struct PlaystateController: Sendable {
         let itemIds = (query.items ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
         let states = try await playstate.batch(userId: userId, itemIds: itemIds)
         return PlaystateBatchResponse(states: states)
+    }
+
+    /// Clear the caller's resume for an item: deletes their row so the item drops
+    /// out of continue-watching and reads back "from start". Idempotent — 204
+    /// whether or not a row existed.
+    @Sendable
+    func clear(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        let (userId, itemId) = try subjectAndItem(context)
+        try await playstate.clear(userId: userId, itemId: itemId)
+        return Response(status: .noContent)
     }
 
     // MARK: Helpers
