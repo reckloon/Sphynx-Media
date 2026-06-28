@@ -22,6 +22,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         // Background maintenance service (TTL refresh + retention) lifecycle.
         .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.0.0"),
+        // WebAuthn / passkeys: registration + authentication ceremonies, attestation
+        // and assertion verification. Pure Swift on top of swift-crypto, so it builds
+        // on macOS arm64 + Linux like the rest of the stack.
+        .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
     ],
     targets: [
         .executableTarget(
@@ -33,6 +37,7 @@ let package = Package(
                 .product(name: "HummingbirdBcrypt", package: "hummingbird-auth"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
+                .product(name: "WebAuthn", package: "swift-webauthn"),
             ]
         ),
         .testTarget(

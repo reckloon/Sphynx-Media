@@ -16,6 +16,9 @@ enum SettingKey: String, CaseIterable, Sendable {
     case playstateRetention
     case maintenanceInterval
     case avatarMaxBytes
+    case passkeyRelyingPartyID
+    case passkeyRelyingPartyName
+    case passkeyRelyingPartyOrigin
 }
 
 /// Reads and writes persisted settings. The database is the source of truth;
@@ -57,6 +60,9 @@ extension ServerConfiguration {
             SettingKey.playstateRetention.rawValue: String(playstateRetention),
             SettingKey.maintenanceInterval.rawValue: String(maintenanceInterval),
             SettingKey.avatarMaxBytes.rawValue: String(avatarMaxBytes),
+            SettingKey.passkeyRelyingPartyID.rawValue: passkeyRelyingPartyID,
+            SettingKey.passkeyRelyingPartyName.rawValue: passkeyRelyingPartyName,
+            SettingKey.passkeyRelyingPartyOrigin.rawValue: passkeyRelyingPartyOrigin,
         ]
     }
 
@@ -74,6 +80,9 @@ extension ServerConfiguration {
         if let v = settings[SettingKey.playstateRetention.rawValue], let d = Double(v) { c.playstateRetention = d }
         if let v = settings[SettingKey.maintenanceInterval.rawValue], let d = Double(v) { c.maintenanceInterval = d }
         if let v = settings[SettingKey.avatarMaxBytes.rawValue], let i = Int(v) { c.avatarMaxBytes = i }
+        if let v = settings[SettingKey.passkeyRelyingPartyID.rawValue] { c.passkeyRelyingPartyID = v }
+        if let v = settings[SettingKey.passkeyRelyingPartyName.rawValue] { c.passkeyRelyingPartyName = v }
+        if let v = settings[SettingKey.passkeyRelyingPartyOrigin.rawValue] { c.passkeyRelyingPartyOrigin = v }
         return c
     }
 

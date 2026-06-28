@@ -56,17 +56,32 @@ func buildRouter(
     router.add(middleware: ErrorMiddleware())
     router.add(middleware: LogRequestsMiddleware(.info))
 
+    // Passkeys (WebAuthn) are available only when a Relying Party is configured;
+    // otherwise the routes are absent and `capabilities.passkeys` is false.
+    let passkeyController = configuration.relyingParty.map { rp in
+        PasskeyController(passkeys: PasskeyService(
+            db: auth.db,
+            auth: auth,
+            relyingPartyID: rp.id,
+            relyingPartyName: rp.name,
+            relyingPartyOrigin: rp.origin,
+            challengeTTL: 300
+        ))
+    }
+
     // Public surface: discovery + auth + the static web admin page.
     let authController = AuthController(auth: auth, policy: policy)
     let publicV1 = router.group("v1")
     InfoController(configuration: configuration, policy: policy).addRoutes(to: publicV1)
     authController.addRoutes(to: publicV1)
+    passkeyController?.addRoutes(to: publicV1)
     AdminWebController.addRoutes(to: router)
     UserWebController.addRoutes(to: router)
 
     // Secured surface: everything else requires a valid bearer token.
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
     authController.addSecuredRoutes(to: securedV1)
+    passkeyController?.addSecuredRoutes(to: securedV1)
     let home = HomeService(catalog: catalog, playstate: playstate, userState: userState)
     BrowseController(catalog: catalog, playstate: playstate, userState: userState, home: home).addRoutes(to: securedV1)
     ChangesController(catalog: catalog, playstate: playstate, userState: userState).addRoutes(to: securedV1)

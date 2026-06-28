@@ -49,6 +49,51 @@ struct SessionRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var updatedAt: Double
 }
 
+/// A registered WebAuthn passkey. We persist only the public key plus the data
+/// needed to verify future assertions — the private key never leaves the user's
+/// authenticator. `credentialId` is the authenticator's base64url credential id,
+/// the lookup key for a passwordless (discoverable) login.
+struct PasskeyCredentialRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "passkey_credential"
+
+    var id: String
+    var userId: String
+    var credentialId: String
+    var publicKey: Data
+    var signCount: Int
+    var label: String
+    var backupEligible: Bool
+    var backedUp: Bool
+    var createdAt: Double
+    var lastUsedAt: Double?
+
+    /// Projection into the protocol's `PasskeyInfo` (never exposes the public key).
+    func toProtocol() -> PasskeyInfo {
+        PasskeyInfo(
+            id: id,
+            label: label,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            backedUp: backedUp
+        )
+    }
+}
+
+/// A short-lived, single-use WebAuthn ceremony challenge bridging a begin/finish
+/// call pair. `userId` is set for registration (bound to the enrolling user) and
+/// nil for a passwordless login (the subject is unknown until the assertion is
+/// verified). Consumed on finish; expired rows are swept lazily.
+struct PasskeyChallengeRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "passkey_challenge"
+
+    var id: String
+    var kind: String
+    var userId: String?
+    var challenge: Data
+    var expiresAt: Double
+    var createdAt: Double
+}
+
 /// A top-level browsable collection.
 struct LibraryRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "library"

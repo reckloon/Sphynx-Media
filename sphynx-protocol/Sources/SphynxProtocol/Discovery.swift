@@ -72,6 +72,10 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// now-playing, watched/favorite sync, "library changed" nudges) and never a
     /// substitute for the access-controlled REST endpoints.
     public var events: Bool
+    /// Does the server support passwordless **passkey** (WebAuthn) sign-in and the
+    /// `/v1/auth/passkeys/*` ceremonies? `false`/absent ⇒ no Relying Party is
+    /// configured; clients should hide passkey affordances and use password login.
+    public var passkeys: Bool
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
@@ -99,6 +103,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         playstate: Bool = false,
         candidates: Bool = false,
         events: Bool = false,
+        passkeys: Bool = false,
         metadata: [String: MetadataAccess] = [:],
         fields: [String] = [],
         browse: BrowseCapabilities? = nil,
@@ -108,6 +113,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.playstate = playstate
         self.candidates = candidates
         self.events = events
+        self.passkeys = passkeys
         self.metadata = metadata
         self.fields = fields
         self.browse = browse
@@ -120,6 +126,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.playstate = try container.decodeIfPresent(Bool.self, forKey: .playstate) ?? false
         self.candidates = try container.decodeIfPresent(Bool.self, forKey: .candidates) ?? false
         self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
+        self.passkeys = try container.decodeIfPresent(Bool.self, forKey: .passkeys) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
         self.fields = try container.decodeIfPresent([String].self, forKey: .fields) ?? []
         self.browse = try container.decodeIfPresent(BrowseCapabilities.self, forKey: .browse)
@@ -140,7 +147,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, events, metadata, fields, browse, playstateReportInterval
+        case search, playstate, candidates, events, passkeys, metadata, fields, browse, playstateReportInterval
     }
 }
 

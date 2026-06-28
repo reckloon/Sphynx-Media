@@ -24,3 +24,5 @@ extension PlaystateBatchResponse: @retroactive ResponseEncodable {}
 extension PlaystateResetResponse: @retroactive ResponseEncodable {}
 extension MarkersInfo: @retroactive ResponseEncodable {}
 extension ChangesResponse: @retroactive ResponseEncodable {}
+extension PasskeyInfo: @retroactive ResponseEncodable {}
+extension PasskeyListResponse: @retroactive ResponseEncodable {}
