@@ -396,6 +396,7 @@ struct Indexer: Sendable {
             record.genresJSON = fields.genres.isEmpty ? nil : (try? JSONEncoder().encode(fields.genres)).flatMap { String(data: $0, encoding: .utf8) }
         }
         if !locked.contains(LockableField.communityRating) { record.communityRating = fields.communityRating }
+        if !locked.contains(LockableField.officialRating), let rating = fields.officialRating { record.officialRating = rating }
         if !locked.contains(LockableField.images) {
             record.primaryImage = fields.primaryImage
             record.backdropImage = fields.backdropImage

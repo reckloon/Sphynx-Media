@@ -33,6 +33,7 @@ struct TVEnricher: Sendable {
             runtimeSeconds: nil,
             genres: details.genres,
             communityRating: details.voteAverage,
+            officialRating: details.officialRating,
             // `thumb` is a smaller LANDSCAPE card image (from the backdrop), not a
             // small poster — so horizontal tiles get a sized image. See API.md.
             primaryImage: TMDBImage.url(details.posterPath, size: "w500"),

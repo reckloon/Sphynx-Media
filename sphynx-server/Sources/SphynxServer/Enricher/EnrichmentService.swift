@@ -193,6 +193,7 @@ struct EnrichmentService: Sendable {
         if !locked.contains(LockableField.runtime) { item.runtime = fields.runtimeSeconds }
         if !locked.contains(LockableField.genres) { item.genresJSON = Self.encode(fields.genres) }
         if !locked.contains(LockableField.communityRating) { item.communityRating = fields.communityRating }
+        if !locked.contains(LockableField.officialRating), let rating = fields.officialRating { item.officialRating = rating }
         if !locked.contains(LockableField.images) {
             item.primaryImage = fields.primaryImage
             item.backdropImage = fields.backdropImage

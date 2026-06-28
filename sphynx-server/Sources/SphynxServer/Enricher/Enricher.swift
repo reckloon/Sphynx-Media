@@ -7,6 +7,8 @@ struct EnrichedFields: Sendable {
     var runtimeSeconds: Double?
     var genres: [String]
     var communityRating: Double?
+    /// Content certification (e.g. "PG-13" / "TV-MA"), when TMDB has one.
+    var officialRating: String? = nil
     var primaryImage: String?
     var backdropImage: String?
     var thumbImage: String?
@@ -63,6 +65,7 @@ struct Enricher: Sendable {
             runtimeSeconds: details.runtimeMinutes.map { Double($0) * 60 },
             genres: details.genres,
             communityRating: details.voteAverage,
+            officialRating: details.officialRating,
             // Image roles (see API.md → Item shape): `primary` is the portrait
             // poster; `backdrop` is large landscape art; `thumb` is a smaller
             // LANDSCAPE card image (NOT a small poster) — derived from the backdrop

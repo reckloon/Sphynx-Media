@@ -945,6 +945,8 @@ fields (overview, year, runtime, genres, `communityRating`, `officialRating`, ca
 — including **TV** series/episodes — directors/writers, studios, countries, tagline,
 status, premiereDate/endDate, `externalIds.imdb`, `sortTitle`, `tags`, `trailers`,
 images incl. `logo`/`banner`) plus `parentId`/`collectionId` and per-user state.
+`officialRating` is the content certification (e.g. "PG-13" / "TV-MA"), taken from
+the US entry of TMDB's `release_dates` (movies) / `content_ratings` (TV).
 `chapters` are filled for any item probed by the **media-probe extension**
 (`ffprobe -show_chapters` — TMDB carries no chapters). The one field it never fills
 is `criticRating`: TMDB has only an audience score (`vote_average` →

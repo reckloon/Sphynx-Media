@@ -50,6 +50,9 @@ struct TMDBMovieDetails: Sendable {
     var trailers: [String] = []
     /// Free-form keyword tags (TMDB `keywords`).
     var tags: [String] = []
+    /// Content certification (e.g. "PG-13"), from the chosen country's
+    /// `release_dates`. Defaulted so stubs need not set it.
+    var officialRating: String? = nil
 }
 
 /// A TMDB movie collection / box set (from `belongs_to_collection`).
@@ -88,6 +91,8 @@ struct TMDBTVDetails: Sendable {
     var seasons: [TMDBSeasonSummary]
     /// Series regulars (TMDB `credits.cast`). Defaulted so stubs need not set it.
     var cast: [TMDBCastMember] = []
+    /// Content rating (e.g. "TV-MA"), from the chosen country's `content_ratings`.
+    var officialRating: String? = nil
 }
 
 struct TMDBSeasonSummary: Sendable {
@@ -152,7 +157,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/movie/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "append_to_response", value: "credits,videos,keywords,images"),
+            URLQueryItem(name: "append_to_response", value: "credits,videos,keywords,images,release_dates"),
             // Logos for the title-logo image carry no language on backdrops; ask
             // for English + null-language so a clearlogo is available.
             URLQueryItem(name: "include_image_language", value: "en,null"),
@@ -188,8 +193,21 @@ struct TMDBHTTPClient: TMDBClient {
             logoPath: raw.images?.logos?.first?.file_path,
             bannerPath: Self.bannerPath(from: raw.images?.backdrops),
             trailers: Self.trailerURLs(from: raw.videos?.results ?? []),
-            tags: (raw.keywords?.keywords ?? []).map(\.name)
+            tags: (raw.keywords?.keywords ?? []).map(\.name),
+            officialRating: Self.movieCertification(from: raw.release_dates?.results)
         )
+    }
+
+    /// The content certification for the configured country (default US) from a
+    /// movie's `release_dates`. Prefers a theatrical entry (type 3) but falls back
+    /// to any non-empty certification for that country. Best-effort → nil.
+    static func movieCertification(from results: [RawCountryReleaseDates]?, country: String = "US") -> String? {
+        guard let entry = results?.first(where: { $0.iso_3166_1 == country }) else { return nil }
+        let rels = entry.release_dates ?? []
+        let theatrical = rels.first { $0.type == 3 && !($0.certification ?? "").isEmpty }
+        let any = rels.first { !($0.certification ?? "").isEmpty }
+        let cert = (theatrical ?? any)?.certification?.trimmingCharacters(in: .whitespaces)
+        return (cert?.isEmpty ?? true) ? nil : cert
     }
 
     /// Pick a banner-ish image: a backdrop explicitly flagged wide (aspect ≥ 2.0,
@@ -234,7 +252,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/tv/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "append_to_response", value: "credits"),
+            URLQueryItem(name: "append_to_response", value: "credits,content_ratings"),
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawTVDetails.self, from: data)
@@ -252,8 +270,16 @@ struct TMDBHTTPClient: TMDBClient {
             },
             cast: (raw.credits?.cast ?? []).map {
                 TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
-            }
+            },
+            officialRating: Self.tvRating(from: raw.content_ratings?.results)
         )
+    }
+
+    /// The content rating for the configured country (default US) from a series'
+    /// `content_ratings`. Best-effort → nil.
+    static func tvRating(from results: [RawContentRating]?, country: String = "US") -> String? {
+        let rating = results?.first(where: { $0.iso_3166_1 == country })?.rating?.trimmingCharacters(in: .whitespaces)
+        return (rating?.isEmpty ?? true) ? nil : rating
     }
 
     func seasonDetails(tvId: Int, season: Int) async throws -> TMDBSeasonDetails {
@@ -320,6 +346,30 @@ private struct RawMovieDetails: Decodable {
     var videos: RawVideos?
     var keywords: RawKeywords?
     var images: RawImages?
+    var release_dates: RawReleaseDates?
+}
+
+/// TMDB `release_dates` append: certifications grouped by country.
+struct RawReleaseDates: Decodable {
+    var results: [RawCountryReleaseDates]?
+}
+struct RawCountryReleaseDates: Decodable {
+    var iso_3166_1: String
+    var release_dates: [RawRelease]?
+}
+struct RawRelease: Decodable {
+    var certification: String?
+    /// TMDB release type (1 premiere … 3 theatrical … 6 TV).
+    var type: Int?
+}
+
+/// TMDB TV `content_ratings` append: a rating per country.
+struct RawContentRatings: Decodable {
+    var results: [RawContentRating]?
+}
+struct RawContentRating: Decodable {
+    var iso_3166_1: String
+    var rating: String?
 }
 
 private struct RawCollection: Decodable {
@@ -403,6 +453,7 @@ private struct RawTVDetails: Decodable {
     var backdrop_path: String?
     var seasons: [RawSeasonSummary]?
     var credits: RawCredits?
+    var content_ratings: RawContentRatings?
 }
 
 private struct RawSeasonSummary: Decodable {
