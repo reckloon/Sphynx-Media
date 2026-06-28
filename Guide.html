@@ -331,7 +331,7 @@
       <tr><th>In the spec — the wire protocol <span class="badge">must honor</span></th><th>Reference-server only — not the spec</th></tr>
       <tr>
         <td>
-          Discovery &amp; capabilities (<code>/v1/info</code>) · auth &amp; sessions · browse (libraries/items, sort/filter) · the <a href="#api-item">Item</a> shape (images/variants, cast, markers, <code>extra</code>) · <a href="#api-resolve">resolve</a> (+ <code>tracks</code>/streams) · playstate &amp; per-user state · <a href="#api-home">home shelves</a> · <a href="#api-changes">changes</a> feed + tombstones · <a href="#api-markers">markers</a> (bi-directional) · <a href="#api-events">events</a> (SSE) · <a href="#search">search</a> (optional) · errors.<br>
+          Discovery &amp; capabilities (<code>/v1/info</code>) · auth &amp; sessions (incl. <a href="#api-passkeys">passkeys</a>) · browse (libraries/items, sort/filter) · the <a href="#api-item">Item</a> shape (images/variants, cast, markers, <code>extra</code>) · <a href="#api-resolve">resolve</a> (+ <code>tracks</code>/streams) · playstate &amp; per-user state · <a href="#api-home">home shelves</a> · <a href="#api-changes">changes</a> feed + tombstones · <a href="#api-markers">markers</a> (bi-directional) · <a href="#api-events">events</a> (SSE) · <a href="#search">search</a> (optional) · errors.<br>
           <span class="muted">Defined as value types in <code>sphynx-protocol/</code>; this is the JSON any two implementations agree on.</span>
         </td>
         <td>
@@ -408,11 +408,11 @@
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "product":"Sphynx", "serverName":"Sphynx Reference Server", "id":"srv_reference",
   "version":"1.0", "protocol":["v1"],
-  "capabilities": { "search":false, "playstate":true, "candidates":true, "events":true,
+  "capabilities": { "search":false, "playstate":true, "candidates":true, "events":true, "passkeys":false,
     "metadata": { "markers":"readwrite", "images":"read" },
     "fields": ["id","type","title","tmdbId","year","images","placeholder","dateAdded","updatedAt","seriesId","seriesTitle","seasonIndex","episodeIndex","childCount","parentId","collectionId","collectionTitle","extra","overview","runtime","genres","communityRating","officialRating","cast","originalTitle","sortTitle","tagline","status","premiereDate","endDate","studios","directors","writers","countries","tags","trailers","chapters","externalIds","resumePosition","watched","playCount","isFavorite","lastPlayedAt"],
     "playstateReportInterval":5 } }</span></code></pre>
-<p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable. <strong><code>playstateReportInterval</code></strong> (seconds) is the server's preferred client playback-report cadence — a client reporting progress periodically SHOULD use it (default ~5s if absent). Push-only: the server never polls. <strong><code>events</code></strong> advertises the additive <a href="#api-events">server→client event stream</a> (SSE); absent ⇒ the client falls back to polling.</p>
+<p>A client treats unknown capability keys as ignorable and missing booleans as <code>false</code>. <strong><code>metadata</code></strong> is the bi-directional access policy: a per-field map of <code>none</code> | <code>read</code> | <code>readwrite</code> (open enum). A field absent from the map is <code>none</code> — readable if served, but not contributable. <strong><code>playstateReportInterval</code></strong> (seconds) is the server's preferred client playback-report cadence — a client reporting progress periodically SHOULD use it (default ~5s if absent). Push-only: the server never polls. <strong><code>events</code></strong> advertises the additive <a href="#api-events">server→client event stream</a> (SSE); absent ⇒ the client falls back to polling. <strong><code>passkeys</code></strong> advertises passwordless <a href="#api-passkeys">passkey (WebAuthn) sign-in</a>; absent/<code>false</code> ⇒ no Relying Party is configured, so the client hides passkey affordances and uses password login.</p>
 <div class="callout tip">
   <p><strong><code>fields</code> — the coverage advertisement (highly recommended on both sides).</strong> It lists the canonical <a href="#api-item">Item</a> fields the server can populate — distinct from <code>metadata</code>, which is the read/write <em>access</em> policy. The protocol <strong>strongly recommends (SHOULD)</strong> that a <strong>server list every field it serves</strong> here, and that a <strong>client read it to inform the user of unsupported features</strong> (e.g. hide a "Trailers" row when <code>fields</code> omits <code>trailers</code>). An absent/empty list means "coverage not advertised" — the client assumes nothing and just renders whatever each item carries. (The reference server advertises its full set, including <code>chapters</code> — filled by the <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md#extensions--admin-only">media-probe extension</a> when an item is probed. The one canonical field it never fills is <code>criticRating</code>, since TMDB has no critic score; see the <a href="#api-item">Item shape</a>.)</p>
 </div>
@@ -447,6 +447,36 @@
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/password</span><span class="badge auth">auth</span></div>
 <p>Change the authenticated user's <strong>own</strong> password. <strong>Body</strong> <code>{ "currentPassword":"…", "newPassword":"…" }</code>. <strong>204</strong> on success; <strong>401</strong> if the current password is wrong. The presenting session stays valid.</p>
+
+<h4 id="api-passkeys">Passkeys (WebAuthn)</h4>
+<p>Passwordless sign-in with a <a href="https://www.w3.org/TR/webauthn-2/">WebAuthn</a> passkey (Touch ID / Face ID, a synced platform passkey, or a hardware key). Available <strong>only when <code>capabilities.passkeys</code> is <code>true</code></strong> — i.e. an admin has configured a Relying Party. When it's <code>false</code> the <code>/v1/auth/passkeys/*</code> routes are absent (<strong>404</strong>) and clients use password login.</p>
+<p>Each ceremony is two calls: <strong>begin</strong> returns a server-generated <code>challengeId</code> plus a standard WebAuthn <code>publicKey</code> options object; <strong>finish</strong> echoes that <code>challengeId</code> with the authenticator's response. A <code>challengeId</code> is <strong>single-use</strong> and short-lived (≈5 min). The <code>publicKey</code> options and the authenticator <code>credential</code> objects are the <strong>standard W3C WebAuthn JSON shapes</strong> — what <code>navigator.credentials</code> (browser) or <code>ASAuthorization</code> (Apple) produce/consume — so build them with the platform API, not by hand.</p>
+<p><strong>Enrollment</strong> requires a session (you add a passkey while logged in); <strong>signing in</strong> with a passkey is public. Passwords remain the bootstrap/fallback credential.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/passkeys/register/begin</span><span class="badge auth">auth</span></div>
+<p>Begin enrolling a passkey for the authenticated user (no body). <strong>200</strong> → <code>{ "challengeId":"pkc_…", "publicKey": { "challenge","rp","user","pubKeyCredParams","timeout","attestation" } }</code>. Pass <code>publicKey</code> to <code>navigator.credentials.create()</code>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/passkeys/register/finish</span><span class="badge auth">auth</span></div>
+<p><strong>Body</strong> <code>{ "challengeId":"pkc_…", "label":"iPhone", "credential": {…} }</code> (<code>label</code> optional). <strong>201</strong> returns the stored <code>PasskeyInfo</code>; <strong>400</strong> if the attestation can't be verified or the challenge is invalid/expired.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/passkeys/authenticate/begin</span><span class="badge auth">unauthenticated</span></div>
+<p>Begin a passwordless sign-in (no body). The options omit <code>allowCredentials</code>, so the authenticator offers its <strong>discoverable</strong> passkeys for this RP. <strong>200</strong> → <code>{ "challengeId":"pkc_…", "publicKey": { "challenge","rpId","timeout","userVerification" } }</code>. Pass <code>publicKey</code> to <code>navigator.credentials.get()</code>.</p>
+
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/passkeys/authenticate/finish</span><span class="badge auth">unauthenticated</span></div>
+<p><strong>Body</strong> <code>{ "challengeId":"pkc_…", "credential": {…} }</code>. On a verified assertion returns the <strong>same token pair as <code>/v1/auth/login</code></strong> (scoped to <code>X-Sphynx-Device</code>). <strong>401</strong> if the assertion fails or the credential is unknown; <strong>400</strong> if the challenge is invalid/expired.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/passkeys</span><span class="badge auth">auth</span></div>
+<p>The caller's passkeys, newest first. <strong>200</strong> → <code>{ "passkeys":[{ "id":"pk_…", "label", "createdAt", "lastUsedAt", "backedUp" }] }</code>. <code>id</code> is the opaque <code>pk_…</code> used in the management URLs below (not the raw credential id); key material is never returned.</p>
+
+<div class="ep"><span class="method badge patch">PATCH</span><span class="path">/v1/auth/passkeys/{id}</span><span class="badge auth">auth</span></div>
+<p>Rename a passkey. <strong>Body</strong> <code>{ "label":"…" }</code> (non-empty). <strong>200</strong> returns the updated <code>PasskeyInfo</code>; <strong>404</strong> if it isn't one of the caller's passkeys.</p>
+
+<div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/auth/passkeys/{id}</span><span class="badge auth">auth</span></div>
+<p>Remove a passkey. <strong>204</strong>; <strong>404</strong> if it isn't one of the caller's passkeys.</p>
+
+<div class="callout tip">
+  <p><strong>Configuration.</strong> Passkeys stay off until an admin sets the Relying Party in <strong>Settings</strong> (<code>passkeyRelyingPartyID</code>, optional <code>passkeyRelyingPartyName</code> / <code>passkeyRelyingPartyOrigin</code>). The RP id is the bare domain the server is reached at (no scheme/port, e.g. <code>media.example.com</code>); the origin defaults to <code>https://&lt;rpId&gt;</code>. These must match the client's origin or every ceremony fails — a WebAuthn constraint, not a Sphynx one.</p>
+</div>
 
 <h3 id="api-browse">Browse</h3>
 
@@ -873,7 +903,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <span class="key">"id"</span>: <span class="str">"srv_reference"</span>,
   <span class="key">"version"</span>: <span class="str">"1.0"</span>,
   <span class="key">"protocol"</span>: [<span class="str">"v1"</span>],
-  <span class="key">"capabilities"</span>: { <span class="key">"search"</span>: <span class="kw">false</span>, <span class="key">"playstate"</span>: <span class="kw">true</span>, <span class="key">"candidates"</span>: <span class="kw">true</span>, <span class="key">"events"</span>: <span class="kw">true</span>,
+  <span class="key">"capabilities"</span>: { <span class="key">"search"</span>: <span class="kw">false</span>, <span class="key">"playstate"</span>: <span class="kw">true</span>, <span class="key">"candidates"</span>: <span class="kw">true</span>, <span class="key">"events"</span>: <span class="kw">true</span>, <span class="key">"passkeys"</span>: <span class="kw">false</span>,
     <span class="key">"metadata"</span>: { <span class="key">"markers"</span>: <span class="str">"readwrite"</span>, <span class="key">"images"</span>: <span class="str">"read"</span> } }
 }</span></code></pre>
 
@@ -912,6 +942,9 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <tr><td><code>markersStaleAfter</code></td><td><code>SPHYNX_MARKERS_STALE_AFTER</code></td><td><code>604800</code> (7d)</td><td>Age after which markers are reported <code>stale</code></td></tr>
   <tr><td><code>playstateRetention</code></td><td><code>SPHYNX_PLAYSTATE_RETENTION</code></td><td><code>31536000</code> (365d)</td><td>Playstate retention before purge</td></tr>
   <tr><td><code>maintenanceInterval</code></td><td><code>SPHYNX_MAINTENANCE_INTERVAL</code></td><td><code>86400</code> (1d)</td><td>Background maintenance interval; <code>0</code> disables it</td></tr>
+  <tr><td><code>passkeyRelyingPartyID</code></td><td><code>SPHYNX_PASSKEY_RP_ID</code></td><td><em>(empty)</em></td><td>Passkey (<a href="#api-passkeys">WebAuthn</a>) Relying Party id — the bare domain the server is reached at (no scheme/port). Empty disables passkeys (<code>capabilities.passkeys=false</code>)</td></tr>
+  <tr><td><code>passkeyRelyingPartyName</code></td><td><code>SPHYNX_PASSKEY_RP_NAME</code></td><td><em>(server name)</em></td><td>Display name the authenticator shows during enrollment</td></tr>
+  <tr><td><code>passkeyRelyingPartyOrigin</code></td><td><code>SPHYNX_PASSKEY_ORIGIN</code></td><td><code>https://&lt;rpId&gt;</code></td><td>Expected client origin (with scheme) for ceremony verification</td></tr>
 </table>
 <div class="callout note">
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
@@ -1176,10 +1209,10 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/settings</span></div>
 <p>The current persisted <a href="#config">runtime settings</a>. <strong>200</strong> →
-<code>{ "serverName":"…", "serverID":"…", "accessTokenTTL":3600, "refreshTokenTTL":2592000, "enrichmentTTL":7776000, "markersAccess":"readwrite", "markersStaleAfter":604800, "playstateRetention":31536000, "maintenanceInterval":86400 }</code>.</p>
+<code>{ "serverName":"…", "serverID":"…", "accessTokenTTL":3600, "refreshTokenTTL":2592000, "enrichmentTTL":7776000, "markersAccess":"readwrite", "markersStaleAfter":604800, "playstateRetention":31536000, "maintenanceInterval":86400, "passkeyRelyingPartyID":"", "passkeyRelyingPartyName":"", "passkeyRelyingPartyOrigin":"" }</code>.</p>
 
 <div class="ep"><span class="method badge patch">PATCH</span><span class="path">/v1/admin/settings</span></div>
-<p>Update runtime settings — any subset of the fields above. <strong>Body</strong> e.g. <code>{ "serverName":"My Library", "markersAccess":"read" }</code> → <strong>200</strong> with the full updated settings. Changes are persisted and apply on the next restart. <code>400</code> if <code>markersAccess</code> isn't <code>none</code>/<code>read</code>/<code>readwrite</code>.</p>
+<p>Update runtime settings — any subset of the fields above. <strong>Body</strong> e.g. <code>{ "serverName":"My Library", "markersAccess":"read" }</code> → <strong>200</strong> with the full updated settings. Changes are persisted and apply on the next restart. <code>400</code> if <code>markersAccess</code> isn't <code>none</code>/<code>read</code>/<code>readwrite</code>, if <code>passkeyRelyingPartyID</code> carries a scheme/port, or if <code>passkeyRelyingPartyOrigin</code> omits one. Setting <code>passkeyRelyingPartyID</code> turns on <a href="#api-passkeys">passkeys</a> (<code>capabilities.passkeys</code>).</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/tmdb</span><span class="method badge patch">PATCH</span><span class="path">/v1/admin/tmdb</span></div>
 <p>The <strong>TMDB v3 API key</strong> (identification + enrichment depend on it). <code>GET</code> → a masked status <code>{ "configured":true, "keyHint":"…1b87", "appliesOnRestart":true }</code> — the key itself is never returned. <code>PATCH</code> <code>{ "apiKey":"…" }</code> stores it (seeded once from <code>SPHYNX_TMDB_API_KEY</code>, DB-authoritative thereafter); the change takes effect on the next restart. See <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md">docs/API.md</a>.</p>

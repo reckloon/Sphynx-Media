@@ -48,7 +48,10 @@ swift test
 The wire contract as built today: discovery (`ServerInfo`, `Capabilities`), auth +
 per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`,
 self-service `ProfileUpdateRequest` + server-hosted avatars, `PlaystateResetResponse`
-for a full watch-history reset), the
+for a full watch-history reset, optional passkey/WebAuthn sign-in
+(`capabilities.passkeys`, `PasskeyInfo`/`PasskeyListResponse`/`PasskeyRenameRequest`;
+the ceremony payloads themselves are standard W3C WebAuthn JSON and intentionally
+not modelled here)), the
 `Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
 one-of, cast, TV positioning, `parentId`/`collectionId`, open `extra`), browse +
 pagination, the typed home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`),
