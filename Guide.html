@@ -216,6 +216,18 @@
         <li><a href="#walk-play">5. Browse &amp; resolve</a></li>
       </ul>
     </li>
+    <li><a href="#parser">Identifier &amp; Parser</a>
+      <ul>
+        <li><a href="#parser-role">Role &amp; layers</a></li>
+        <li><a href="#parser-movies">Movies: title &amp; year</a></li>
+        <li><a href="#parser-tv">TV: seasons &amp; episodes</a></li>
+        <li><a href="#parser-folders">Folder authority</a></li>
+        <li><a href="#parser-i18n">Any language</a></li>
+        <li><a href="#parser-precedence">Decision order</a></li>
+        <li><a href="#parser-reference">Pattern reference</a></li>
+        <li><a href="#parser-limits">Limits &amp; tips</a></li>
+      </ul>
+    </li>
     <li><a href="#api">API Reference</a>
       <ul>
         <li><a href="#api-conventions">Conventions</a></li>
@@ -538,6 +550,139 @@ curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <sp
 
 <div class="callout tip">
   <p>That's the entire spine: <strong>login → browse → resolve → play</strong>. Everything else (playstate, markers, enrichment, multiple users) layers on top of these calls.</p>
+</div>
+</section>
+
+<!-- ========================= IDENTIFIER & PARSER ========================= -->
+<section id="parser">
+<h2>Identifier &amp; Parser</h2>
+<p class="lead">The <strong>Identifier</strong> turns a raw entry — a filename and the folders above it — into a confident identity: a movie title and year, or a series with a season and episode. It is the load-bearing subsystem; everything downstream (enrichment, the catalog tree, resolve) keys off a correct identity, so the parser is deliberately heuristic, self-contained, and exhaustively unit-tested.</p>
+
+<div class="callout note">
+  <p>All example names in this section are <strong>invented</strong> for illustration. The parser cares about <em>shapes</em> (where the year sits, what a season folder looks like), never about a specific title, so substitute your own freely.</p>
+</div>
+
+<h3 id="parser-role">Role &amp; the three layers</h3>
+<p>Parsing happens entirely on text — <strong>no bytes, no network</strong>. A single source-relative key like <code>Greyport (2019)/Greyport.2019.2160p.mkv</code> is enough. The work is split across three cooperating layers, smallest first:</p>
+<table>
+  <tr><th>Layer</th><th>Sees</th><th>Job</th></tr>
+  <tr><td><code>FilenameParser</code></td><td>One filename</td><td>Clean a release filename into a <strong>title + optional year</strong>: normalise separators, drop release junk, find the year.</td></tr>
+  <tr><td><code>EpisodeParser</code></td><td>One filename</td><td>Detect a TV marker (<code>S01E02</code>, <code>1x05</code>) and split off the series title.</td></tr>
+  <tr><td><code>PathParser</code> / <code>FolderName</code></td><td>The <strong>whole relative path</strong></td><td>The orchestrator. Lets the clean, canonical identity carried by <em>folders</em> win over a messy or foreign filename, and recognises season folders, absolute/date episodes, and library buckets.</td></tr>
+</table>
+<p><code>PathParser.parse</code> is the production entry point (the Indexer calls it for every entry). It <em>builds on</em> the filename primitives rather than replacing them, so each layer stays independently testable. Its result is one of two shapes:</p>
+<pre><code><span class="key">movie</span>(title: <span class="str">"Greyport"</span>, year: 2019)
+<span class="key">episode</span>(series: <span class="str">"The Tin Lantern"</span>, season: 2, episode: 5,
+        episodeTitle: <span class="str">"The First Light"</span>?, year: 2018?)</code></pre>
+
+<h3 id="parser-movies">Movies: title &amp; year</h3>
+<p>A release filename is cleaned in four steps:</p>
+<ol>
+  <li><strong>Take the last path component and strip the extension.</strong> A trailing token is only treated as an extension when it is 1–4 characters and contains a letter — so <code>.mkv</code> strips, but a decimal (<code>1.5</code>) or a bare year (<code>.1999</code>) does not. Stacked container extensions like <code>.mkv.strm</code> are both removed.</li>
+  <li><strong>Normalise separators to spaces.</strong> Dots, underscores, dashes, plus signs and all bracket characters become spaces, so <code>Greyport.2019.2160p</code> and <code>Greyport_2019_2160p</code> tokenise identically.</li>
+  <li><strong>Find the release year.</strong> The year is the first plausible four-digit token (1900 … next year) that is <em>not</em> the leading token. The "not leading" rule is what lets a title that <em>starts</em> with a number keep it.</li>
+  <li><strong>Drop release junk</strong> from the tokens before the year — resolutions, codecs, source and audio tags (<code>2160p</code>, <code>x265</code>, <code>WEB-DL</code>, <code>DDP5</code>, <code>HDR</code>, a <code>1280x720</code> resolution, …).</li>
+</ol>
+<table>
+  <tr><th>Input filename</th><th>→ title</th><th>→ year</th></tr>
+  <tr><td><code>Greyport.2019.2160p.WEB-DL.x265-CREW.mkv</code></td><td>Greyport</td><td>2019</td></tr>
+  <tr><td><code>Mossfield 2099 (2024) [2160p].mkv</code></td><td>Mossfield 2099</td><td>2024 <span class="cmt">(2099 is implausible → part of the title)</span></td></tr>
+  <tr><td><code>2099.2024.2160p.mkv</code></td><td>2099</td><td>2024 <span class="cmt">(leading year stays in the title)</span></td></tr>
+  <tr><td><code>2299.mkv</code></td><td>2299</td><td>— <span class="cmt">(no second year → numeric title, no year)</span></td></tr>
+  <tr><td><code>Vellichor.mp4</code></td><td>Vellichor</td><td>—</td></tr>
+</table>
+<div class="callout tip">
+  <p><strong>Single-word titles that look like junk.</strong> If a film's whole title is a word the parser would normally strip as a release tag (imagine a movie literally titled <em>Web</em> or <em>Cut</em>), dropping junk would leave nothing — so the parser detects the empty result and keeps the title unfiltered. The title survives instead of collapsing into the raw filename.</p>
+</div>
+
+<h3 id="parser-tv">TV: seasons &amp; episodes</h3>
+<p>An entry is treated as an episode when any of these are found, in this order of authority:</p>
+<table>
+  <tr><th>Signal</th><th>Example (filename or folder)</th><th>Result</th></tr>
+  <tr><td><strong>Explicit marker</strong> <code>SxxExx</code> / <code>sNNeNN</code></td><td><code>The.Tin.Lantern.S02E05.mkv</code></td><td>season 2, episode 5</td></tr>
+  <tr><td><strong>Marker</strong> <code>NxNN</code></td><td><code>The Tin Lantern - 1x05.mkv</code></td><td>season 1, episode 5</td></tr>
+  <tr><td><strong>Season folder</strong> + loose number</td><td><code>The Tin Lantern/Season 2/Ep 05.mkv</code></td><td>season 2, episode 5</td></tr>
+  <tr><td><strong>Date-stamped</strong> (daily shows)</td><td><code>Nightly Recap/2024-01-15.mkv</code></td><td>season 2024, episode 115</td></tr>
+  <tr><td><strong>Absolute number</strong> (long-running anime)</td><td><code>Drifting Saga - 1071.mkv</code></td><td>season 1, episode 1071</td></tr>
+</table>
+<p>Several details make this robust across messy real-world libraries:</p>
+<ul>
+  <li><strong>Large episode numbers are never truncated.</strong> A marker allows 1–4 digits per field, so <code>S01E1071</code> is episode 1071 (not "E10"), and a year-as-season daily marker like <code>S2024E01</code> parses as season 2024.</li>
+  <li><strong>Resolutions are not mistaken for markers.</strong> The <code>NxNN</code> form guards its digit boundaries, so a <code>1280x720</code> resolution never reads as season 80 / episode 72.</li>
+  <li><strong>Season folders come in many spellings</strong> — <code>Season 2</code>, <code>Season 02</code>, <code>S2</code>, <code>S02</code>, <code>Series 2</code>, plus <code>Specials</code> (season 0) and multi-season ranges (<code>Seasons 1-3</code>), where the <code>SxxExx</code> in the filename supplies the actual number.</li>
+  <li><strong>Loose episode numbers</strong> inside a season folder are read from <code>Episode 1</code>, <code>Ep 01</code>, <code>E01</code>, or a leading bare number (<code>01 Title</code>).</li>
+  <li><strong>Multi-episode files</strong> (<code>S06E01-02</code>, <code>S03E07E08</code>) take the first episode.</li>
+  <li><strong>Episode titles</strong> are only lifted from the curated <code>" - SxxExx - Title"</code> form (space-dash-space). A dotted release tail (<code>.2160p.WEB-DL</code>) is metadata, not a title, so it is left for the caller's <em>"Episode N"</em> default.</li>
+</ul>
+<div class="callout note">
+  <p><strong>Absolute &amp; date episodes are gated to protect movies.</strong> A trailing number behind <code>" - "</code> only becomes an absolute episode with positive TV signal — a season-folder ancestor, a leading <code>[group]</code> fansub tag, or a multi-digit number that isn't a plausible year. This is what keeps a movie that merely ends in a number (think <em>a heist film titled "… 11"</em>, or a sci-fi title ending in a future year) classified as a movie. Date episodes map to <code>season = air-year, episode = MM×100 + DD</code>, a deterministic ordinal that keeps same-year airings in calendar order.</p>
+</div>
+
+<h3 id="parser-folders">Folder authority &amp; library buckets</h3>
+<p>In a real library the folder is the clean, curator-maintained name while the file is often a scene release in another language. So for the <strong>title</strong>, the folder wins:</p>
+<pre><code>Greyport (2019)/  ←  folder is authoritative: "Greyport", 2019
+  └─ severnyy-veter.2019.Hybrid.UHD.Remux.2160p.mkv.strm  ←  ignored for the title</code></pre>
+<p>Folder handling has three moving parts:</p>
+<ul>
+  <li><strong>Curated folders preserve punctuation.</strong> Only a trailing or bracketed year is lifted out, so <code>The Long Watch - A Greyport Story (2016)</code> keeps its internal dash.</li>
+  <li><strong>Scene-style dotted folders are cleaned like filenames.</strong> A folder such as <code>Greyport.2019.2160p.BluRay.x265-CREW</code> (dot-delimited, carrying junk tags) is routed through the release-filename cleaner instead of being taken verbatim → <code>Greyport</code>, 2019.</li>
+  <li><strong>A yearless title folder borrows the year from the file</strong> — folder <code>Greyport</code> + file <code>Greyport.2019.mkv</code> ⇒ <code>Greyport</code>, 2019 — while a folder that already has a year keeps its own.</li>
+</ul>
+<p><strong>Library buckets</strong> — the top-level container folders that never carry a title — are recognised and skipped, so the real title (the folder below, or the filename) is used instead. The bucket list is intentionally multilingual (see below), and there is a structural backstop for buckets it doesn't list: a yearless parent folder that is unrelated to a filename which <em>does</em> carry a year is treated as a bucket, and the richer filename wins.</p>
+
+<h3 id="parser-i18n">Built to handle any language</h3>
+<p>The parser is Unicode-aware end to end — titles in Cyrillic, CJK, accented Latin, and beyond pass through untouched. Three things make "any correct filename, in any language, in any directory" the design target rather than an afterthought:</p>
+<ul>
+  <li><strong>Library buckets are recognised across languages.</strong> A flat file under a localized root resolves to the file's real title, not the root's name. The recognised buckets span English plus common organisational folders and other scripts:</li>
+</ul>
+<table>
+  <tr><th>Language</th><th>Bucket folders treated as containers (illustrative)</th></tr>
+  <tr><td>English / organisational</td><td><code>Movies</code>, <code>TV</code>, <code>Shows</code>, <code>Anime</code>, <code>Downloads</code>, <code>Complete</code>, <code>Library</code>, …</td></tr>
+  <tr><td>Russian</td><td><code>Фильмы</code>, <code>Кино</code>, <code>Сериалы</code>, <code>Мультфильмы</code></td></tr>
+  <tr><td>Japanese</td><td><code>映画</code>, <code>ドラマ</code>, <code>アニメ</code>, <code>番組</code></td></tr>
+  <tr><td>Chinese</td><td><code>电影</code>, <code>电视剧</code>, <code>剧集</code>, <code>动漫</code>, <code>综艺</code></td></tr>
+  <tr><td>Korean</td><td><code>영화</code>, <code>드라마</code>, <code>예능</code></td></tr>
+  <tr><td>Spanish / Portuguese</td><td><code>Películas</code>, <code>Cine</code>, <code>Filmes</code>, <code>Filme</code></td></tr>
+</table>
+<ul>
+  <li><strong>Full-width digits are folded.</strong> A full-width year (<code>２０１６</code>) is recognised as 2016, and full-width / CJK separators (the ideographic space, <code>・</code>, <code>。</code>, <code>．</code>) are treated as token boundaries — so <code>夏の記録.２０１６.mkv</code> resolves to title <code>夏の記録</code>, year 2016.</li>
+  <li><strong>Title comparison is script-agnostic.</strong> The "is this folder related to the filename" backstop normalises on Unicode alphanumerics, so it works the same for Latin and non-Latin scripts.</li>
+</ul>
+<table>
+  <tr><th>Input path</th><th>→ result</th></tr>
+  <tr><td><code>Фильмы/severnyy-veter.2019.1080p.mkv</code></td><td>movie — title from the filename, 2019 <span class="cmt">(root is a bucket)</span></td></tr>
+  <tr><td><code>映画/夏の記録.２０１６.mkv</code></td><td>movie — <code>夏の記録</code>, 2016</td></tr>
+  <tr><td><code>Drifting Saga.S01E01.WEB-DL.2160p.mkv.strm</code></td><td>episode — Cyrillic/CJK series titles pass through unchanged</td></tr>
+</table>
+
+<h3 id="parser-precedence">Decision order</h3>
+<p>For each entry, <code>PathParser</code> applies these rules top to bottom and stops at the first that fits. Knowing the order explains every result:</p>
+<ol>
+  <li><strong>Explicit episode marker</strong> in the filename (<code>SxxExx</code> / <code>NxNN</code>) → episode. The marker is authoritative for season + episode even inside a multi-season folder.</li>
+  <li><strong>Season folder + loose number</strong> → episode (season from the folder).</li>
+  <li><strong>Date stamp</strong> (<code>YYYY-MM-DD</code>) → daily episode.</li>
+  <li><strong>Absolute number</strong> behind <code>" - "</code>, if TV-signal gated → episode.</li>
+  <li><strong>Otherwise a movie</strong> — title from an informative parent folder (preferring it over a foreign filename), else from the filename; year from the folder, borrowed from the file when the folder has none.</li>
+</ol>
+<div class="callout note">
+  <p>An admin's explicit hints always outrank parsing. When a source's manifest pre-declares <code>type: episode</code> with a season and episode (some HTTP sources do), the Indexer uses those directly and only falls back to the parser for the parts the manifest omits.</p>
+</div>
+
+<h3 id="parser-reference">Pattern reference</h3>
+<p><strong>Episode markers</strong> (case-insensitive): <code>S01E02</code>, <code>s1e2</code>, <code>S01E1071</code>, <code>S2024E01</code>, <code>1x05</code>. <strong>Loose forms</strong> inside a season folder: <code>Episode 1</code>, <code>Ep 01</code>, <code>E01</code>, leading <code>01 …</code>. <strong>Multi-episode</strong>: <code>E01-02</code>, <code>E01E02</code> (first wins). <strong>Date</strong>: <code>YYYY-MM-DD</code> / <code>YYYY.MM.DD</code>. <strong>Absolute</strong>: <code>Title - 1071</code> (gated).</p>
+<p><strong>Season folders</strong>: <code>Season N</code>, <code>Season 0N</code>, <code>S N</code>, <code>SN</code>, <code>Series N</code>, <code>Specials</code> (→ 0), <code>Seasons A-B</code>.</p>
+<p><strong>Release junk stripped from titles</strong>: resolutions (<code>480p</code>…<code>2160p</code>, <code>4K</code>, <code>UHD</code>, plus <code>W×H</code> like <code>1920x1080</code>), codecs (<code>x264</code>, <code>x265</code>, <code>H264</code>, <code>HEVC</code>, <code>AVC</code>, <code>XviD</code>), sources (<code>BluRay</code>, <code>BRRip</code>, <code>WEB-DL</code>, <code>WEBRip</code>, <code>HDTV</code>, <code>DVDRip</code>, <code>CAM</code>), audio (<code>AAC</code>, <code>AC3</code>, <code>DTS</code>, <code>DDP5</code>, <code>FLAC</code>, <code>Atmos</code>, <code>TrueHD</code>), and edition/process tags (<code>REMUX</code>, <code>PROPER</code>, <code>REPACK</code>, <code>EXTENDED</code>, <code>UNRATED</code>, <code>REMASTERED</code>, <code>IMAX</code>, <code>HDR</code>, <code>DV</code>, …).</p>
+
+<h3 id="parser-limits">Limits &amp; tips for a clean library</h3>
+<p>The parser is heuristic, so a few inherently ambiguous shapes are resolved by convention rather than guesswork:</p>
+<ul>
+  <li><strong>A clean single-word title folder with no year is indistinguishable from an unlisted bucket.</strong> If your top-level container isn't in the recognised list, give per-title subfolders a year — <code>Title (Year)/</code> — and identification is unambiguous.</li>
+  <li><strong>Absolute single-digit episodes</strong> with no season folder and no group tag are intentionally left as movies, to avoid hijacking a movie that ends in a small number. Put such anime in a <code>Season 1</code> folder if you rely on absolute numbering.</li>
+  <li><strong>Date episodes</strong> use a synthetic <code>MMDD</code> episode ordinal; the underlying air date is preserved as the value, but it is not a broadcaster's official episode number.</li>
+  <li>Identification feeds a TMDB search whose confidence is scored on title + year agreement, so a correct year materially improves the match — and the cleaner your folders, the better the result.</li>
+</ul>
+<div class="callout tip">
+  <p><strong>The single best habit:</strong> name the per-title folder <code>Title (Year)</code> and put episodes under <code>Season N</code>. The parser will then succeed regardless of how messy — or how foreign — the individual filenames are.</p>
 </div>
 </section>
 
