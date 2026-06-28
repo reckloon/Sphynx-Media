@@ -34,6 +34,7 @@ struct AdminController: Sendable {
         admin.patch("sources/:sourceId", use: updateSource)
         admin.delete("sources/:sourceId", use: deleteSource)
         admin.post("sources/:sourceId/scan", use: scanSource)
+        admin.post("libraries/:libraryId/scan", use: scanLibrary)
         admin.post("scan", use: scanAll)
         admin.post("items", use: createItem)
         admin.get("items", use: listItems)
@@ -343,22 +344,53 @@ struct AdminController: Sendable {
         return SourceResponse(from: record)
     }
 
+    /// Scanning is gated by `catalog.scan` (admin always passes; source config and
+    /// credentials stay admin-only). Held globally or scoped to any library the
+    /// target feeds.
+    private func requireScan(_ context: SphynxRequestContext, libraries: Set<String>) throws {
+        let identity = try context.requireIdentity()
+        if identity.has(Permissions.catalogScan) { return }
+        for lib in libraries where identity.has(Permissions.catalogScan, inLibrary: lib) { return }
+        throw SphynxError.forbidden("You don't have permission to scan")
+    }
+
     @Sendable
     func scanSource(_ request: Request, context: SphynxRequestContext) async throws -> IndexSummary {
-        try requireAdmin(context)
         guard let sourceId = context.parameters.get("sourceId") else {
             throw SphynxError.badRequest("Missing source id")
         }
-        let summary = try await indexer.scan(sourceId: sourceId)
-        if let source = try await catalog.source(id: sourceId) {
-            await notifyLibrariesChanged(source.feedsLibraries(), action: "scanned")
+        guard let source = try await catalog.source(id: sourceId) else {
+            throw SphynxError.notFound("No source '\(sourceId)'")
         }
+        try requireScan(context, libraries: source.feedsLibraries())
+        let summary = try await indexer.scan(sourceId: sourceId)
+        await notifyLibrariesChanged(source.feedsLibraries(), action: "scanned")
         return summary
+    }
+
+    /// Re-scan every source feeding one library. Per-library refresh, gated by
+    /// `catalog.scan` for that library (or globally / admin).
+    @Sendable
+    func scanLibrary(_ request: Request, context: SphynxRequestContext) async throws -> IndexAllSummary {
+        guard let libraryId = context.parameters.get("libraryId") else {
+            throw SphynxError.badRequest("Missing library id")
+        }
+        try requireScan(context, libraries: [libraryId])
+        let sources = try await catalog.sources().filter { $0.feedsLibraries().contains(libraryId) }
+        var summaries: [IndexSummary] = []
+        for source in sources { summaries.append(try await indexer.scan(sourceId: source.id)) }
+        await notifyLibrariesChanged([libraryId], action: "scanned")
+        return IndexAllSummary(sources: summaries)
     }
 
     @Sendable
     func scanAll(_ request: Request, context: SphynxRequestContext) async throws -> IndexAllSummary {
-        try requireAdmin(context)
+        // Scanning everything needs the unscoped grant (a per-library scope can't
+        // authorize a full-catalog scan).
+        let identity = try context.requireIdentity()
+        guard identity.has(Permissions.catalogScan) else {
+            throw SphynxError.forbidden("You don't have permission to scan")
+        }
         let summary = IndexAllSummary(sources: try await indexer.scanAll())
         var libs: Set<String> = []
         for source in try await catalog.sources() { libs.formUnion(source.feedsLibraries()) }
@@ -446,7 +478,7 @@ struct AdminController: Sendable {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
         let libraryId = try await catalog.owningLibraryId(of: item)
-        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId) else {
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId, forItem: itemId) else {
             throw SphynxError.forbidden("You don't have permission to edit metadata")
         }
         return AdminItemResponse(item: item.toProtocol(full: true), lockedFields: item.lockedFields().sorted())
@@ -462,7 +494,7 @@ struct AdminController: Sendable {
             throw SphynxError.notFound("No item '\(itemId)'")
         }
         let libraryId = try await catalog.owningLibraryId(of: item)
-        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId) else {
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId, forItem: itemId) else {
             throw SphynxError.forbidden("You don't have permission to edit metadata")
         }
         let body = try await request.decode(as: EditItemRequest.self, context: context)
@@ -510,10 +542,12 @@ struct AdminController: Sendable {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Pin an item to a specific TMDB id (admin override) and re-enrich.
+    /// Pin an item to a specific TMDB id and re-enrich. Part of metadata
+    /// correction, so gated by `metadata.edit` (honoring per-library / per-item
+    /// scoping), not the admin role.
     @Sendable
     func setIdentity(_ request: Request, context: SphynxRequestContext) async throws -> Item {
-        try requireAdmin(context)
+        let identity = try context.requireIdentity()
         let enrichment = try requireEnrichment()
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
@@ -521,6 +555,10 @@ struct AdminController: Sendable {
         let body = try await request.decode(as: SetIdentityRequest.self, context: context)
         guard var item = try await catalog.item(id: itemId) else {
             throw SphynxError.notFound("No item '\(itemId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId, forItem: itemId) else {
+            throw SphynxError.forbidden("You don't have permission to edit metadata")
         }
         item.tmdbId = body.tmdbId
         item.identityPinned = true
@@ -534,16 +572,21 @@ struct AdminController: Sendable {
         return refreshed.toProtocol(full: true)
     }
 
-    /// Force re-identification + enrichment of one item.
+    /// Force re-identification + enrichment of one item. Part of metadata
+    /// correction, so gated by `metadata.edit` (per-library / per-item scoping).
     @Sendable
     func enrichItem(_ request: Request, context: SphynxRequestContext) async throws -> Item {
-        try requireAdmin(context)
+        let identity = try context.requireIdentity()
         let enrichment = try requireEnrichment()
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
         }
         guard let item = try await catalog.item(id: itemId) else {
             throw SphynxError.notFound("No item '\(itemId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.metadataEdit, inLibrary: libraryId, forItem: itemId) else {
+            throw SphynxError.forbidden("You don't have permission to edit metadata")
         }
         await enrichment.process(item, force: true)
         guard let refreshed = try await catalog.item(id: itemId) else {

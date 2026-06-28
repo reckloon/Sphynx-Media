@@ -23,9 +23,31 @@ struct AuthController: Sendable {
         group.patch("auth/me", use: updateProfile)
         group.put("auth/me/avatar", use: setAvatar)
         group.delete("auth/me/avatar", use: clearAvatar)
+        group.get("auth/sessions", use: listSessions)
+        group.delete("auth/sessions/:sessionId", use: revokeSession)
         // Serve a user's hosted avatar image (any authenticated user may load it,
         // so clients can show other users' pictures). Bytes only, no envelope.
         group.get("users/:userId/avatar", use: avatar)
+    }
+
+    /// The caller's active sign-in sessions (devices).
+    @Sendable
+    func listSessions(_ request: Request, context: SphynxRequestContext) async throws -> SessionsResponse {
+        let identity = try context.requireIdentity()
+        let sessions = try await auth.listSessions(userId: identity.userId, currentSessionId: identity.sessionId)
+        return SessionsResponse(sessions: sessions)
+    }
+
+    /// Sign out one of the caller's own devices. **204**; idempotent. Revoking the
+    /// current session is allowed (it signs this device out on the next request).
+    @Sendable
+    func revokeSession(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        let identity = try context.requireIdentity()
+        guard let sessionId = context.parameters.get("sessionId") else {
+            throw SphynxError.badRequest("Missing session id")
+        }
+        try await auth.revokeSession(userId: identity.userId, sessionId: sessionId)
+        return Response(status: .noContent)
     }
 
     /// The authenticated user + that user's effective permissions and per-field
