@@ -132,11 +132,12 @@ struct Indexer: Sendable {
                record.primaryImage == nil {
                 record.tmdbId = series.tmdbId
                 record.primaryImage = TMDBImage.url(details.posterPath, size: "w500")
-                record.thumbImage = TMDBImage.url(details.posterPath, size: "w342")
                 record.placeholderURL = TMDBImage.url(details.posterPath, size: "w92")
-                // Seasons have no backdrop of their own — inherit the show's wide
-                // art so season screens have a horizontal image too.
+                // Seasons have no landscape art of their own — inherit the show's
+                // wide art for both `backdrop` (full-bleed) and `thumb` (the
+                // horizontal card image), so `thumb` is landscape, not a poster.
                 record.backdropImage = series.backdropImage
+                record.thumbImage = series.backdropImage
                 record.overview = details.overview
                 record.enrichedAt = now
                 record.updatedAt = now

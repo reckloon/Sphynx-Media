@@ -63,10 +63,14 @@ struct Enricher: Sendable {
             runtimeSeconds: details.runtimeMinutes.map { Double($0) * 60 },
             genres: details.genres,
             communityRating: details.voteAverage,
+            // Image roles (see API.md → Item shape): `primary` is the portrait
+            // poster; `backdrop` is large landscape art; `thumb` is a smaller
+            // LANDSCAPE card image (NOT a small poster) — derived from the backdrop
+            // so horizontal tiles (e.g. Continue Watching) have a sized image.
             primaryImage: TMDBImage.url(details.posterPath, size: "w500"),
             backdropImage: TMDBImage.url(details.backdropPath, size: "w1280"),
-            thumbImage: TMDBImage.url(details.posterPath, size: "w342"),
-            // Self-describing placeholder: a tiny poster URL (no BlurHash compute).
+            thumbImage: TMDBImage.url(details.backdropPath, size: "w780"),
+            // Self-describing placeholder: a tiny poster URL for `primary` (no BlurHash compute).
             placeholderURL: TMDBImage.url(details.posterPath, size: "w92"),
             cast: Self.storedCast(details.cast, limit: castLimit),
             originalTitle: (details.originalTitle == details.title) ? nil : details.originalTitle,

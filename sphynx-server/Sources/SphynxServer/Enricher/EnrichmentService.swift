@@ -112,7 +112,9 @@ struct EnrichmentService: Sendable {
                 if !locked.contains(LockableField.overview) { updated.overview = details.overview }
                 if !locked.contains(LockableField.images) {
                     updated.primaryImage = TMDBImage.url(details.posterPath, size: "w500")
-                    updated.thumbImage = TMDBImage.url(details.posterPath, size: "w342")
+                    // `thumb` is the horizontal card image: a season has no landscape
+                    // art of its own, so mirror the inherited show backdrop.
+                    updated.thumbImage = updated.backdropImage
                 }
                 if !locked.contains(LockableField.placeholder) {
                     updated.placeholderURL = TMDBImage.url(details.posterPath, size: "w92")

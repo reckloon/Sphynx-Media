@@ -37,11 +37,13 @@ extension Catalog {
             if existing.title != title { existing.title = title; changed = true }
             if let primaryImage, existing.primaryImage != primaryImage {
                 existing.primaryImage = primaryImage
-                existing.thumbImage = primaryImage
                 changed = true
             }
             if let backdropImage, existing.backdropImage != backdropImage {
-                existing.backdropImage = backdropImage; changed = true
+                // `thumb` is the horizontal card image — track the backdrop, not the poster.
+                existing.backdropImage = backdropImage
+                existing.thumbImage = backdropImage
+                changed = true
             }
             if let placeholderURL, existing.placeholderURL != placeholderURL {
                 existing.placeholderURL = placeholderURL; changed = true
@@ -70,7 +72,7 @@ extension Catalog {
             updatedAt: now,
             primaryImage: primaryImage,
             backdropImage: backdropImage,
-            thumbImage: primaryImage,
+            thumbImage: backdropImage,  // horizontal card image, not the poster
             placeholderURL: placeholderURL,
             identityPinned: false
         )

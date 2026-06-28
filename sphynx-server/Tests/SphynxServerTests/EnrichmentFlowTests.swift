@@ -88,6 +88,12 @@ struct EnrichmentFlowTests {
             #expect(full.genres == ["Action", "Science Fiction"])
             #expect(full.communityRating == 8.2)
             #expect(full.images?.primary == "https://image.tmdb.org/t/p/w500/poster.jpg")
+            // `thumb` is a LANDSCAPE card image (from the backdrop), NOT a small
+            // poster — clients use it for horizontal tiles (e.g. Continue Watching).
+            #expect(full.images?.backdrop == "https://image.tmdb.org/t/p/w1280/back.jpg")
+            #expect(full.images?.thumb == "https://image.tmdb.org/t/p/w780/back.jpg")
+            #expect(full.images?.thumb?.contains("/back.jpg") == true)   // horizontal source
+            #expect(full.images?.thumb?.contains("/poster.jpg") == false)  // regression: never the poster
             #expect(full.placeholder == .url("https://image.tmdb.org/t/p/w92/poster.jpg"))
             #expect(full.cast?.first?.name == "Keanu Reeves")
             #expect(full.cast?.first?.role == "Neo")

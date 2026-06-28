@@ -781,18 +781,42 @@ The example above shows the **full protocol shape** — every field is optional 
 omitted when empty. The **reference server** currently populates the TMDB-derived
 fields (overview, year, runtime, genres, `communityRating`, `officialRating`, cast
 — including **TV** series/episodes — directors/writers, studios, countries, tagline,
-status, premiereDate/endDate, `externalIds.imdb`, images) plus per-user state. It
-does **not** populate `criticRating`, `tags`, `trailers`, `chapters`, `sortTitle`,
-or the `logo`/`banner` image roles — those are reserved for richer servers or
-extensions (or ride in `extra`); clients must render fine without them.
+status, premiereDate/endDate, `externalIds.imdb`, `sortTitle`, `tags`, `trailers`,
+images incl. `logo`/`banner`) plus `parentId`/`collectionId` and per-user state. It
+does **not** populate `criticRating` or `chapters` — those are reserved for richer
+servers or extensions (or ride in `extra`); clients must render fine without them.
+(See `capabilities.fields` in [`/v1/info`](#-get-v1info--unauthenticated) for the
+machine-readable coverage list.)
 
-`images` carries neutral roles (all optional): `primary` (portrait poster; for an
-episode, its landscape still), `backdrop` (wide / **horizontal** art), `thumb` (a
-small variant), `logo` (transparent title logo), `banner` (wide banner art). The
-reference server fills movies with primary + backdrop + thumb (+ `logo`/`banner`
-when TMDB has them); series with primary + backdrop; **seasons** and **episodes**
-also inherit the show's `backdrop`, so every enriched item has both a portrait
-(`primary`) and a horizontal (`backdrop`) option.
+#### Image roles
+
+`images` carries neutral roles, all optional — a server sends the forms it has, a
+client uses the ones it recognises. Each role has a defined **orientation**, so a
+client knows which to reach for when laying out a portrait tile vs a landscape one:
+
+| Role | Orientation | Intended use |
+|------|-------------|--------------|
+| `primary` | **Portrait** poster (~2:3). **Exception:** an **episode**'s `primary` is its **landscape** still (episodes have no poster). | The main poster / tile |
+| `backdrop` | **Landscape** (~16:9), large | Full-bleed hero / background |
+| `thumb` | **Landscape** (~16:9), card-sized | Horizontal tiles & rows (e.g. **Continue Watching**) |
+| `logo` | Transparent title logo (wide) | Title art overlaid on a backdrop |
+| `banner` | Wide banner strip | Banner-style headers |
+
+**`thumb` is a landscape card image, not a small poster.** A client building a
+horizontal row (Continue Watching, Up Next) uses `thumb` (card-sized) or `backdrop`
+(full-bleed); a portrait grid uses `primary`. The reference server fills:
+
+- **movies / series** → `primary` (poster) + `backdrop` and `thumb` (both from the
+  TMDB backdrop — large and card-sized) + `logo`/`banner` when TMDB has them;
+- **seasons** → `primary` (season poster) + `backdrop`/`thumb` inherited from the
+  show's wide art;
+- **episodes** → `primary` and `thumb` from the episode **still** (already
+  landscape) + `backdrop` from the show.
+
+So every enriched item carries both a **portrait** option (`primary`, except
+episodes) and a **landscape** option (`thumb` + `backdrop`). `placeholder` is a
+tiny low-res stand-in for the item's `primary` image while it loads (the reference
+server sends the `url` form, ~`w92`).
 
 `parentId` is the generic up-link: the container an item nests under when it isn't
 the TV season/series relationship — a bonus/extra under its movie or show, or a
