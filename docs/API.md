@@ -53,6 +53,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "candidates": true,
     "events": true,
     "passkeys": false,
+    "deviceAuth": true,
     "metadata": { "markers": "readwrite", "images": "read" },
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
                "dateAdded", "updatedAt", "seriesId", "seriesTitle", "seasonIndex",
@@ -80,6 +81,9 @@ Absent ⇒ `false`: the client falls back to polling.
 `passkeys` advertises passwordless **passkey** (WebAuthn) sign-in (see [Passkeys](#passkeys-webauthn)).
 Absent ⇒ `false`: no Relying Party is configured; the client hides passkey
 affordances and uses password login.
+`deviceAuth` advertises the **QR / code device-authorization** grant for TVs (see
+[Device authorization](#device-authorization-qr--code-sign-in)). Absent ⇒ `false`:
+the client shouldn't offer a "sign in on this TV" QR flow.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
@@ -349,6 +353,69 @@ passkeys.
 > e.g. `media.example.com`); the origin defaults to `https://<rpId>`. These must
 > match the client's origin or every ceremony fails — a constraint of WebAuthn,
 > not Sphynx.
+
+---
+
+## Device authorization (QR / code sign-in)
+
+Passwordless sign-in for **TVs and other limited-input clients** — an RFC 8628-style
+device-authorization grant. The device shows a QR (and a short code); the user
+approves it on a second device where they're already signed in (typically with a
+**passkey**); the device polls and receives the same `TokenResponse` as any login.
+Advertised via `capabilities.deviceAuth`.
+
+```
+ ┌── TV ──┐                         ┌── phone (signed in) ──┐
+ │ start  │──┐                      │                       │
+ │  poll  │  │  authorization_      │   scan QR / enter code│
+ │  poll  │  │   pending …          │   approve ────────────┼──► device/approve
+ │  poll  │◄─┘  → TokenResponse ◄───┼───────────────────────┘
+ └────────┘                         └───────────────────────┘
+```
+
+### `POST /v1/auth/device/start` — unauthenticated
+
+The device begins. Send `X-Sphynx-Device` (its install id); optional body
+`{ "label": "Living Room TV" }` names it on the approval screen.
+
+**200**
+```json
+{
+  "deviceCode": "…",
+  "userCode": "WXYZ-2345",
+  "verificationUri": "https://server/link",
+  "verificationUriComplete": "https://server/link?code=WXYZ-2345",
+  "interval": 5,
+  "expiresIn": 600
+}
+```
+The device renders a **QR of `verificationUriComplete`** and shows `userCode` for
+manual entry. `deviceCode` is the secret it polls with (never shown to the user).
+`interval` is the minimum seconds between polls; the request expires after
+`expiresIn`. `verificationUri` is the server's public base URL + `/link` (configured
+via the passkey Relying-Party origin, else `http://<host>:<port>`).
+
+### `POST /v1/auth/device/token` — unauthenticated
+
+The device polls with `{ "deviceCode": "…" }`. Until approved, **400** with an error
+`code` of `authorization_pending` (keep polling), `expired_token` (start over), or
+`invalid_grant` (unknown/already-claimed). Once approved, **200** with a full
+[`TokenResponse`](#post-v1authlogin--unauthenticated) — a real session for this
+device. The code is **single-use**: a second claim fails.
+
+### `GET /v1/auth/device/pending?code=<userCode>` — auth required
+
+Lets the approval UI confirm *which* device it's authorizing. **200**
+`{ "label": "Living Room TV", "expiresIn": 540 }`; **404** if the code is unknown or
+expired.
+
+### `POST /v1/auth/device/approve` — auth required
+
+The signed-in user approves a pending device: `{ "userCode": "WXYZ-2345" }` → **204**.
+**404** if unknown/expired. The approver authenticated however they like — **a passkey
+makes this the "scan, Face ID, done" flow**. The reference server hosts a browser
+approval page at **`GET /link`**; a native client may call this endpoint directly
+from its own (passkey-authenticated) session.
 
 ---
 

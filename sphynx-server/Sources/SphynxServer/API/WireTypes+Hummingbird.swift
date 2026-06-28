@@ -27,3 +27,5 @@ extension MarkersInfo: @retroactive ResponseEncodable {}
 extension ChangesResponse: @retroactive ResponseEncodable {}
 extension PasskeyInfo: @retroactive ResponseEncodable {}
 extension PasskeyListResponse: @retroactive ResponseEncodable {}
+extension DeviceAuthResponse: @retroactive ResponseEncodable {}
+extension DevicePendingResponse: @retroactive ResponseEncodable {}

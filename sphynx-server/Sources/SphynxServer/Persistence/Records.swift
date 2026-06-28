@@ -94,6 +94,24 @@ struct PasskeyChallengeRecord: Codable, Sendable, FetchableRecord, PersistableRe
     var createdAt: Double
 }
 
+/// A pending device-authorization request (RFC 8628-style QR/code login). The
+/// polling device holds the secret `deviceCode`; we store only its hash. The user
+/// approves by the short `userCode`. `userId` is set on approval; the row is
+/// deleted once the device claims its tokens (single-use).
+struct DeviceAuthRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "device_auth"
+
+    var id: String
+    var deviceCodeHash: String
+    var userCode: String
+    var deviceId: String
+    var label: String?
+    var userId: String?
+    var approved: Bool
+    var createdAt: Double
+    var expiresAt: Double
+}
+
 /// A top-level browsable collection.
 struct LibraryRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "library"

@@ -28,6 +28,7 @@ struct InfoController: Sendable {
                 candidates: true,
                 events: true,
                 passkeys: configuration.passkeysEnabled,
+                deviceAuth: true,
                 metadata: policy.advertised,
                 fields: Self.supportedItemFields,
                 browse: BrowseCapabilities(

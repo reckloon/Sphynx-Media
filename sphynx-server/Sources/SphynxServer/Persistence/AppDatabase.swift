@@ -397,6 +397,27 @@ struct AppDatabase: Sendable {
             try db.create(indexOn: "passkey_challenge", columns: ["expiresAt"])
         }
 
+        migrator.registerMigration("m25_device_auth") { db in
+            // A pending device-authorization request (RFC 8628-style QR/code login
+            // for TVs). The device polls with the secret `deviceCode` (we store only
+            // its hash); the user approves by the short, human `userCode`. `userId`
+            // is null until approved. Single-use: deleted once the device claims its
+            // tokens; expired rows are swept lazily.
+            try db.create(table: "device_auth") { t in
+                t.column("id", .text).primaryKey()
+                t.column("deviceCodeHash", .text).notNull().unique()
+                t.column("userCode", .text).notNull().unique()
+                t.column("deviceId", .text).notNull()       // the polling device's install id
+                t.column("label", .text)                    // optional name shown to the approver
+                t.column("userId", .text)                   // set on approval
+                    .references("user", onDelete: .cascade)
+                t.column("approved", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .double).notNull()
+                t.column("expiresAt", .double).notNull()
+            }
+            try db.create(indexOn: "device_auth", columns: ["expiresAt"])
+        }
+
         return migrator
     }
 }

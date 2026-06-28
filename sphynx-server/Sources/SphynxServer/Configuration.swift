@@ -125,4 +125,14 @@ struct ServerConfiguration: Sendable {
         let origin = passkeyRelyingPartyOrigin.isEmpty ? "https://\(id)" : passkeyRelyingPartyOrigin
         return (id, name, origin)
     }
+
+    /// The server's public base URL, used to build user-facing links — currently the
+    /// device-auth `/link` verification page (and its QR). Prefers the configured
+    /// passkey Relying Party origin (the real public origin a phone can reach);
+    /// otherwise falls back to `http://<host>:<port>` for local use.
+    var publicBaseURL: String {
+        if let origin = relyingParty?.origin { return origin }
+        let host = (hostname == "0.0.0.0" || hostname.isEmpty) ? "localhost" : hostname
+        return "http://\(host):\(port)"
+    }
 }

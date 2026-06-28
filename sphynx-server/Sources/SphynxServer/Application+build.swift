@@ -69,19 +69,27 @@ func buildRouter(
         ))
     }
 
+    // Device authorization (RFC 8628-style QR/code sign-in for TVs). Always on:
+    // the approval step rides whatever auth the user already has (password/passkey).
+    let deviceAuthController = DeviceAuthController(service: DeviceAuthService(
+        db: auth.db, auth: auth, publicBaseURL: configuration.publicBaseURL))
+
     // Public surface: discovery + auth + the static web admin page.
     let authController = AuthController(auth: auth, policy: policy)
     let publicV1 = router.group("v1")
     InfoController(configuration: configuration, policy: policy).addRoutes(to: publicV1)
     authController.addRoutes(to: publicV1)
     passkeyController?.addRoutes(to: publicV1)
+    deviceAuthController.addRoutes(to: publicV1)
     AdminWebController.addRoutes(to: router)
     UserWebController.addRoutes(to: router)
+    DeviceLinkWebController.addRoutes(to: router)
 
     // Secured surface: everything else requires a valid bearer token.
     let securedV1 = router.group("v1").add(middleware: AuthMiddleware(auth: auth))
     authController.addSecuredRoutes(to: securedV1)
     passkeyController?.addSecuredRoutes(to: securedV1)
+    deviceAuthController.addSecuredRoutes(to: securedV1)
     let home = HomeService(catalog: catalog, playstate: playstate, userState: userState)
     BrowseController(catalog: catalog, playstate: playstate, userState: userState, home: home).addRoutes(to: securedV1)
     ChangesController(catalog: catalog, playstate: playstate, userState: userState).addRoutes(to: securedV1)

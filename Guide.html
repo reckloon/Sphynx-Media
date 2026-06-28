@@ -484,6 +484,16 @@
   <p><strong>Configuration.</strong> Passkeys stay off until an admin sets the Relying Party in <strong>Settings</strong> (<code>passkeyRelyingPartyID</code>, optional <code>passkeyRelyingPartyName</code> / <code>passkeyRelyingPartyOrigin</code>). The RP id is the bare domain the server is reached at (no scheme/port, e.g. <code>media.example.com</code>); the origin defaults to <code>https://&lt;rpId&gt;</code>. These must match the client's origin or every ceremony fails — a WebAuthn constraint, not a Sphynx one.</p>
 </div>
 
+<h4 id="api-deviceauth">Device authorization (QR / code sign-in)</h4>
+<p>Passwordless sign-in for <strong>TVs and limited-input clients</strong> — an RFC 8628-style device-authorization grant. The device shows a QR + short code; the user approves on a second device where they're already signed in (typically via a <strong>passkey</strong>); the device polls and receives the same <code>TokenResponse</code> as any login. Advertised via <code>capabilities.deviceAuth</code>.</p>
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/device/start</span></div>
+<p>The device begins (send <code>X-Sphynx-Device</code>; optional body <code>{ "label":"Living Room TV" }</code>). <strong>200</strong> → <code>{ "deviceCode", "userCode":"WXYZ-2345", "verificationUri", "verificationUriComplete", "interval", "expiresIn" }</code>. The device renders a <strong>QR of <code>verificationUriComplete</code></strong> and shows <code>userCode</code> for manual entry; <code>deviceCode</code> is the secret it polls with (never shown).</p>
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/device/token</span></div>
+<p>The device polls with <code>{ "deviceCode" }</code> every <code>interval</code> seconds. Until approved: <strong>400</strong> with error <code>code</code> <code>authorization_pending</code> (keep polling) / <code>expired_token</code> / <code>invalid_grant</code>. Once approved: <strong>200</strong> with a real <a href="#api-auth"><code>TokenResponse</code></a>. <strong>Single-use</strong> — a second claim fails.</p>
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/device/pending?code=…</span><span class="badge auth">auth</span></div>
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/device/approve</span><span class="badge auth">auth</span></div>
+<p><code>pending</code> confirms <em>which</em> device (<code>{ "label", "expiresIn" }</code>); <code>approve</code> takes <code>{ "userCode" }</code> → <strong>204</strong>. The approver authenticates however they like — <strong>a passkey makes this "scan → Face ID → done."</strong> The reference server hosts a browser approval page at <strong><code>GET /link</code></strong>; a native client can call <code>approve</code> straight from its own passkey-authenticated session.</p>
+
 <h3 id="api-browse">Browse</h3>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/libraries</span><span class="badge auth">auth</span></div>

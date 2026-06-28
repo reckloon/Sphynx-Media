@@ -76,6 +76,10 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// `/v1/auth/passkeys/*` ceremonies? `false`/absent ⇒ no Relying Party is
     /// configured; clients should hide passkey affordances and use password login.
     public var passkeys: Bool
+    /// Does the server support the **device authorization** grant (`/v1/auth/device/*`)
+    /// — QR / code pairing for TVs and limited-input clients? `false`/absent ⇒ the
+    /// client should not offer a "sign in on this TV" QR flow.
+    public var deviceAuth: Bool
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
@@ -104,6 +108,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         candidates: Bool = false,
         events: Bool = false,
         passkeys: Bool = false,
+        deviceAuth: Bool = false,
         metadata: [String: MetadataAccess] = [:],
         fields: [String] = [],
         browse: BrowseCapabilities? = nil,
@@ -114,6 +119,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.candidates = candidates
         self.events = events
         self.passkeys = passkeys
+        self.deviceAuth = deviceAuth
         self.metadata = metadata
         self.fields = fields
         self.browse = browse
@@ -127,6 +133,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.candidates = try container.decodeIfPresent(Bool.self, forKey: .candidates) ?? false
         self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
         self.passkeys = try container.decodeIfPresent(Bool.self, forKey: .passkeys) ?? false
+        self.deviceAuth = try container.decodeIfPresent(Bool.self, forKey: .deviceAuth) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
         self.fields = try container.decodeIfPresent([String].self, forKey: .fields) ?? []
         self.browse = try container.decodeIfPresent(BrowseCapabilities.self, forKey: .browse)
@@ -147,7 +154,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, events, passkeys, metadata, fields, browse, playstateReportInterval
+        case search, playstate, candidates, events, passkeys, deviceAuth, metadata, fields, browse, playstateReportInterval
     }
 }
 
