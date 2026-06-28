@@ -95,6 +95,13 @@ struct EnrichmentFlowTests {
             #expect(full.images?.thumb?.contains("/back.jpg") == true)   // horizontal source
             #expect(full.images?.thumb?.contains("/poster.jpg") == false)  // regression: never the poster
             #expect(full.placeholder == .url("https://image.tmdb.org/t/p/w92/poster.jpg"))
+            // Per-image variants (#2): each role carries its own placeholder + aspect.
+            let v = full.images?.variants
+            #expect(v?["primary"]?.aspect == 0.667)   // portrait poster
+            #expect(v?["backdrop"]?.aspect == 1.778)  // landscape
+            #expect(v?["thumb"]?.aspect == 1.778)
+            #expect(v?["backdrop"]?.placeholder == .url("https://image.tmdb.org/t/p/w300/back.jpg"))
+            #expect(v?["primary"]?.placeholder == .url("https://image.tmdb.org/t/p/w92/poster.jpg"))
             #expect(full.cast?.first?.name == "Keanu Reeves")
             #expect(full.cast?.first?.role == "Neo")
             #expect(full.cast?.first?.id == "pe_6384")

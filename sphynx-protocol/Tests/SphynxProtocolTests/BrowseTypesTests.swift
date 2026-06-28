@@ -36,6 +36,28 @@ struct BrowseTypesTests {
         #expect(!json.contains("nextCursor"))
     }
 
+    @Test("ItemImages variants carry per-image placeholder + aspect, round-trip")
+    func imageVariants() throws {
+        let images = ItemImages(
+            primary: "https://img/w500/poster.jpg",
+            backdrop: "https://img/w1280/back.jpg",
+            thumb: "https://img/w780/back.jpg",
+            variants: [
+                "primary": ImageInfo(url: "https://img/w500/poster.jpg",
+                                     placeholder: .url("https://img/w92/poster.jpg"), aspect: 0.667),
+                "backdrop": ImageInfo(url: "https://img/w1280/back.jpg",
+                                      placeholder: .url("https://img/w300/back.jpg"), aspect: 1.778),
+                // an unknown future role key must survive (open map)
+                "clearart": ImageInfo(url: "https://img/x/clear.png"),
+            ])
+        try assertRoundTrips(Item(id: "it_1", type: .movie, title: "Heat", images: images))
+        // The flat URL fields stay for back-compat alongside the rich variants.
+        let decoded = try JSONDecoder().decode(Item.self, from: JSONEncoder().encode(Item(id: "it_1", type: .movie, title: "Heat", images: images)))
+        #expect(decoded.images?.primary == "https://img/w500/poster.jpg")
+        #expect(decoded.images?.variants?["backdrop"]?.aspect == 1.778)
+        #expect(decoded.images?.variants?["backdrop"]?.placeholder == .url("https://img/w300/back.jpg"))
+    }
+
     @Test("Item carries parentId + collection membership + extras types")
     func parentAndCollection() throws {
         // A bonus clip nested under its movie.

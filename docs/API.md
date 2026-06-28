@@ -816,9 +816,32 @@ horizontal row (Continue Watching, Up Next) uses `thumb` (card-sized) or `backdr
   landscape) + `backdrop` from the show.
 
 So every enriched item carries both a **portrait** option (`primary`, except
-episodes) and a **landscape** option (`thumb` + `backdrop`). `placeholder` is a
-tiny low-res stand-in for the item's `primary` image while it loads (the reference
-server sends the `url` form, ~`w92`).
+episodes) and a **landscape** option (`thumb` + `backdrop`). `placeholder` (top
+level) is a tiny low-res stand-in for the item's `primary` image while it loads.
+
+**Per-image variants.** Alongside the flat URL fields, `images.variants` is an
+optional map keyed by role name carrying **per-image** metadata, so a client can
+blur-up and lay out *each* image independently — not just the poster:
+
+```json
+"images": {
+  "primary": "…/w500/poster.jpg",      // flat fields unchanged (back-compat)
+  "backdrop": "…/w1280/back.jpg",
+  "thumb": "…/w780/back.jpg",
+  "variants": {
+    "primary":  { "url": "…/w500/poster.jpg", "placeholder": { "url": "…/w92/poster.jpg" }, "aspect": 0.667 },
+    "backdrop": { "url": "…/w1280/back.jpg",  "placeholder": { "url": "…/w300/back.jpg" },  "aspect": 1.778 },
+    "thumb":    { "url": "…/w780/back.jpg",   "placeholder": { "url": "…/w300/back.jpg" },  "aspect": 1.778 }
+  }
+}
+```
+
+Each `ImageInfo` carries `url`, an optional `placeholder` (same one-of as the
+top-level one — the reference server sends the `url` form), and an optional
+`aspect` (width ÷ height: ~`0.667` portrait, ~`1.778` landscape). `width`/`height`
+are reserved (absent unless the server knows exact dimensions). The map is **open**
+— clients tolerate role keys they don't recognise. The flat role fields remain the
+URL source of truth, so a client that only reads `images.primary` keeps working.
 
 `parentId` is the generic up-link: the container an item nests under when it isn't
 the TV season/series relationship — a bonus/extra under its movie or show, or a

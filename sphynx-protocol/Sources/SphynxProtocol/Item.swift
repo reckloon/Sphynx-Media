@@ -1,5 +1,30 @@
 import Foundation
 
+/// Per-image metadata for one role in `ItemImages.variants`: the full URL plus a
+/// low-res `placeholder` to blur up from and an `aspect` hint (width ÷ height), so
+/// a client knows an image's shape before it loads and can crop/lay out without
+/// guessing. Only `url` is required; everything else is best-effort.
+public struct ImageInfo: Codable, Hashable, Sendable {
+    /// The full-size image URL (the same value as the matching flat role field).
+    public var url: String
+    /// A low-res stand-in for `url` (the reference server sends the `url` form).
+    public var placeholder: Placeholder?
+    /// Aspect ratio = width ÷ height. ~0.667 for a portrait poster (2:3), ~1.778
+    /// for landscape art (16:9). Absent when the server can't state it.
+    public var aspect: Double?
+    /// Intrinsic pixel dimensions, when the server knows them (often absent).
+    public var width: Int?
+    public var height: Int?
+
+    public init(url: String, placeholder: Placeholder? = nil, aspect: Double? = nil, width: Int? = nil, height: Int? = nil) {
+        self.url = url
+        self.placeholder = placeholder
+        self.aspect = aspect
+        self.width = width
+        self.height = height
+    }
+}
+
 /// Neutral image references for an item (§5.4). All optional — a server sends the
 /// forms it has; clients use the ones they recognise. New image roles may be added
 /// over time without breaking older clients.
@@ -13,18 +38,28 @@ public struct ItemImages: Codable, Hashable, Sendable {
     /// Wide banner art.
     public var banner: String?
 
+    /// Per-role rich metadata keyed by role name (`"primary"`, `"backdrop"`,
+    /// `"thumb"`, `"logo"`, `"banner"`). **Additive:** the flat role fields above
+    /// remain the URL source of truth; `variants` adds the per-image `placeholder`
+    /// and `aspect` a client needs to blur up and lay out each image independently
+    /// (e.g. a landscape backdrop carrying its own low-res form + 16:9 hint, not
+    /// just the poster's). An open map — clients tolerate unknown role keys.
+    public var variants: [String: ImageInfo]?
+
     public init(
         primary: String? = nil,
         backdrop: String? = nil,
         thumb: String? = nil,
         logo: String? = nil,
-        banner: String? = nil
+        banner: String? = nil,
+        variants: [String: ImageInfo]? = nil
     ) {
         self.primary = primary
         self.backdrop = backdrop
         self.thumb = thumb
         self.logo = logo
         self.banner = banner
+        self.variants = variants
     }
 }
 

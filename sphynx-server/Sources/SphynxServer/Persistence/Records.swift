@@ -305,12 +305,34 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// placeholder, year); `full` adds enrichment (overview, genres, ratings,
     /// runtime, cast). A skeleton is distinguished by the absence of enrichment.
     func toProtocol(full: Bool = false) -> Item {
-        let hasImages = primaryImage != nil || backdropImage != nil || thumbImage != nil
-            || logoImage != nil || bannerImage != nil
-        let images: ItemImages? = hasImages
-            ? ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage,
-                         logo: logoImage, banner: bannerImage)
-            : nil
+        // Per-image variants: each role carries its own low-res placeholder and an
+        // aspect hint (inferred from the role's orientation), so a client can blur
+        // up and lay out each image independently — not just the poster. Derived
+        // here from the stored URLs (no extra storage / re-enrich needed).
+        let landscape = 1.778, portrait = 0.667
+        var variants: [String: ImageInfo] = [:]
+        if let primaryImage {
+            variants["primary"] = ImageInfo(
+                url: primaryImage, placeholder: placeholderURL.map { .url($0) },
+                aspect: type == "episode" ? landscape : portrait)  // episode primary is the landscape still
+        }
+        if let backdropImage {
+            variants["backdrop"] = ImageInfo(
+                url: backdropImage, placeholder: .url(Self.resizeTMDB(backdropImage, to: "w300")), aspect: landscape)
+        }
+        if let thumbImage {
+            variants["thumb"] = ImageInfo(
+                url: thumbImage, placeholder: .url(Self.resizeTMDB(thumbImage, to: "w300")), aspect: landscape)
+        }
+        if let logoImage {
+            variants["logo"] = ImageInfo(url: logoImage, placeholder: .url(Self.resizeTMDB(logoImage, to: "w92")))
+        }
+        if let bannerImage {
+            variants["banner"] = ImageInfo(url: bannerImage, placeholder: .url(Self.resizeTMDB(bannerImage, to: "w300")))
+        }
+        let images: ItemImages? = variants.isEmpty ? nil
+            : ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage,
+                         logo: logoImage, banner: bannerImage, variants: variants)
 
         var item = Item(
             id: id,
@@ -368,6 +390,14 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     private func decodedGenres() -> [String]? {
         guard let genresJSON, let data = genresJSON.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode([String].self, from: data)
+    }
+
+    /// Swap the size segment of a TMDB image URL (`…/t/p/<size>/<path>`) to make a
+    /// smaller rendition (e.g. a low-res placeholder). Returns the URL unchanged if
+    /// it doesn't match the TMDB pattern (so non-TMDB servers degrade gracefully).
+    static func resizeTMDB(_ url: String, to size: String) -> String {
+        url.replacingOccurrences(
+            of: #"/t/p/(w\d+|h\d+|original)/"#, with: "/t/p/\(size)/", options: .regularExpression)
     }
 
     /// Decode a JSON array of strings (nil/empty → nil so the wire omits it).
