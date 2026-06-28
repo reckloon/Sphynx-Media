@@ -1329,6 +1329,14 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <p><strong>Published Docker image.</strong> A pre-built image you can <code>docker run</code> without cloning. For now, <a href="#docker">build it yourself</a> from the included Dockerfile.</p>
 </div>
 
+<h4>Content &amp; catalog breadth</h4>
+<ul>
+  <li><strong>Extras &amp; bonus content.</strong> Trailers, featurettes, deleted scenes, and behind-the-scenes clips classified as their own item types and <strong>nested under their movie or show</strong> (via a generic <code>parentId</code> up-link) instead of landing in the library grid as standalone movies.</li>
+  <li><strong>Collections / box sets.</strong> When a film belongs to a collection, a <code>collection</code> item is created and its members linked to it — browsable through the existing <code>GET /v1/items?parent=</code>, no new endpoint.</li>
+  <li><strong>Person filmography.</strong> <code>GET /v1/people/{personId}/items</code> — the distinct movies and shows a cast/crew member appears in, newest-first, so a client's person screen lists a full filmography across movies <em>and</em> TV instead of guessing from cached items.</li>
+  <li><strong>Artwork &amp; metadata fills.</strong> Populating <code>images.logo</code>/<code>banner</code>, plus <code>trailers</code>, <code>tags</code>, and <code>sortTitle</code> on items.</li>
+</ul>
+
 <h4>High impact</h4>
 <ul>
   <li><strong>Per-image placeholder &amp; aspect metadata.</strong> Per-image BlurHash, intrinsic dimensions, an aspect-ratio hint, and size variants on <code>images</code> — so a backdrop carries its own low-res placeholder and a known shape, not just the poster.</li>
@@ -1353,7 +1361,6 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Real-time updates</strong> — a WebSocket/SSE channel for cross-device Continue Watching, or an explicit statement that polling is the intended model for a control-plane server.</li>
   <li><strong>Marker editing</strong> — a DELETE for a wrong marker and per-segment provenance/confidence (today contributions are PUT-only and whole-set).</li>
   <li><strong>Metadata-language negotiation</strong> (<code>Accept-Language</code>) for multi-language libraries.</li>
-  <li><strong>Typed collection / person traversal</strong> — a contract for a collection's items or a person's filmography, today inferred from <code>/v1/items</code>.</li>
   <li><strong>More source drivers</strong> — completing WebDAV/SMB/FTP listing.</li>
 </ul>
 </section>

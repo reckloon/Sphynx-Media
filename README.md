@@ -121,9 +121,15 @@ Built spine-first. Working today:
 
 ### Roadmap
 
-Next up is **protocol contract hardening** — wire-contract additions clients can
-rely on. In priority order:
+Two tracks: **content-model breadth** (what items exist and how they relate) and
+**protocol contract hardening** (wire-contract additions clients can rely on). In
+priority order:
 
+- **Content & catalog** — extras / bonus content (trailers, featurettes, deleted
+  scenes nested under their movie or show); collections / box sets (browsable via
+  `items?parent=`); a person-filmography endpoint
+  (`GET /v1/people/{id}/items`); artwork & metadata fills (logo/banner, trailers,
+  tags, sortTitle).
 - **High** — per-image placeholder & aspect metadata; track languages/labels +
   external subtitles in resolve; multiple versions/editions; a
   `GET /v1/changes?since=` delta feed with deletion tombstones.
@@ -132,8 +138,8 @@ rely on. In priority order:
   backoff hints; a clear-resume action; the playstate source-of-truth rule in the
   types.
 - **Lower / by-design** — typed search shape; real-time (WebSocket/SSE) updates;
-  marker DELETE + per-segment provenance; `Accept-Language` negotiation; typed
-  collection/person traversal; more source drivers.
+  marker DELETE + per-segment provenance; `Accept-Language` negotiation; more
+  source drivers.
 
 A pre-built Docker image is also planned. The full roadmap lives in the
 [complete guide](https://reckloon.github.io/Sphynx-Media/#roadmap).
