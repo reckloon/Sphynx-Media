@@ -169,6 +169,24 @@ struct AdminController: Sendable {
         if let v = body.playstateRetention { updates[SettingKey.playstateRetention.rawValue] = String(max(0, v)) }
         if let v = body.maintenanceInterval { updates[SettingKey.maintenanceInterval.rawValue] = String(v) }
         if let v = body.avatarMaxBytes { updates[SettingKey.avatarMaxBytes.rawValue] = String(max(0, v)) }
+        // Passkey Relying Party. The RP id is a bare registrable domain — reject a
+        // scheme/port/path so a misconfiguration fails loudly instead of silently
+        // breaking every ceremony. Empty disables passkeys.
+        if let v = body.passkeyRelyingPartyID {
+            let id = v.trimmingCharacters(in: .whitespaces)
+            if !id.isEmpty, id.contains("/") || id.contains(":") {
+                throw SphynxError.badRequest("passkeyRelyingPartyID must be a bare domain (no scheme, port, or path), e.g. media.example.com")
+            }
+            updates[SettingKey.passkeyRelyingPartyID.rawValue] = id
+        }
+        if let v = body.passkeyRelyingPartyName { updates[SettingKey.passkeyRelyingPartyName.rawValue] = v }
+        if let v = body.passkeyRelyingPartyOrigin {
+            let origin = v.trimmingCharacters(in: .whitespaces)
+            if !origin.isEmpty, !(origin.hasPrefix("https://") || origin.hasPrefix("http://")) {
+                throw SphynxError.badRequest("passkeyRelyingPartyOrigin must include a scheme, e.g. https://media.example.com")
+            }
+            updates[SettingKey.passkeyRelyingPartyOrigin.rawValue] = origin
+        }
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
@@ -565,6 +583,9 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
     var playstateRetention: Double
     var maintenanceInterval: Double
     var avatarMaxBytes: Int
+    var passkeyRelyingPartyID: String
+    var passkeyRelyingPartyName: String
+    var passkeyRelyingPartyOrigin: String
 
     init(from c: ServerConfiguration) {
         self.serverName = c.serverName
@@ -577,6 +598,9 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
         self.playstateRetention = c.playstateRetention
         self.maintenanceInterval = c.maintenanceInterval
         self.avatarMaxBytes = c.avatarMaxBytes
+        self.passkeyRelyingPartyID = c.passkeyRelyingPartyID
+        self.passkeyRelyingPartyName = c.passkeyRelyingPartyName
+        self.passkeyRelyingPartyOrigin = c.passkeyRelyingPartyOrigin
     }
 }
 
@@ -592,6 +616,9 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var playstateRetention: Double?
     var maintenanceInterval: Double?
     var avatarMaxBytes: Int?
+    var passkeyRelyingPartyID: String?
+    var passkeyRelyingPartyName: String?
+    var passkeyRelyingPartyOrigin: String?
 }
 
 /// Masked TMDB-key status: never returns the full key.

@@ -58,6 +58,20 @@ struct ServerConfiguration: Sendable {
     /// detect a vanished client. Startup-only. Default 15.
     var eventsHeartbeat: Double = 15
 
+    /// Passkey (WebAuthn) Relying Party id — the registrable domain the server is
+    /// reached at, **no scheme or port** (e.g. `media.example.com`). Empty disables
+    /// passkeys entirely (`capabilities.passkeys == false`): the ceremonies need an
+    /// RP id that matches the client's origin, which only the operator knows.
+    /// Runtime-tunable via Settings.
+    var passkeyRelyingPartyID: String = ""
+    /// Human-facing Relying Party name shown by the authenticator during
+    /// enrollment. Defaults to the server name when left empty.
+    var passkeyRelyingPartyName: String = ""
+    /// Expected client origin for ceremony verification, **with scheme** (e.g.
+    /// `https://media.example.com`). When empty it is derived as
+    /// `https://<passkeyRelyingPartyID>`. Runtime-tunable via Settings.
+    var passkeyRelyingPartyOrigin: String = ""
+
     static func fromEnvironment() -> ServerConfiguration {
         let env = ProcessInfo.processInfo.environment
         return ServerConfiguration(
@@ -81,7 +95,26 @@ struct ServerConfiguration: Sendable {
             maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
             avatarMaxBytes: env["SPHYNX_AVATAR_MAX_BYTES"].flatMap(Int.init) ?? 2_000_000,            // 2 MB
             playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5,
-            eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15
+            eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15,
+            passkeyRelyingPartyID: env["SPHYNX_PASSKEY_RP_ID"] ?? "",
+            passkeyRelyingPartyName: env["SPHYNX_PASSKEY_RP_NAME"] ?? "",
+            passkeyRelyingPartyOrigin: env["SPHYNX_PASSKEY_ORIGIN"] ?? ""
         )
+    }
+
+    /// Whether passkeys are configured (a Relying Party id is set). When false the
+    /// server advertises `capabilities.passkeys == false` and the ceremonies 404.
+    var passkeysEnabled: Bool {
+        !passkeyRelyingPartyID.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The effective Relying Party settings, applying the name → serverName and
+    /// origin → `https://<rpID>` fallbacks. Returns nil when passkeys are disabled.
+    var relyingParty: (id: String, name: String, origin: String)? {
+        let id = passkeyRelyingPartyID.trimmingCharacters(in: .whitespaces)
+        guard !id.isEmpty else { return nil }
+        let name = passkeyRelyingPartyName.isEmpty ? serverName : passkeyRelyingPartyName
+        let origin = passkeyRelyingPartyOrigin.isEmpty ? "https://\(id)" : passkeyRelyingPartyOrigin
+        return (id, name, origin)
     }
 }

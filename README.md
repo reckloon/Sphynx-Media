@@ -281,6 +281,10 @@ there, already in plain English (no codes to look up):
   artwork and details.
 - **Remember watch progress for** / **Run background cleanup every** —
   housekeeping schedules.
+- **Passkeys (Face ID / Touch ID / security keys)** — optional passwordless
+  sign-in. Off until you fill in your server's domain (the **Relying Party**) so
+  it matches how players reach you; once set, people can add a passkey from their
+  account and sign in without a password. Leave it blank to stick with passwords.
 
 Change one, click **Save settings**, done. (Under the hood the Compose values for
 these just provide the *starting* defaults on first boot; after that the Settings

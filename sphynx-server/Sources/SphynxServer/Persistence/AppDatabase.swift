@@ -357,6 +357,46 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m24_passkeys") { db in
+            // A registered WebAuthn/passkey credential, owned by a user. We store
+            // only the public key (the private key never leaves the authenticator)
+            // plus the metadata needed to verify future assertions. `credentialId`
+            // is the authenticator's base64url credential id and is the lookup key
+            // during a passwordless (discoverable) login, so it's unique + indexed.
+            try db.create(table: "passkey_credential") { t in
+                t.column("id", .text).primaryKey()
+                t.column("userId", .text).notNull()
+                    .references("user", onDelete: .cascade)
+                t.column("credentialId", .text).notNull().unique()
+                t.column("publicKey", .blob).notNull()
+                t.column("signCount", .integer).notNull().defaults(to: 0)
+                // User-facing nickname so a person can tell their devices apart.
+                t.column("label", .text).notNull()
+                // Backup eligibility / sync state reported by the authenticator at
+                // registration (a synced passkey is "multi-device").
+                t.column("backupEligible", .boolean).notNull().defaults(to: false)
+                t.column("backedUp", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .double).notNull()
+                t.column("lastUsedAt", .double)
+            }
+            try db.create(indexOn: "passkey_credential", columns: ["userId"])
+
+            // A short-lived, single-use challenge bridging a ceremony's begin and
+            // finish calls. For registration it is bound to the enrolling user; for
+            // a passwordless login the user is unknown until the assertion is
+            // verified, so `userId` is null. Consumed (deleted) on finish; expired
+            // rows are swept lazily.
+            try db.create(table: "passkey_challenge") { t in
+                t.column("id", .text).primaryKey()
+                t.column("kind", .text).notNull()           // "register" | "authenticate"
+                t.column("userId", .text)                   // set for registration only
+                t.column("challenge", .blob).notNull()
+                t.column("expiresAt", .double).notNull()
+                t.column("createdAt", .double).notNull()
+            }
+            try db.create(indexOn: "passkey_challenge", columns: ["expiresAt"])
+        }
+
         return migrator
     }
 }

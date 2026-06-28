@@ -27,6 +27,7 @@ struct InfoController: Sendable {
                 playstate: true,
                 candidates: true,
                 events: true,
+                passkeys: configuration.passkeysEnabled,
                 metadata: policy.advertised,
                 fields: Self.supportedItemFields,
                 browse: BrowseCapabilities(

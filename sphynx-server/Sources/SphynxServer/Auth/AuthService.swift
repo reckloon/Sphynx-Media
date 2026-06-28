@@ -321,6 +321,17 @@ struct AuthService: Sendable {
         return result
     }
 
+    /// Issue a fresh session for an already-authenticated subject — the entry
+    /// point for passwordless (passkey) login, where the WebAuthn assertion has
+    /// already established *who* the user is. Mirrors the tail of `login`.
+    func issueSession(forUserId userId: String, deviceId: String) async throws -> TokenResponse {
+        let user = try await db.writer.read { db in
+            try UserRecord.filter(Column("id") == userId).fetchOne(db)
+        }
+        guard let user else { throw SphynxError.unauthorized("Account no longer exists") }
+        return try await issueSession(for: user, deviceId: deviceId)
+    }
+
     // MARK: Helpers
 
     private func issueSession(for user: UserRecord, deviceId: String) async throws -> TokenResponse {

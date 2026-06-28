@@ -50,6 +50,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "playstate": true,
     "candidates": true,
     "events": true,
+    "passkeys": false,
     "metadata": { "markers": "readwrite", "images": "read" },
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
                "dateAdded", "updatedAt", "seriesId", "seriesTitle", "seasonIndex",
@@ -74,6 +75,9 @@ the server stores what the client sends and never polls the client. Reporting is
 optional for the client; progress reports don't bump `Item.updatedAt`.
 `events` advertises the additive server→client event stream (see [Events](#events-server-sent)).
 Absent ⇒ `false`: the client falls back to polling.
+`passkeys` advertises passwordless **passkey** (WebAuthn) sign-in (see [Passkeys](#passkeys-webauthn)).
+Absent ⇒ `false`: no Relying Party is configured; the client hides passkey
+affordances and uses password login.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
@@ -202,6 +206,131 @@ render other members' pictures. **404** if that user has no avatar.
 Change the authenticated user's **own** password. **Body**
 `{ "currentPassword": "…", "newPassword": "…" }`. **204** on success; **401** if
 the current password is wrong. The presenting session stays valid.
+
+---
+
+## Passkeys (WebAuthn)
+
+Passwordless sign-in with a [WebAuthn](https://www.w3.org/TR/webauthn-2/) passkey
+(Touch ID / Face ID, a platform passkey synced via iCloud Keychain / Google
+Password Manager, or a hardware security key). Available **only when the server
+advertises `capabilities.passkeys == true`** — i.e. an admin has configured a
+Relying Party (RP id + origin). When it's `false`, the `/v1/auth/passkeys/*`
+routes are absent (**404**) and clients must use password login.
+
+Each ceremony is two calls. The **begin** call returns a server-generated
+`challengeId` plus a standard WebAuthn `publicKey` options object; the
+**finish** call echoes that `challengeId` together with the authenticator's
+response. A `challengeId` is **single-use** and short-lived (≈5 min): the server
+stores the issued challenge, validates the response against it, then consumes it.
+
+The `publicKey` payloads and the authenticator `credential` objects are the
+**standard W3C WebAuthn JSON shapes** — exactly what `navigator.credentials`
+(browser) or `ASAuthorization` (Apple platforms) produces/consumes, with binary
+fields base64url-encoded. Build them with your platform's WebAuthn API rather than
+by hand; only the Sphynx-specific `challengeId` envelope is documented in detail
+below.
+
+Enrollment requires an existing session (you add a passkey while logged in);
+signing in with a passkey is public. Passwords remain available as the
+bootstrap/fallback credential.
+
+### `POST /v1/auth/passkeys/register/begin` — auth required
+
+Begin enrolling a passkey for the authenticated user. No body.
+
+**200**
+```json
+{
+  "challengeId": "pkc_…",
+  "publicKey": {
+    "challenge": "<base64url>",
+    "rp":   { "id": "media.example.com", "name": "My Library" },
+    "user": { "id": "<base64url>", "name": "alice", "displayName": "Alice" },
+    "pubKeyCredParams": [ { "type": "public-key", "alg": -7 } ],
+    "timeout": 300000,
+    "attestation": "none"
+  }
+}
+```
+Pass `publicKey` to `navigator.credentials.create({ publicKey })` (or the platform
+equivalent).
+
+### `POST /v1/auth/passkeys/register/finish` — auth required
+
+Complete enrollment. **Body**:
+```json
+{
+  "challengeId": "pkc_…",
+  "label": "iPhone",
+  "credential": { /* RegistrationCredential from the authenticator */ }
+}
+```
+`label` is an optional nickname (defaults to `"Passkey"`). **201** returns the
+stored [`PasskeyInfo`](#passkeyinfo). **400** if the attestation can't be verified
+or the challenge is invalid/expired.
+
+### `POST /v1/auth/passkeys/authenticate/begin` — unauthenticated
+
+Begin a passwordless sign-in. No body. The options intentionally omit
+`allowCredentials`, so the authenticator offers its **discoverable** passkeys for
+this RP and the user picks one.
+
+**200**
+```json
+{
+  "challengeId": "pkc_…",
+  "publicKey": { "challenge": "<base64url>", "rpId": "media.example.com", "timeout": 60000, "userVerification": "preferred" }
+}
+```
+Pass `publicKey` to `navigator.credentials.get({ publicKey })`.
+
+### `POST /v1/auth/passkeys/authenticate/finish` — unauthenticated
+
+Complete sign-in. **Body**:
+```json
+{
+  "challengeId": "pkc_…",
+  "credential": { /* AuthenticationCredential from the authenticator */ }
+}
+```
+On a verified assertion, returns the **same `TokenResponse` as `POST /v1/auth/login`**
+(access + refresh tokens, scoped to the `X-Sphynx-Device` device). **401** if the
+assertion fails or the credential is unknown; **400** if the challenge is
+invalid/expired.
+
+### `GET /v1/auth/passkeys` — auth required
+
+List the authenticated user's passkeys, newest first.
+
+**200**
+```json
+{ "passkeys": [
+  { "id": "pk_…", "label": "iPhone", "createdAt": 1719500000.0, "lastUsedAt": 1719600000.0, "backedUp": true }
+] }
+```
+<a id="passkeyinfo"></a>**`PasskeyInfo`** — `id` (opaque `pk_…`, used in the
+management URLs below — *not* the raw WebAuthn credential id), `label` (nickname),
+`createdAt`, `lastUsedAt` (nullable), `backedUp` (whether it's a synced
+multi-device passkey). Never includes key material.
+
+### `PATCH /v1/auth/passkeys/{id}` — auth required
+
+Rename a passkey. **Body** `{ "label": "…" }` (non-empty). **200** returns the
+updated `PasskeyInfo`; **404** if the id isn't one of the caller's passkeys.
+
+### `DELETE /v1/auth/passkeys/{id}` — auth required
+
+Remove a passkey. **204** on success; **404** if the id isn't one of the caller's
+passkeys.
+
+> **Configuration.** Passkeys are off until an admin sets the Relying Party in
+> **Settings** (`passkeyRelyingPartyID`, optional `passkeyRelyingPartyName` and
+> `passkeyRelyingPartyOrigin`; see [Admin settings](#admin-server-specific-not-part-of-the-wire-protocol)).
+> The RP id is the registrable domain the server is reached at (no scheme/port,
+> e.g. `media.example.com`); the origin defaults to `https://<rpId>`. These must
+> match the client's origin or every ceremony fails — a constraint of WebAuthn,
+> not Sphynx.
 
 ---
 
@@ -772,7 +901,8 @@ env vars only seed them on first run). **200** →
 ```json
 { "serverName": "…", "serverID": "…", "accessTokenTTL": 3600,
   "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "markersAccess": "readwrite",
-  "markersStaleAfter": 604800, "playstateRetention": 31536000, "maintenanceInterval": 86400 }
+  "markersStaleAfter": 604800, "playstateRetention": 31536000, "maintenanceInterval": 86400,
+  "passkeyRelyingPartyID": "", "passkeyRelyingPartyName": "", "passkeyRelyingPartyOrigin": "" }
 ```
 
 ### `PATCH /v1/admin/settings`
@@ -782,6 +912,16 @@ Update any subset of the runtime settings. **Body** e.g.
 → **200** with the full updated settings. Persisted; applies on the next restart.
 **400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
 (host, port, DB path, admin bootstrap) remain environment variables.
+
+**Passkeys** ([WebAuthn](#passkeys-webauthn)) are configured here too:
+`passkeyRelyingPartyID` is the registrable domain the server is reached at — a bare
+host, **no scheme/port/path** (e.g. `media.example.com`); a non-empty value turns
+on `capabilities.passkeys`. `passkeyRelyingPartyName` is the display name shown by
+the authenticator (defaults to `serverName`). `passkeyRelyingPartyOrigin` is the
+expected client origin **with scheme** (e.g. `https://media.example.com`; defaults
+to `https://<passkeyRelyingPartyID>`). **400** if the RP id contains a scheme/port
+or the origin omits one. These must match the client's origin or every ceremony
+fails (a WebAuthn constraint). Applies on the next restart.
 
 ### `GET /v1/admin/tmdb` · `PATCH /v1/admin/tmdb`
 
