@@ -22,6 +22,7 @@ struct DiagnosticsController: Sendable {
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let admin = group.group("admin")
         admin.get("status", use: status)
+        admin.get("overview", use: overview)
         admin.get("logs", use: logs)
         admin.get("db/tables", use: dbTables)
         admin.get("db/query", use: dbQuery)
@@ -31,6 +32,48 @@ struct DiagnosticsController: Sendable {
     func status(_ request: Request, context: SphynxRequestContext) async throws -> ActivitySnapshot {
         try requireAdmin(context)
         return await diagnostics.snapshot()
+    }
+
+    /// Catalog coverage for the always-visible dashboard panel: per-library and
+    /// per-source counts of **items in the source** (from the last scan) vs
+    /// **items in the DB** (indexed), and how many of the indexed items are
+    /// **enriched**. Polled alongside `/status`.
+    @Sendable
+    func overview(_ request: Request, context: SphynxRequestContext) async throws -> OverviewResponse {
+        try requireAdmin(context)
+        let libraries = try await catalog.libraries()
+        let sources = try await catalog.sources()
+        let libCounts = try await catalog.itemCountsByLibrary()
+        let srcCounts = try await catalog.itemCountsBySource()
+        let overall = try await catalog.itemCountsOverall()
+
+        // Most recent scan per source (recentScans is newest-first).
+        let scans = await diagnostics.snapshot().scans
+        var lastScan: [String: ScanView] = [:]
+        for scan in scans where lastScan[scan.sourceId] == nil { lastScan[scan.sourceId] = scan }
+
+        let libraryViews = libraries.map { lib -> LibraryOverview in
+            let c = libCounts[lib.id] ?? .init()
+            return LibraryOverview(id: lib.id, title: lib.title, kind: lib.kind,
+                                   indexed: c.total, enriched: c.enriched)
+        }
+        let sourceViews = sources.map { src -> SourceOverview in
+            let c = srcCounts[src.id] ?? .init()
+            let scan = lastScan[src.id]
+            return SourceOverview(id: src.id, label: src.label, driver: src.driver,
+                                  libraryId: src.libraryId, lastScannedAt: src.lastScannedAt,
+                                  inSource: scan?.scanned, lastScanAt: scan?.at,
+                                  indexed: c.total, enriched: c.enriched)
+        }
+        // Items the sources reported on their last scan (only counts scanned sources).
+        let inSourceTotal = lastScan.values.reduce(0) { $0 + $1.scanned }
+        return OverviewResponse(
+            inSource: inSourceTotal,
+            indexed: overall.total,
+            enriched: overall.enriched,
+            libraries: libraryViews,
+            sources: sourceViews
+        )
     }
 
     @Sendable
@@ -164,6 +207,48 @@ struct DBTableData: Codable, Sendable, ResponseEncodable {
     var offset: Int
     /// Columns whose values were replaced with a placeholder (secrets).
     var redactedColumns: [String]
+}
+
+/// One library's catalog coverage for the dashboard panel.
+struct LibraryOverview: Codable, Sendable {
+    var id: String
+    var title: String
+    var kind: String
+    /// Items reconciled into the catalog for this library.
+    var indexed: Int
+    /// Of those, how many have fetched metadata.
+    var enriched: Int
+}
+
+/// One source's catalog coverage for the dashboard panel.
+struct SourceOverview: Codable, Sendable {
+    var id: String
+    var label: String
+    var driver: String
+    var libraryId: String?
+    /// Epoch seconds of the last completed scan (nil = never scanned).
+    var lastScannedAt: Double?
+    /// Items the driver listed on the most recent scan this process has seen
+    /// (nil if it hasn't been scanned since the server started).
+    var inSource: Int?
+    /// Timestamp of that scan (ISO 8601), if any.
+    var lastScanAt: String?
+    /// Items from this source currently in the catalog.
+    var indexed: Int
+    /// Of those, how many have fetched metadata.
+    var enriched: Int
+}
+
+/// Catalog coverage snapshot for the always-visible dashboard panel.
+struct OverviewResponse: Codable, Sendable, ResponseEncodable {
+    /// Items the sources reported on their last scan (scanned sources only).
+    var inSource: Int
+    /// Items currently in the catalog (indexed).
+    var indexed: Int
+    /// Of the indexed items, how many are enriched.
+    var enriched: Int
+    var libraries: [LibraryOverview]
+    var sources: [SourceOverview]
 }
 
 extension ActivitySnapshot: ResponseEncodable {}
