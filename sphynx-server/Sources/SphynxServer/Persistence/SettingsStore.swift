@@ -15,6 +15,7 @@ enum SettingKey: String, CaseIterable, Sendable {
     case markersStaleAfter
     case playstateRetention
     case maintenanceInterval
+    case avatarMaxBytes
 }
 
 /// Reads and writes persisted settings. The database is the source of truth;
@@ -55,6 +56,7 @@ extension ServerConfiguration {
             SettingKey.markersStaleAfter.rawValue: String(markersStaleAfter),
             SettingKey.playstateRetention.rawValue: String(playstateRetention),
             SettingKey.maintenanceInterval.rawValue: String(maintenanceInterval),
+            SettingKey.avatarMaxBytes.rawValue: String(avatarMaxBytes),
         ]
     }
 
@@ -71,6 +73,7 @@ extension ServerConfiguration {
         if let v = settings[SettingKey.markersStaleAfter.rawValue], let d = Double(v) { c.markersStaleAfter = d }
         if let v = settings[SettingKey.playstateRetention.rawValue], let d = Double(v) { c.playstateRetention = d }
         if let v = settings[SettingKey.maintenanceInterval.rawValue], let d = Double(v) { c.maintenanceInterval = d }
+        if let v = settings[SettingKey.avatarMaxBytes.rawValue], let i = Int(v) { c.avatarMaxBytes = i }
         return c
     }
 

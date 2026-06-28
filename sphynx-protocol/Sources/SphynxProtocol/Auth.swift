@@ -71,6 +71,18 @@ public struct MeResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// `PATCH /v1/auth/me` request body: the authenticated user updates their own
+/// profile. Only the provided fields change. `displayName`, when present, must be
+/// non-empty. The avatar image is uploaded separately via `PUT /v1/auth/me/avatar`
+/// (a raw image body) rather than as a URL here, so the server hosts it.
+public struct ProfileUpdateRequest: Codable, Hashable, Sendable {
+    public var displayName: String?
+
+    public init(displayName: String? = nil) {
+        self.displayName = displayName
+    }
+}
+
 /// `POST /v1/auth/password` request body: change the authenticated user's own
 /// password. The caller must present its current password.
 public struct PasswordChangeRequest: Codable, Hashable, Sendable {

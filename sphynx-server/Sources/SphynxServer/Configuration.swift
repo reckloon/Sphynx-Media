@@ -44,6 +44,10 @@ struct ServerConfiguration: Sendable {
     /// seconds. 0 disables the background pass. Default 1 day.
     var maintenanceInterval: Double
 
+    /// Maximum accepted size of an uploaded profile picture, in bytes. Validated
+    /// before the image is stored. Runtime-tunable via Settings. Default 2 MB.
+    var avatarMaxBytes: Int = 2_000_000
+
     /// Preferred client playback-report cadence advertised in `/v1/info`, seconds.
     /// Default 5. Push-only: clients SHOULD report progress this often; the server
     /// never polls.
@@ -75,6 +79,7 @@ struct ServerConfiguration: Sendable {
             markersStaleAfter: env["SPHYNX_MARKERS_STALE_AFTER"].flatMap(Double.init) ?? 604_800,    // 7 days
             playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days
             maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
+            avatarMaxBytes: env["SPHYNX_AVATAR_MAX_BYTES"].flatMap(Int.init) ?? 2_000_000,            // 2 MB
             playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5,
             eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15
         )

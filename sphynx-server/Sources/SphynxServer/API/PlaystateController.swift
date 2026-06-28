@@ -21,6 +21,7 @@ struct PlaystateController: Sendable {
         group.get("playstate/:itemId", use: get)
         group.get("playstate", use: batch)
         group.delete("playstate/:itemId", use: clear)
+        group.delete("playstate", use: reset)
     }
 
     @Sendable
@@ -100,6 +101,17 @@ struct PlaystateController: Sendable {
         let (userId, itemId) = try await subjectAndReadableItem(context)
         try await playstate.clear(userId: userId, itemId: itemId)
         return Response(status: .noContent)
+    }
+
+    /// Reset the caller's entire watch history across every device: clear all
+    /// resume positions **and** per-item state (watched/favorite/play-count).
+    /// Row-scoped to the caller; idempotent. Returns the number of rows removed.
+    @Sendable
+    func reset(_ request: Request, context: SphynxRequestContext) async throws -> PlaystateResetResponse {
+        let identity = try context.requireIdentity()
+        let resume = try await playstate.clearAll(userId: identity.userId)
+        let state = try await userState.clearAll(userId: identity.userId)
+        return PlaystateResetResponse(cleared: resume + state)
     }
 
     // MARK: Helpers

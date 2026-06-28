@@ -88,6 +88,16 @@ struct UserStateService: Sendable {
         return Set(ids)
     }
 
+    /// Clear all of the caller's per-item state (watched / favorite / play-count /
+    /// last-played). Returns the number of rows removed. Row-scoped to the user;
+    /// idempotent. Paired with `PlaystateService.clearAll` for a full history reset.
+    @discardableResult
+    func clearAll(userId: String) async throws -> Int {
+        try await db.writer.write { db in
+            try UserStateRecord.filter(Column("userId") == userId).deleteAll(db)
+        }
+    }
+
     /// Fold a user's state onto an item projection. Only "positive" facts are
     /// attached (watched/favorite when true, play count when > 0), keeping browse
     /// payloads lean; absence reads as unwatched / not-favorite / zero.
