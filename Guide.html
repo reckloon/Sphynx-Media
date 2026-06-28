@@ -374,8 +374,9 @@ swift test</code></pre>
 </div>
 
 <h3 id="firstrun">First run</h3>
-<pre><code><span class="cmt"># From the sphynx-server directory</span>
-swift run SphynxServer
+<pre><code><span class="cmt"># From the sphynx-server directory. Set an admin password for the examples below;</span>
+<span class="cmt"># omit SPHYNX_ADMIN_PASSWORD and the server prints a generated one to the log.</span>
+SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
 <span class="cmt"># → serves on http://0.0.0.0:8080</span></code></pre>
 
 <p>In another terminal, confirm it's alive. <code>/v1/info</code> is unauthenticated — it's how a client verifies "this URL is a Sphynx server" before showing any login UI:</p>
@@ -390,9 +391,9 @@ swift run SphynxServer
     <span class="key">"metadata"</span>: { <span class="key">"markers"</span>: <span class="str">"readwrite"</span>, <span class="key">"images"</span>: <span class="str">"read"</span> } }
 }</span></code></pre>
 
-<p>On first run the server bootstraps an admin account. The defaults are <code>admin</code> / <code>changeme</code>.</p>
+<p>On first run the server bootstraps the admin account (username <code>admin</code> by default). There is <strong>no default password</strong>: set <code>SPHYNX_ADMIN_PASSWORD</code> to choose one, or omit it and the server <strong>generates a strong random password and prints it once to the log</strong> — copy it from there. Change it later via <code>POST /v1/auth/password</code>.</p>
 <div class="callout warn">
-  <p><strong>Change the admin password before exposing the server.</strong> Set <code>SPHYNX_ADMIN_USERNAME</code> and <code>SPHYNX_ADMIN_PASSWORD</code> on the <em>first</em> run (they only apply when bootstrapping a fresh database). See <a href="#config">Configuration</a>.</p>
+  <p><strong>Set the admin credentials on the <em>first</em> run</strong> (<code>SPHYNX_ADMIN_USERNAME</code> / <code>SPHYNX_ADMIN_PASSWORD</code> only apply when bootstrapping a fresh database). If you don't set a password, grab the generated one from the startup log. See <a href="#config">Configuration</a>.</p>
 </div>
 
 <h3 id="config">Configuration</h3>
@@ -406,7 +407,7 @@ swift run SphynxServer
   <tr><td><code>SPHYNX_PORT</code></td><td><code>8080</code></td><td>Bind port</td></tr>
   <tr><td><code>SPHYNX_DB_PATH</code></td><td><code>data/sphynx.sqlite</code></td><td>SQLite path (<code>:memory:</code> = ephemeral, lost on restart)</td></tr>
   <tr><td><code>SPHYNX_ADMIN_USERNAME</code></td><td><code>admin</code></td><td>Bootstrap admin (first run only)</td></tr>
-  <tr><td><code>SPHYNX_ADMIN_PASSWORD</code></td><td><code>changeme</code></td><td>Bootstrap admin password — <strong>change this</strong></td></tr>
+  <tr><td><code>SPHYNX_ADMIN_PASSWORD</code></td><td><em>(none)</em></td><td>Bootstrap admin password. Unset ⇒ a strong random one is generated and printed once to the log</td></tr>
   <tr><td><code>SPHYNX_TMDB_API_KEY</code></td><td><em>(empty)</em></td><td>TMDB v3 key; empty disables identification/enrichment</td></tr>
 </table>
 

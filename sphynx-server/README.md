@@ -27,7 +27,8 @@ package, which this package depends on via a local path. Request/response bodies
 ```sh
 swift build
 swift test
-swift run SphynxServer            # serves on http://0.0.0.0:8080
+# Set an admin password, or omit it and copy the random one printed to the log.
+SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer   # serves on http://0.0.0.0:8080
 curl http://localhost:8080/v1/info
 ```
 
@@ -42,7 +43,7 @@ curl http://localhost:8080/v1/info
 | `SPHYNX_VERSION`        | `1.0`                      | Version reported by `/v1/info`   |
 | `SPHYNX_DB_PATH`        | `data/sphynx.sqlite`       | SQLite path (`:memory:` = ephemeral) |
 | `SPHYNX_ADMIN_USERNAME` | `admin`                    | Bootstrap admin (first run only) |
-| `SPHYNX_ADMIN_PASSWORD` | `changeme`                 | Bootstrap admin password — **change this** |
+| `SPHYNX_ADMIN_PASSWORD` | *(none)*                   | Bootstrap admin password. Unset ⇒ a strong random one is generated + printed once to the log |
 | `SPHYNX_ACCESS_TTL`     | `3600`                     | Access-token lifetime (seconds)  |
 | `SPHYNX_REFRESH_TTL`    | `2592000`                  | Refresh-token lifetime (seconds) |
 | `SPHYNX_TMDB_API_KEY`   | *(empty)*                  | TMDB v3 key; empty disables identification/enrichment |

@@ -65,7 +65,8 @@ the Linux build/run loop.
 git clone https://github.com/reckloon/Sphynx-Media.git
 cd Sphynx-Media/sphynx-server
 
-swift run SphynxServer            # serves on http://0.0.0.0:8080
+# Set an admin password (or omit it and copy the random one printed to the log).
+SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer   # serves on http://0.0.0.0:8080
 ```
 
 Then exercise the full **login → resolve → play** path:
@@ -74,7 +75,7 @@ Then exercise the full **login → resolve → play** path:
 # Confirm it's a Sphynx server (unauthenticated discovery).
 curl -s localhost:8080/v1/info
 
-# Log in as the bootstrapped admin (default admin / changeme — change it!).
+# Log in as the bootstrapped admin (the password you set above).
 curl -sX POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"changeme"}'
 
