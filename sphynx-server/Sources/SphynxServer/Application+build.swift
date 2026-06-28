@@ -108,10 +108,22 @@ func buildApplication(
     let drivers = DriverFactory(fetcher: fetcher)
     let resolver = Resolver(catalog: catalog, drivers: drivers)
 
+    // TMDB key: configured in the GUI (Extensions → Metadata), seeded once from
+    // the env var, then DB-authoritative. Read here so a GUI change applies on the
+    // next restart, like the other runtime settings.
+    let tmdbAPIKey: String
+    let storedSettings = try await settingsStore.all()
+    if let stored = storedSettings[ExtensionsController.Key.tmdbAPIKey] {
+        tmdbAPIKey = stored
+    } else {
+        tmdbAPIKey = envConfiguration.tmdbAPIKey
+        if !tmdbAPIKey.isEmpty { try await settingsStore.set([ExtensionsController.Key.tmdbAPIKey: tmdbAPIKey]) }
+    }
+
     // Identification + enrichment are available only when TMDB is configured
     // (an injected client for tests, or a real client from the API key).
     let tmdb: (any TMDBClient)? = tmdbClient
-        ?? (configuration.tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: configuration.tmdbAPIKey, fetcher: fetcher))
+        ?? (tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: tmdbAPIKey, fetcher: fetcher))
     let enrichment: EnrichmentService? = tmdb.map { client in
         EnrichmentService(
             catalog: catalog,
@@ -162,6 +174,10 @@ func buildApplication(
             playstateRetention: configuration.playstateRetention,
             logger: logger
         ))
+        // Per-source auto-refresh: re-scan each source on its own interval. Shares
+        // the maintenance gate so tests / one-shot runs stay loop-free.
+        services.append(SourceRefreshService(
+            tick: 60, catalog: catalog, indexer: indexer, logger: logger))
     }
 
     return Application(

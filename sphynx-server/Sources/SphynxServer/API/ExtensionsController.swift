@@ -21,6 +21,10 @@ struct ExtensionsController: Sendable {
     enum Key {
         static let probeEnabled = "ext.mediaProbe.enabled"
         static let probePath = "ext.mediaProbe.ffprobePath"
+        /// The TMDB v3 API key — configured in the GUI; seeded once from
+        /// `SPHYNX_TMDB_API_KEY`. Read at boot to build the enrichment client, so a
+        /// change applies on the next restart.
+        static let tmdbAPIKey = "ext.tmdb.apiKey"
     }
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
@@ -29,6 +33,8 @@ struct ExtensionsController: Sendable {
         ext.get("media-probe", use: getProbeConfig)
         ext.patch("media-probe", use: updateProbeConfig)
         ext.get("media-probe/probe", use: probe)
+        ext.get("tmdb", use: getTMDBConfig)
+        ext.patch("tmdb", use: updateTMDBConfig)
     }
 
     // MARK: Registry
@@ -46,7 +52,35 @@ struct ExtensionsController: Sendable {
                 id: "media-probe", name: "Media probe",
                 description: "Inspect a title's audio, subtitle, and video streams (language, codec, channels) with ffmpeg's ffprobe, plus any sidecar subtitle files.",
                 kind: "optional", enabled: cfg.enabled, available: cfg.available, configurable: true),
+            ExtensionInfo(
+                id: "tmdb", name: "Metadata (TMDB)",
+                description: "The TMDB API key used to identify and enrich your library (posters, overviews, cast). Set it here instead of an environment variable.",
+                kind: "optional", enabled: try await tmdbConfig().configured, available: true, configurable: true),
         ])
+    }
+
+    // MARK: TMDB metadata — config
+
+    @Sendable
+    func getTMDBConfig(_ request: Request, context: SphynxRequestContext) async throws -> TMDBExtConfig {
+        try requireAdmin(context)
+        return try await tmdbConfig()
+    }
+
+    @Sendable
+    func updateTMDBConfig(_ request: Request, context: SphynxRequestContext) async throws -> TMDBExtConfig {
+        try requireAdmin(context)
+        let body = try await request.decode(as: TMDBExtUpdate.self, context: context)
+        if let key = body.apiKey { try await settings.set([Key.tmdbAPIKey: key.trimmingCharacters(in: .whitespaces)]) }
+        return try await tmdbConfig()
+    }
+
+    /// Masked view of the TMDB key: whether one is set + a short hint, never the
+    /// full value.
+    private func tmdbConfig() async throws -> TMDBExtConfig {
+        let key = (try await settings.all())[Key.tmdbAPIKey] ?? ""
+        let hint = key.count >= 4 ? "…" + String(key.suffix(4)) : (key.isEmpty ? nil : "set")
+        return TMDBExtConfig(configured: !key.isEmpty, keyHint: hint, appliesOnRestart: true)
     }
 
     // MARK: Media probe — config
@@ -145,6 +179,19 @@ struct MediaProbeConfig: Codable, Sendable, ResponseEncodable {
 struct MediaProbeConfigUpdate: Codable, Sendable {
     var enabled: Bool?
     var ffprobePath: String?
+}
+
+/// Masked TMDB-key view: never returns the full key.
+struct TMDBExtConfig: Codable, Sendable, ResponseEncodable {
+    var configured: Bool
+    /// A short, non-secret hint (e.g. `…1b87`); nil when unset.
+    var keyHint: String?
+    /// A changed key takes effect on the next server restart.
+    var appliesOnRestart: Bool
+}
+
+struct TMDBExtUpdate: Codable, Sendable {
+    var apiKey: String?
 }
 
 struct ProbeQuery: Codable, Sendable {

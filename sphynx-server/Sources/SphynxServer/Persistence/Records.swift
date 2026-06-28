@@ -89,6 +89,11 @@ struct SourceRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// `libraryId`, so a single-library source behaves as before.
     var libraryMapJSON: String?
     var createdAt: Double
+    /// Auto-refresh cadence in **seconds** (0 = manual only); how often the
+    /// background loop re-scans this source.
+    var refreshInterval: Double = 0
+    /// Epoch seconds of the last completed scan (nil = never scanned).
+    var lastScannedAt: Double?
 
     /// Decoded content-category → library id map (empty if none / malformed).
     func libraryMap() -> [String: String] {

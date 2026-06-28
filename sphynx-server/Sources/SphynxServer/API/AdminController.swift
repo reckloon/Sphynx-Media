@@ -197,7 +197,8 @@ struct AdminController: Sendable {
             libraryId: body.libraryId,
             config: body.config,
             secrets: body.secrets,
-            libraryMap: body.libraryMap
+            libraryMap: body.libraryMap,
+            refreshInterval: body.refreshInterval
         )
         return SourceResponse(from: record)
     }
@@ -250,7 +251,8 @@ struct AdminController: Sendable {
             manifestURL: body.manifestURL,
             config: body.config,
             secrets: body.secrets,
-            libraryMap: body.libraryMap
+            libraryMap: body.libraryMap,
+            refreshInterval: body.refreshInterval ?? 0
         )
         return SourceResponse(from: record)
     }
@@ -514,6 +516,8 @@ struct UpdateSourceRequest: Codable, Sendable {
     var secrets: [String: String]?
     /// Content-category → library id (`{ "movie": "lib_x", "tv": "lib_y" }`).
     var libraryMap: [String: String]?
+    /// Auto-refresh cadence in **seconds** (0 = manual only).
+    var refreshInterval: Double?
 }
 
 struct SourcesResponse: Codable, Sendable, ResponseEncodable {
@@ -536,6 +540,8 @@ struct CreateSourceRequest: Codable, Sendable {
     /// `libraryId` (`{ "movie": "lib_x", "tv": "lib_y" }`). Unmapped categories
     /// fall back to `libraryId`.
     var libraryMap: [String: String]?
+    /// Auto-refresh cadence in **seconds** (0 = manual only).
+    var refreshInterval: Double?
 }
 
 /// A source as exposed by the API — non-secret fields only. Credentials
@@ -547,6 +553,10 @@ struct SourceResponse: Codable, Sendable, ResponseEncodable {
     var config: [String: String]?
     var libraryId: String?
     var libraryMap: [String: String]?
+    /// Auto-refresh cadence in **seconds** (0 = manual only).
+    var refreshInterval: Double
+    /// Epoch seconds of the last completed scan (nil = never).
+    var lastScannedAt: Double?
 
     init(from record: SourceRecord) {
         self.id = record.id
@@ -557,6 +567,8 @@ struct SourceResponse: Codable, Sendable, ResponseEncodable {
         self.libraryId = record.libraryId
         let map = record.libraryMap()
         self.libraryMap = map.isEmpty ? nil : map
+        self.refreshInterval = record.refreshInterval
+        self.lastScannedAt = record.lastScannedAt
     }
 }
 

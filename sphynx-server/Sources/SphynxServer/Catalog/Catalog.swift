@@ -93,7 +93,8 @@ struct Catalog: Sendable {
         manifestURL: String?,
         config: [String: String]? = nil,
         secrets: [String: String]? = nil,
-        libraryMap: [String: String]? = nil
+        libraryMap: [String: String]? = nil,
+        refreshInterval: Double = 0
     ) async throws -> SourceRecord {
         let record = SourceRecord(
             id: Tokens.newID("src_"),
@@ -106,10 +107,29 @@ struct Catalog: Sendable {
             configJSON: Self.encodeStringMap(config),
             secretsJSON: Self.encodeStringMap(secrets),
             libraryMapJSON: Self.encodeStringMap(libraryMap),
-            createdAt: Date().timeIntervalSince1970
+            createdAt: Date().timeIntervalSince1970,
+            refreshInterval: max(0, refreshInterval)
         )
         try await db.writer.write { db in try record.insert(db) }
         return record
+    }
+
+    /// Sources due for an auto-refresh: `refreshInterval > 0` and the interval has
+    /// elapsed since the last scan (or never scanned).
+    func dueSources(now: Double) async throws -> [SourceRecord] {
+        try await db.writer.read { db in
+            try SourceRecord
+                .filter(Column("refreshInterval") > 0)
+                .filter(sql: "COALESCE(lastScannedAt, 0) + refreshInterval <= ?", arguments: [now])
+                .fetchAll(db)
+        }
+    }
+
+    /// Record that a source was just scanned (for the auto-refresh scheduler).
+    func markSourceScanned(id: String, at now: Double = Date().timeIntervalSince1970) async throws {
+        try await db.writer.write { db in
+            try db.execute(sql: "UPDATE source SET lastScannedAt = ? WHERE id = ?", arguments: [now, id])
+        }
     }
 
     /// Encode a non-empty string map to JSON text (nil when empty/absent).
@@ -137,7 +157,8 @@ struct Catalog: Sendable {
         libraryId: String?,
         config: [String: String]?,
         secrets: [String: String]?,
-        libraryMap: [String: String]?
+        libraryMap: [String: String]?,
+        refreshInterval: Double? = nil
     ) async throws -> SourceRecord {
         let updated: SourceRecord? = try await db.writer.write { db in
             guard var s = try SourceRecord.filter(Column("id") == id).fetchOne(db) else { return nil }
@@ -149,6 +170,7 @@ struct Catalog: Sendable {
             if let config { s.configJSON = Self.encodeStringMap(config) }
             if let secrets { s.secretsJSON = Self.encodeStringMap(secrets) }
             if let libraryMap { s.libraryMapJSON = Self.encodeStringMap(libraryMap) }
+            if let refreshInterval { s.refreshInterval = max(0, refreshInterval) }
             try s.update(db)
             return s
         }

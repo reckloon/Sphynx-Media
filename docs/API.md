@@ -572,9 +572,14 @@ deleted. **204** on success.
 { "label": "My CDN", "driver": "http", "baseURL": "https://cdn.example",
   "headers": { "Authorization": "…" },
   "libraryMap": { "movie": "lib_movies", "tv": "lib_tv" },
-  "manifestURL": "https://cdn.example/manifest.json" }
+  "manifestURL": "https://cdn.example/manifest.json",
+  "refreshInterval": 1800 }
 ```
 `driver` defaults to `http`. `manifestURL` points to a JSON document (the *manifest*) that lists the entries to index — metadata only, never the media bytes.
+`refreshInterval` (seconds, `0` = manual only) sets this source's **auto-refresh**:
+a background loop re-scans the source on its own cadence. `SourceResponse` echoes
+`refreshInterval` and `lastScannedAt`; `PATCH` accepts `refreshInterval` too. (The
+web admin shows it in minutes.)
 
 A source feeds a library by content **category**: `libraryMap` routes each item
 to a library by type (`movie` / `tv`), so **one source + one scan** fills a Movies
@@ -803,6 +808,15 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   to its direct location (as a player would), runs `ffprobe`, and returns
   `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ] }`.
   Returns **400** when the extension is disabled or `ffprobe` isn't available.
+
+**Metadata / TMDB** (`id: tmdb`) — the TMDB v3 API key used for identification +
+enrichment, configurable here instead of via the environment.
+
+- **`GET /v1/admin/extensions/tmdb`** → `{ "configured", "keyHint", "appliesOnRestart" }`
+  (the key itself is **never** returned — only whether one is set and a short hint).
+- **`PATCH /v1/admin/extensions/tmdb`** `{ "apiKey" }` → stores the key (seeded once
+  from `SPHYNX_TMDB_API_KEY`; DB-authoritative thereafter). Takes effect on the next
+  server restart.
 
 ---
 

@@ -301,6 +301,16 @@ struct AppDatabase: Sendable {
             try db.create(indexOn: "tombstone", columns: ["deletedAt"])
         }
 
+        migrator.registerMigration("m18_source_refresh") { db in
+            // Per-source auto-refresh: how often to re-scan this source (seconds;
+            // 0 = manual only) and when it was last scanned. A background loop
+            // re-scans each source when it's due.
+            try db.alter(table: "source") { t in
+                t.add(column: "refreshInterval", .double).notNull().defaults(to: 0)
+                t.add(column: "lastScannedAt", .double)
+            }
+        }
+
         return migrator
     }
 }

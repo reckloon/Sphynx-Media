@@ -145,7 +145,7 @@ enum AdminWebController {
     </div>
 
     <section id="tab-settings">
-      <p class="hint" style="margin-top:0;">All time settings are in <strong>seconds</strong>. Handy conversions: 1 hour = 3600 · 1 day = 86400 · 30 days = 2592000 · 1 year = 31536000.</p>
+      <p class="hint" style="margin-top:0;">All time settings are in <strong>minutes</strong>. Handy conversions: 1 hour = 60 · 1 day = 1440 · 7 days = 10080 · 30 days = 43200 · 1 year = 525600.</p>
 
       <div class="group-title">Server identity</div>
       <div class="row">
@@ -158,9 +158,9 @@ enum AdminWebController {
       <div class="group-title">Signing in</div>
       <div class="row">
         <div><label for="accessTokenTTL">Login session length</label><input id="accessTokenTTL" type="number" min="0">
-          <p class="hint">How long the app stays signed in before it quietly re-authenticates. e.g. 3600 = 1 hour.</p></div>
+          <p class="hint">How long the app stays signed in before it quietly re-authenticates. e.g. 60 = 1 hour.</p></div>
         <div><label for="refreshTokenTTL">Time before sign-in is required again</label><input id="refreshTokenTTL" type="number" min="0">
-          <p class="hint">After this, the user must type their password again. e.g. 2592000 = 30 days.</p></div>
+          <p class="hint">After this, the user must type their password again. e.g. 43200 = 30 days.</p></div>
       </div>
 
       <div class="group-title">Library &amp; upkeep</div>
@@ -173,18 +173,19 @@ enum AdminWebController {
           </select>
           <p class="hint">Whether apps may read and/or submit intro/credits markers.</p></div>
         <div><label for="enrichmentTTL">Refresh posters &amp; info every</label><input id="enrichmentTTL" type="number" min="0">
-          <p class="hint">How old TMDB data can get before it's re-fetched. e.g. 7776000 = 90 days.</p></div>
+          <p class="hint">How old TMDB data can get before it's re-fetched. e.g. 129600 = 90 days.</p></div>
         <div><label for="markersStaleAfter">Mark "skip intro" data old after</label><input id="markersStaleAfter" type="number" min="0">
-          <p class="hint">When a client is asked to refresh contributed markers. e.g. 604800 = 7 days.</p></div>
+          <p class="hint">When a client is asked to refresh contributed markers. e.g. 10080 = 7 days.</p></div>
         <div><label for="playstateRetention">Remember watch progress for</label><input id="playstateRetention" type="number" min="0">
-          <p class="hint">How long to keep "resume where you left off". e.g. 31536000 = 1 year.</p></div>
+          <p class="hint">How long to keep "resume where you left off". e.g. 525600 = 1 year.</p></div>
         <div><label for="maintenanceInterval">Run background cleanup every</label><input id="maintenanceInterval" type="number" min="0">
-          <p class="hint">Refreshes stale info and tidies old data. e.g. 86400 = 1 day; 0 = off.</p></div>
+          <p class="hint">Refreshes stale info and tidies old data. e.g. 1440 = 1 day; 0 = off.</p></div>
       </div>
 
       <button id="save-btn">Save settings</button>
+      <button id="scan-all-btn" class="secondary" style="margin-left:8px;">Scan all sources now</button>
       <div id="save-msg" class="msg"></div>
-      <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, the admin login, and the TMDB key are set when starting the server, not here.)</p>
+      <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server. The TMDB key and per-source refresh times are configured under <strong>Extensions</strong>.)</p>
     </section>
 
     <section id="tab-libraries" hidden>
@@ -249,6 +250,8 @@ enum AdminWebController {
               <div><label for="local-lib-movie">Movies library</label><select id="local-lib-movie" class="lib-movie"></select></div>
               <div><label for="local-lib-tv">TV library</label><select id="local-lib-tv" class="lib-tv"></select></div>
             </div>
+            <label for="local-refresh">Auto-refresh every (minutes, 0 = manual)</label>
+            <input id="local-refresh" type="number" min="0" value="0" placeholder="0">
             <button data-add="local">Add source</button>
             <div id="local-msg" class="msg"></div>
           </div>
@@ -273,6 +276,8 @@ enum AdminWebController {
               <div><label for="http-lib-movie">Movies library</label><select id="http-lib-movie" class="lib-movie"></select></div>
               <div><label for="http-lib-tv">TV library</label><select id="http-lib-tv" class="lib-tv"></select></div>
             </div>
+            <label for="http-refresh">Auto-refresh every (minutes, 0 = manual)</label>
+            <input id="http-refresh" type="number" min="0" value="0" placeholder="0">
             <button data-add="http">Add source</button>
             <div id="http-msg" class="msg"></div>
           </div>
@@ -297,6 +302,8 @@ enum AdminWebController {
               <div><label for="webdav-lib-movie">Movies library</label><select id="webdav-lib-movie" class="lib-movie"></select></div>
               <div><label for="webdav-lib-tv">TV library</label><select id="webdav-lib-tv" class="lib-tv"></select></div>
             </div>
+            <label for="webdav-refresh">Auto-refresh every (minutes, 0 = manual)</label>
+            <input id="webdav-refresh" type="number" min="0" value="0" placeholder="0">
             <button data-add="webdav">Add source</button>
             <div id="webdav-msg" class="msg"></div>
           </div>
@@ -323,6 +330,8 @@ enum AdminWebController {
               <div><label for="smb-lib-movie">Movies library</label><select id="smb-lib-movie" class="lib-movie"></select></div>
               <div><label for="smb-lib-tv">TV library</label><select id="smb-lib-tv" class="lib-tv"></select></div>
             </div>
+            <label for="smb-refresh">Auto-refresh every (minutes, 0 = manual)</label>
+            <input id="smb-refresh" type="number" min="0" value="0" placeholder="0">
             <button data-add="smb">Add source</button>
             <div id="smb-msg" class="msg"></div>
           </div>
@@ -349,6 +358,8 @@ enum AdminWebController {
               <div><label for="ftp-lib-movie">Movies library</label><select id="ftp-lib-movie" class="lib-movie"></select></div>
               <div><label for="ftp-lib-tv">TV library</label><select id="ftp-lib-tv" class="lib-tv"></select></div>
             </div>
+            <label for="ftp-refresh">Auto-refresh every (minutes, 0 = manual)</label>
+            <input id="ftp-refresh" type="number" min="0" value="0" placeholder="0">
             <button data-add="ftp">Add source</button>
             <div id="ftp-msg" class="msg"></div>
           </div>
@@ -439,6 +450,15 @@ enum AdminWebController {
           <div id="mp-result"></div>
         </div>
       </div>
+
+      <div id="mod-tmdb" class="ext-mod" hidden>
+        <p class="hint" style="margin-top:0;">Your TMDB v3 API key — used to identify titles and fetch posters, overviews, and cast. <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free key →</a></p>
+        <label for="tmdb-key">TMDB API key <span id="tmdb-status" class="muted"></span></label>
+        <input id="tmdb-key" type="password" placeholder="Paste your TMDB v3 API key" autocomplete="off">
+        <button id="tmdb-save">Save key</button>
+        <div id="tmdb-msg" class="msg"></div>
+        <p class="hint">Stored on the server; takes effect on the next restart. Leave the field blank to keep the current key.</p>
+      </div>
     </section>
   </div>
 </div>
@@ -494,16 +514,26 @@ enum AdminWebController {
       if (res.status === 401) { logout(); return null; }
       if (res.status === 403) { msg('login-msg', 'That account is not the admin.'); logout(); return null; }
       return res.ok ? res.json() : null;
-    }).then(function (s) { if (s) sfields.forEach(function (f) { var el = $('#' + f); if (el) el.value = s[f]; }); });
+    }).then(function (s) { if (s) sfields.forEach(function (f) { var el = $('#' + f); if (el) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); });
   }
   function saveSettings() {
     msg('save-msg', '');
     var body = {};
-    sfields.forEach(function (f) { var el = $('#' + f); body[f] = snumbers.indexOf(f) >= 0 ? Number(el.value) : el.value; });
+    // The number fields are durations shown in minutes; the API stores seconds.
+    sfields.forEach(function (f) { var el = $('#' + f); body[f] = snumbers.indexOf(f) >= 0 ? Math.round(Number(el.value) * 60) : el.value; });
     api('/v1/admin/settings', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { res.json().then(function (e) { msg('save-msg', (e && e.error && e.error.message) || 'Save failed.'); }).catch(function () { msg('save-msg', 'Save failed.'); }); return; }
       msg('save-msg', 'Saved. Restart the server for changes to take effect.', true);
+    }).catch(function () { msg('save-msg', 'Could not reach the server.'); });
+  }
+  function scanAllSources() {
+    msg('save-msg', 'Scanning all sources…');
+    api('/v1/admin/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      if (!d) { msg('save-msg', 'Scan failed.'); return; }
+      var srcs = d.sources || [];
+      var tot = srcs.reduce(function (a, s) { return a + (s.scanned || 0); }, 0);
+      msg('save-msg', 'Scanned ' + srcs.length + ' source(s), ' + tot + ' item(s).', true);
     }).catch(function () { msg('save-msg', 'Could not reach the server.'); });
   }
 
@@ -576,6 +606,8 @@ enum AdminWebController {
     }
     var map = libraryMapFor(driver);
     if (map) body.libraryMap = map;
+    var refresh = val('refresh');               // minutes in the UI; API stores seconds
+    if (refresh !== '') body.refreshInterval = Math.max(0, Math.round(Number(refresh) * 60));
     return body;
   }
 
@@ -594,7 +626,9 @@ enum AdminWebController {
         var list = $('#src-list-' + driver); if (!list) return;
         var mine = srcs.filter(function (s) { return s.driver === driver; });
         list.innerHTML = mine.length
-          ? mine.map(function (s) { return '<div class="item"><span><strong>' + esc(s.label) + '</strong></span><span class="acts"><button class="mini" data-scan="' + esc(s.id) + '">Scan</button><button class="mini danger" data-del-src="' + esc(s.id) + '">Delete</button></span></div>'; }).join('')
+          ? mine.map(function (s) {
+              var rm = (s.refreshInterval > 0) ? '<span class="meta">refresh every ' + Math.round(s.refreshInterval / 60) + ' min</span>' : '<span class="meta">manual</span>';
+              return '<div class="item"><span><strong>' + esc(s.label) + '</strong> ' + rm + '</span><span class="acts"><button class="mini" data-scan="' + esc(s.id) + '">Scan</button><button class="mini danger" data-del-src="' + esc(s.id) + '">Delete</button></span></div>'; }).join('')
           : '<div class="empty">No ' + driver + ' sources yet. Add one below.</div>';
       });
     });
@@ -804,6 +838,7 @@ enum AdminWebController {
     if (id === 'storage') { showStorage(storActive); loadSources(); }
     else if (id === 'diagnostics') showSub(diagState.sub);
     else if (id === 'media-probe') loadProbeConfig();
+    else if (id === 'tmdb') loadTMDBConfig();
   }
   $('#ext-nav').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.mod) activateModule(b.dataset.mod); };
 
@@ -830,6 +865,27 @@ enum AdminWebController {
       $('#mp-avail').innerHTML = badge + (c.resolvedPath ? ' <span class="meta">' + esc(c.resolvedPath) + '</span>' : '');
     });
   }
+  // ---- module: metadata (TMDB key) ----
+  function loadTMDBConfig() {
+    $('#tmdb-key').value = '';
+    api('/v1/admin/extensions/tmdb', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
+      if (!c) return;
+      $('#tmdb-status').innerHTML = c.configured
+        ? '— <span class="ok-badge">configured</span>' + (c.keyHint ? ' <span class="meta">' + esc(c.keyHint) + '</span>' : '')
+        : '— <span class="off-badge">not set</span>';
+    });
+  }
+  function saveTMDBConfig() {
+    var key = $('#tmdb-key').value.trim();
+    if (!key) { msg('tmdb-msg', 'Enter a key to save (or leave blank to keep the current one).'); return; }
+    msg('tmdb-msg', '');
+    api('/v1/admin/extensions/tmdb', 'PATCH', { apiKey: key }).then(function (res) {
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { msg('tmdb-msg', 'Save failed.'); return; }
+      msg('tmdb-msg', 'Saved. Restart the server to start enriching with this key.', true); loadTMDBConfig(); enterExtensions();
+    }).catch(function () { msg('tmdb-msg', 'Could not reach the server.'); });
+  }
+
   function saveProbeConfig() {
     msg('mp-msg', '');
     api('/v1/admin/extensions/media-probe', 'PATCH', { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value }).then(function (res) {
@@ -865,9 +921,11 @@ enum AdminWebController {
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
+  $('#scan-all-btn').onclick = scanAllSources;
   $('#lib-add-btn').onclick = addLibrary;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
+  $('#tmdb-save').onclick = saveTMDBConfig;
   $('#mp-probe-btn').onclick = runProbe;
   $('#mp-item').addEventListener('keydown', function (e) { if (e.key === 'Enter') runProbe(); });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
