@@ -266,8 +266,9 @@ Authoritative markers are never stale.
 custom ones beyond the four well-known.
 
 - **403** `forbidden` if the server is read-only for markers, **or the user
-  hasn't been granted the `markers` write** (writes are per-user; admins always
-  have it). Check `GET /v1/auth/me` for the caller's effective access.
+  hasn't been granted `metadata.markers.write`** for the item's owning library
+  (per-user; a global or `:<libraryId>`-scoped grant both satisfy it, scoped like
+  `metadata.edit`; admins always have it). Check `GET /v1/auth/me`.
 - **409** `conflict` if authoritative markers exist and the caller isn't admin —
   a best-effort client contribution may not clobber server-detected/admin data.
 
@@ -337,6 +338,8 @@ Items with no stored state are omitted.
 
 > `resumePosition` is also folded into item responses (browse list + single item)
 > for the authenticated user, so a "continue watching" UI needs no extra call.
+
+## Home feed
 
 ### `GET /v1/home` — auth required
 
@@ -634,9 +637,6 @@ access**. Setting the admin's permissions is rejected (it holds all implicitly).
 Delete a user and revoke all their sessions + per-user state. **204** on success.
 The admin account cannot be deleted (**403**).
 
-The scan summary includes an `enriched` count — items identified against TMDB and
-enriched during the scan (0 when TMDB isn't configured).
-
 ### `PATCH /v1/admin/items/{itemId}` — `metadata.edit`
 
 Edit an item's metadata and **lock** each edited field against auto-refresh.
@@ -885,8 +885,5 @@ Defined in the protocol but not yet implemented by the reference server:
 
 - `GET /v1/search` (`capabilities.search`).
 - Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
-- **Collections / box sets** — `ItemType.collection` and the `boxSets`/`collection`
-  library kinds exist on the wire, but the server never creates collection items or
-  links movies (TMDB `belongs_to_collection` is not fetched).
 - Remote source-driver **listing** — WebDAV/SMB/FTP resolve, but their directory
   listing is not implemented yet (HTTP and local work fully).

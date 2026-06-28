@@ -526,8 +526,11 @@
   <p><code>resumePosition</code> is also folded into item responses (browse list + single item) for the authenticated user, so a "continue watching" UI needs no extra call.</p>
 </div>
 
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home</span><span class="badge auth">auth</span></div>
+<p>The <strong>typed home feed</strong>: the ordered shelves that make up the user's home screen. <strong>200</strong> → <code>{ "shelves": [ { "id", "title", "kind", "aspect", "items":[…] } ] }</code>. Each shelf carries a <code>kind</code> (open enum: <code>continueWatching</code>, <code>recentlyAdded</code>, <code>favorites</code>) and an <code>aspect</code> (<code>portrait</code> | <code>landscape</code> | <code>square</code>) telling the client the tile shape — so which rows are landscape is <strong>contract, not convention</strong>. Empty shelves are omitted; each shelf shows a capped preview, paged in full via its per-row endpoint below. <strong>Continue Watching is unified</strong> — there is deliberately <strong>no <code>nextUp</code> kind</strong>: the next unwatched episode of a show you've started is merged into <code>continueWatching</code>, one row, never a separate "Next Up".</p>
+
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/continue</span><span class="badge auth">auth</span></div>
-<p>The user's in-progress items (stored position &gt; 0), <strong>most-recently-played first</strong>, each with <code>resumePosition</code> folded in. Cursor-paginated; <code>detail</code> selects skeleton/full. Returns the same <code>ItemsResponse</code> shape as <code>/v1/items</code>.</p>
+<p>The full, paginated <strong>Continue Watching</strong> row: the user's in-progress items (stored position &gt; 0) <strong>plus the next unwatched episode</strong> of each show they've started — one unified list, <strong>most-recently-played first</strong>, each with <code>resumePosition</code> folded in (<code>0</code> for a next-up episode). Cursor-paginated; <code>detail</code> selects skeleton/full. Returns the same <code>ItemsResponse</code> shape as <code>/v1/items</code>. Resume wins (an in-progress episode suppresses its show's next-up); specials (season 0) don't generate a next-up.</p>
 <p>The server only stores and exposes the data (per-user position + <code>updatedAt</code>, ordered by recency) — <strong>the client owns presentation and policy</strong>: it has each item's runtime, so it decides what counts as "finished", whether to hide it, how to sort.</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/recent</span><span class="badge auth">auth</span></div>
@@ -535,6 +538,9 @@
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/favorites</span><span class="badge auth">auth</span></div>
 <p>The caller's favourited items, most-recently-played first. Cursor-paginated; same <code>ItemsResponse</code> shape.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/people/{personId}/items</span><span class="badge auth">auth</span></div>
+<p>A person's <strong>filmography</strong>: the distinct movies and series the person is credited in the cast of (the inverse of an item's <code>cast</code> array), for a person-detail screen. <code>personId</code> is a cast-entry id of the form <code>pe_&lt;tmdbId&gt;</code>. Returns the standard <code>ItemsResponse</code> with <code>images.primary</code> and the normal projection, cursor-paginated and gated by the same per-library read permissions; sorted <strong>newest-first</strong> by premiere/production date then title. The lookup is <strong>cast-only</strong> (crew aren't stored with person ids). A well-formed id always returns <strong>200</strong> with a possibly-empty list (the server keeps no person registry); <strong>404</strong> is reserved for a malformed id.</p>
 
 <h3 id="api-events">Events <span class="badge live">server-sent</span></h3>
 <p>An <strong>additive</strong> server→client stream of live updates over <a href="https://developer.mozilla.org/docs/Web/API/Server-sent_events">Server-Sent Events</a>. It exists so a client can keep UI fresh — continue-watching, now-playing, watched/favorite sync, a "library changed" nudge — <strong>without polling</strong>, and it never replaces the access-controlled REST endpoints. Advertised by <code>capabilities.events</code>; a client that ignores it (or a server that doesn't offer it) keeps working by polling.</p>
@@ -610,7 +616,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <p>The canonical fields above are the neutral contract: each has a fixed meaning and unit; a client only maps the <em>name</em> to whatever it calls the field internally. For anything beyond the canonical set, an item may carry an <code>extra</code> object of arbitrary server-defined metadata. A client reads the keys it understands and ignores the rest. Together with the forward-compatibility rules, this is what lets a server serve whatever metadata it wants while older clients keep working. <code>extra</code> is omitted entirely when empty.</p>
 
 <h4>Planned</h4>
-<p>Defined in the protocol but not yet implemented by the reference server: <code>GET /v1/search</code> (<code>capabilities.search</code>); ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>); <strong>collections / box sets</strong> (the <code>collection</code> item type and <code>boxSets</code>/<code>collection</code> library kinds exist on the wire, but the server never builds collection items or links movies); and remote source-driver <strong>listing</strong> (WebDAV/SMB/FTP resolve, but don't list yet).</p>
+<p>Defined in the protocol but not yet implemented by the reference server: <code>GET /v1/search</code> (<code>capabilities.search</code>); ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>); and remote source-driver <strong>listing</strong> (WebDAV/SMB/FTP resolve, but don't list yet).</p>
 </section>
 
 <!-- ========================= PROTOCOL ========================= -->
@@ -1400,7 +1406,6 @@ item.extra[<span class="str">"subtitles"</span>] = [
 
 <h4>High impact</h4>
 <ul>
-  <li><strong>Per-image placeholder &amp; aspect metadata.</strong> Per-image BlurHash, intrinsic dimensions, an aspect-ratio hint, and size variants on <code>images</code> — so a backdrop carries its own low-res placeholder and a known shape, not just the poster.</li>
   <li><strong>Richer track &amp; subtitle info in resolve.</strong> Language, codec, and human label on audio/subtitle tracks, plus external/sidecar subtitle URLs — enough to render an "Audio: English / Subtitles: Spanish" picker without probing the container.</li>
   <li><strong>Multiple versions &amp; editions.</strong> A user-choosable model for "4K vs 1080p" or "Director's Cut vs Theatrical," distinct from the existing ranked fallback <code>candidates</code>.</li>
   <li><strong>Changes feed &amp; deletion tombstones.</strong> <code>GET /v1/changes?since=</code> with tombstones, so a client syncs incrementally instead of re-listing the whole library to detect a removal.</li>

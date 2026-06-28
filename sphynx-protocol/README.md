@@ -47,8 +47,10 @@ swift test
 
 The wire contract as built today: discovery (`ServerInfo`, `Capabilities`), auth +
 per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`), the
-`Item` model (images, placeholder one-of, cast, TV positioning, open `extra`),
-browse + pagination, resolve (`ResolveDescriptor`, tracks, candidates), playstate,
-bi-directional markers (`MarkerContribution`, `MarkersInfo`), the error envelope,
-and the open-enum machinery. The test suite round-trips every type and proves
-unknown payloads decode without throwing.
+`Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
+one-of, cast, TV positioning, `parentId`/`collectionId`, open `extra`), browse +
+pagination, the typed home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`),
+resolve (`ResolveDescriptor`, tracks, candidates), playstate, bi-directional markers
+(`MarkerContribution`, `MarkersInfo`), the error envelope, and the open-enum
+machinery. The test suite round-trips every type and proves unknown payloads decode
+without throwing.

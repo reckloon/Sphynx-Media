@@ -47,11 +47,14 @@ struct MarkersController: Sendable {
         guard policy.access("markers").allowsWrite else {
             throw SphynxError.forbidden("Markers are read-only on this server")
         }
-        // …and this user must hold the markers-write permission (admins always do).
-        guard identity.has(Permissions.markersWrite) else {
+        // …and this user must hold the markers-write permission for the item's
+        // owning library (admins always do; a global or `:<libraryId>`-scoped grant
+        // both satisfy it — matching how `metadata.edit` is scoped).
+        var item = try await requireItem(context)
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.has(Permissions.markersWrite, inLibrary: libraryId) else {
             throw SphynxError.forbidden("You don't have permission to contribute markers")
         }
-        var item = try await requireItem(context)
         try await requireLibraryRead(item, identity)
         let body = try await request.decode(as: MarkerContribution.self, context: context)
 

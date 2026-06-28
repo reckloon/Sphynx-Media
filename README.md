@@ -120,6 +120,10 @@ Built spine-first. Working today:
   / box sets from TMDB, browsed via `items?parent=`; a person-filmography endpoint
   (`GET /v1/people/{id}/items`), newest-first across movies and TV; plus logo/banner
   art, trailers, tags, and sortTitle.
+- **Rich images** — defined image roles by orientation (landscape `thumb`, not a
+  small poster), plus `images.variants`: a per-image low-res placeholder + aspect
+  hint so each image blurs up and lays out independently. The server advertises the
+  `Item` fields it populates via `capabilities.fields`.
 - **Web admin** — a built-in `/admin` page for settings, libraries, sources, and
   users, plus a live activity dashboard (items being parsed/enriched), a read-only
   database browser, and a diagnostics log.
@@ -133,9 +137,8 @@ Next up is **protocol contract hardening** — wire-contract additions clients c
 rely on (the content-model breadth track — extras, collections, people — has
 landed; see Features above). In priority order:
 
-- **High** — per-image placeholder & aspect metadata; track languages/labels +
-  external subtitles in resolve; multiple versions/editions; a
-  `GET /v1/changes?since=` delta feed with deletion tombstones.
+- **High** — track languages/labels + external subtitles in resolve; multiple
+  versions/editions; a `GET /v1/changes?since=` delta feed with deletion tombstones.
 - **Medium** — TV-friendly login (device-code / QR); advertised refresh-token
   lifetime; a typed browse sort/filter contract (+ `totalCount`); rate-limit
   backoff hints; a clear-resume action; the playstate source-of-truth rule in the

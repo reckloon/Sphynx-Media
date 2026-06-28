@@ -162,6 +162,46 @@ struct PermissionsFlowTests {
         }
     }
 
+    @Test("marker writes honor per-library scoping (like metadata.edit)")
+    func markerWriteIsLibraryScoped() async throws {
+        let app = try await buildApplication(configuration: testConfiguration(markersAccess: "readwrite"))
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            // Item lives in library A; B is an unrelated library.
+            let libA: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateLibraryRequest(title: "A", kind: "movies"))) { try $0.decoded() }
+            let libB: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "movies"))) { try $0.decoded() }
+            let item: Item = try await client.execute(
+                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateItemRequest(type: "movie", title: "Heat", sourceId: nil,
+                    sourceKey: "https://cdn/heat.mkv", container: "mkv", tmdbId: nil,
+                    libraryId: libA.id, parentId: nil, year: nil, extra: nil))) { try $0.decoded() }
+
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw", permissions: nil)
+            let bobToken = try await login(client, "bob", "pw")
+            let contribution = try jsonBody(MarkerContribution(markers: Markers(intro: Marker(start: 1, end: 2)), source: "x"))
+
+            // Grant markers-write scoped to the WRONG library (B), read on A.
+            try await client.execute(
+                uri: "/v1/admin/users/\(bob.id)/permissions", method: .put, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(SetPermissionsRequest(permissions: ["library.read:\(libA.id)", "metadata.markers.write:\(libB.id)"]))) { #expect($0.status == .ok) }
+            try await client.execute(
+                uri: "/v1/items/\(item.id)/markers", method: .put, headers: jsonHeaders(bearer: bobToken), body: contribution
+            ) { #expect($0.status == .forbidden) }   // grant is for B, item is in A
+
+            // Re-scope the grant to A → now allowed.
+            try await client.execute(
+                uri: "/v1/admin/users/\(bob.id)/permissions", method: .put, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(SetPermissionsRequest(permissions: ["library.read:\(libA.id)", "metadata.markers.write:\(libA.id)"]))) { #expect($0.status == .ok) }
+            try await client.execute(
+                uri: "/v1/items/\(item.id)/markers", method: .put, headers: jsonHeaders(bearer: bobToken), body: contribution
+            ) { #expect($0.status == .ok) }
+        }
+    }
+
     @Test("a user can change their own password")
     func selfPasswordChange() async throws {
         let app = try await buildApplication(configuration: testConfiguration())
