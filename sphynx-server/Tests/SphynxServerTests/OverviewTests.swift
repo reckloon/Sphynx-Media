@@ -47,6 +47,54 @@ struct OverviewTests {
             let lib = try #require(overview.libraries.first { $0.id == library.id })
             #expect(lib.indexed == 2)
             #expect(lib.enriched == 0)
+
+            // The by-category breakdown accounts for the same items by type.
+            let movies = try #require(overview.byType.first { $0.type == "movie" })
+            #expect(movies.indexed == 2)
+            #expect(movies.enriched == 0)
+            // The breakdown is exhaustive: its indexed counts sum to the total.
+            #expect(overview.byType.reduce(0) { $0 + $1.indexed } == overview.indexed)
+            #expect(overview.byType.reduce(0) { $0 + $1.enriched } == overview.enriched)
+        }
+    }
+
+    @Test("byType breakdown separates enriched categories from never-enriched extras")
+    func byTypeBreakdown() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let tokens: TokenResponse = try await client.execute(
+                uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),
+                body: try jsonBody(LoginRequest(username: "admin", password: "test-password"))
+            ) { try $0.decoded() }
+            let auth = jsonHeaders(bearer: tokens.accessToken)
+
+            let library: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: auth,
+                body: try jsonBody(CreateLibraryRequest(title: "Movies", kind: "movies"))
+            ) { try $0.decoded() }
+
+            // A movie and a trailer extra nested under it.
+            let movie: Item = try await client.execute(
+                uri: "/v1/admin/items", method: .post, headers: auth,
+                body: try jsonBody(CreateItemRequest(type: "movie", title: "Feature", sourceId: nil,
+                    sourceKey: "https://example.com/feature.mp4", container: "mp4", tmdbId: nil,
+                    libraryId: library.id))
+            ) { try $0.decoded() }
+            _ = try await client.execute(
+                uri: "/v1/admin/items", method: .post, headers: auth,
+                body: try jsonBody(CreateItemRequest(type: "trailer", title: "Teaser", sourceId: nil,
+                    sourceKey: "https://example.com/teaser.mp4", container: "mp4", tmdbId: nil,
+                    libraryId: nil, parentId: movie.id))
+            ) { response in #expect(response.status == .ok) }
+
+            let overview: OverviewResponse = try await client.execute(
+                uri: "/v1/admin/overview", method: .get, headers: auth
+            ) { try $0.decoded() }
+
+            // Display order: containers/leaf media before extras.
+            let order = overview.byType.map(\.type)
+            #expect(order == ["movie", "trailer"])
+            #expect(overview.byType.first { $0.type == "trailer" }?.indexed == 1)
         }
     }
 

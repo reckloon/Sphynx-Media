@@ -23,6 +23,13 @@ extension Catalog {
         try await counts(groupedBy: "sourceId")
     }
 
+    /// Counts grouped by item `type` — `movie` / `series` / `season` / `episode` /
+    /// `collection` and the extras kinds (`trailer`, `featurette`, …). Lets the
+    /// dashboard break the catalog (and what enriched within it) down by category.
+    func itemCountsByType() async throws -> [String: ItemCounts] {
+        try await counts(groupedBy: "type")
+    }
+
     /// Catalog-wide totals: every item, and how many are enriched.
     func itemCountsOverall() async throws -> ItemCounts {
         try await db.writer.read { db in

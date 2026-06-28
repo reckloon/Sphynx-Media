@@ -91,6 +91,19 @@ enum AdminWebController {
   .swatch { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle; }
   .swatch.idx { background:var(--accent); } .swatch.enr { background:var(--ok); } .swatch.src { background:var(--muted); }
   details.scans { margin-top:14px; } details.scans > summary { cursor:pointer; font-size:12px; color:var(--muted); }
+  details.breakdown { margin-top:14px; } details.breakdown > summary { cursor:pointer; font-size:12px; color:var(--muted); }
+  .bd-cols { display:grid; grid-template-columns:1fr 1fr; gap:8px 28px; }
+  @media (max-width:640px) { .bd-cols { grid-template-columns:1fr; } }
+  .bd-row { display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid var(--line); }
+  .bd-row:last-child { border-bottom:0; }
+  .bd-row .bd-name { font-size:13px; color:var(--fg); }
+  .bd-row.bd-extra .bd-name { color:var(--muted); }
+  .bd-row .bd-num { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .bd-row .bd-num b { color:var(--fg); font-weight:600; }
+  .bd-row .bd-num .bd-not { color:var(--muted); }
+  .bd-row .bd-num .bd-tag { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:0 5px; }
+  .bd-bar { grid-column:1 / -1; height:5px; border-radius:4px; background:#0e1117; border:1px solid var(--line); overflow:hidden; }
+  .bd-bar > span { display:block; height:100%; background:var(--ok); }
   .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
   .chip.movie { color:var(--accent); } .chip.tv { color:var(--tv); } .chip.audio { color:var(--ok); } .chip.subtitle { color:var(--tv); } .chip.video { color:var(--accent); }
   .res-enriched { color:var(--ok); } .res-skipped { color:var(--muted); } .res-failed { color:var(--err); }
@@ -184,6 +197,19 @@ enum AdminWebController {
         <span class="spacer"></span>
         <span id="act-uptime"></span>
       </div>
+      <details class="breakdown" open>
+        <summary>Breakdown</summary>
+        <div class="bd-cols">
+          <div>
+            <div class="group-title">Items per library</div>
+            <div id="cov-bylib"><div class="empty">No libraries yet.</div></div>
+          </div>
+          <div>
+            <div class="group-title">Enriched by category</div>
+            <div id="cov-bytype"><div class="empty">Nothing indexed yet.</div></div>
+          </div>
+        </div>
+      </details>
       <details class="scans">
         <summary>Recent scans &amp; jobs</summary>
         <div class="group-title">In progress</div>
@@ -620,6 +646,7 @@ enum AdminWebController {
       $('#cov-seg-enr').style.width = enrPct + '%';
       $('#cov-pct-idx').textContent = idxPct + '%';
       $('#cov-pct-enr').textContent = (o.indexed ? Math.round(o.enriched / o.indexed * 100) : 0) + '%';
+      renderBreakdown(o);
       // Keep the per-library counts live straight from the overview we just
       // fetched (no extra request), so the Libraries tab tracks a scan in realtime.
       // If the set of libraries changed, do a full resync to pick up new ones.
@@ -629,6 +656,36 @@ enum AdminWebController {
         else renderLibraries();
       }
     }).catch(function () {});
+  }
+  var TYPE_LABELS = {
+    collection: 'Collections', movie: 'Movies', series: 'Series', season: 'Seasons',
+    episode: 'Episodes', trailer: 'Trailers', featurette: 'Featurettes',
+    deletedScene: 'Deleted scenes', behindTheScenes: 'Behind the scenes'
+  };
+  // Extras carry no TMDB metadata, so they never enrich — shown as a count with
+  // an "extras" tag rather than a 0-of-N deficit (which would read as a failure).
+  var EXTRA_TYPES = { trailer: 1, featurette: 1, deletedScene: 1, behindTheScenes: 1 };
+  // One breakdown row: name, the enriched/indexed split (or an "extras" tag), a bar.
+  function bdRow(name, indexed, enriched, isExtra) {
+    var pct = indexed ? Math.round(enriched / indexed * 100) : 0;
+    var unenriched = indexed - enriched;
+    var num = isExtra
+      ? indexed + ' <span class="bd-tag">extras</span>'
+      : '<b>' + enriched + '</b> / ' + indexed +
+        (unenriched > 0 ? ' <span class="bd-not">(' + unenriched + ' not)</span>' : '');
+    return '<div class="bd-row' + (isExtra ? ' bd-extra' : '') + '"><span class="bd-name">' + esc(name) + '</span>' +
+      '<span class="bd-num">' + num + '</span>' +
+      '<span class="bd-bar"><span style="width:' + (isExtra ? 0 : pct) + '%"></span></span></div>';
+  }
+  function renderBreakdown(o) {
+    var libs = o.libraries || [];
+    $('#cov-bylib').innerHTML = libs.length
+      ? libs.map(function (l) { return bdRow(l.title, l.indexed, l.enriched, false); }).join('')
+      : '<div class="empty">No libraries yet.</div>';
+    var types = o.byType || [];
+    $('#cov-bytype').innerHTML = types.length
+      ? types.map(function (t) { return bdRow(TYPE_LABELS[t.type] || t.type, t.indexed, t.enriched, !!EXTRA_TYPES[t.type]); }).join('')
+      : '<div class="empty">Nothing indexed yet.</div>';
   }
 
   // ---- settings ----

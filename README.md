@@ -137,6 +137,10 @@ Everything from here on is done in that web panel — no config files, no `curl`
 An **Activity panel** sits at the top of every page — it shows, at a glance, how
 many items your sources hold versus how many are in the database, and how many
 have fetched posters/descriptions ("enriched"), plus what's scanning right now.
+A **Breakdown** section expands those totals: items per library, and the enriched
+count by category (collections, movies, series, seasons, episodes, and extras) —
+so it's obvious where the enriched gap comes from (extras like trailers and
+deleted scenes index but never enrich, which is expected, not an error).
 
 Below it you'll see five tabs:
 
