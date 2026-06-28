@@ -31,11 +31,15 @@ struct Catalog: Sendable {
     }
 
     /// Update a library's editable fields (only non-nil arguments are applied).
-    func updateLibrary(id: String, title: String?, kind: String?) async throws -> LibraryRecord {
+    /// `collectionThreshold` is clamped to `>= 0`.
+    func updateLibrary(
+        id: String, title: String?, kind: String?, collectionThreshold: Int? = nil
+    ) async throws -> LibraryRecord {
         let updated: LibraryRecord? = try await db.writer.write { db in
             guard var lib = try LibraryRecord.filter(Column("id") == id).fetchOne(db) else { return nil }
             if let title, !title.isEmpty { lib.title = title }
             if let kind { lib.kind = kind }
+            if let collectionThreshold { lib.collectionThreshold = max(0, collectionThreshold) }
             try lib.update(db)
             return lib
         }
@@ -317,12 +321,42 @@ struct Catalog: Sendable {
 
     /// Top-level items of a library (no parent), with optional sort + genre filter.
     /// Fetches `limit + 1` so the caller can tell whether another page exists.
+    ///
+    /// Collection grouping is resolved here per the library's `collectionThreshold`:
+    /// a `collection` tile appears only when it has at least that many present
+    /// members. Below the threshold the tile is hidden and its member movies are
+    /// surfaced individually at the top level — so raising the threshold ungroups
+    /// small box sets without any re-indexing. Threshold `<= 1` is the historical
+    /// "group everything" behavior (no extra query work).
     func topLevelItems(
         libraryId: String, limit: Int, offset: Int,
         sort: ItemSort = .added, ascending: Bool? = nil, genre: String? = nil
     ) async throws -> [ItemRecord] {
         try await db.writer.read { db in
-            var request = ItemRecord.filter(Column("libraryId") == libraryId && Column("parentId") == nil)
+            let threshold = try Int.fetchOne(
+                db, sql: "SELECT collectionThreshold FROM library WHERE id = ?", arguments: [libraryId]
+            ) ?? 1
+
+            var request: QueryInterfaceRequest<ItemRecord>
+            if threshold > 1 {
+                // Sub-threshold collections (too few present members to group). A
+                // collection's member count is the number of items parented to it.
+                let subThreshold = """
+                    SELECT c.id FROM item c
+                    WHERE c.libraryId = :lib AND c.type = 'collection'
+                      AND (SELECT COUNT(*) FROM item m WHERE m.parentId = c.id) < :thr
+                    """
+                // Top level = the usual roots minus hidden collection tiles, plus the
+                // orphaned members of those hidden collections.
+                request = ItemRecord
+                    .filter(Column("libraryId") == libraryId)
+                    .filter(sql: """
+                        (parentId IS NULL AND NOT (type = 'collection' AND id IN (\(subThreshold))))
+                        OR parentId IN (\(subThreshold))
+                        """, arguments: ["lib": libraryId, "thr": threshold])
+            } else {
+                request = ItemRecord.filter(Column("libraryId") == libraryId && Column("parentId") == nil)
+            }
             if let genre, !genre.isEmpty {
                 // genresJSON is a JSON array of strings, e.g. ["Action","Drama"].
                 request = request.filter(sql: "genresJSON LIKE ?", arguments: ["%\"\(genre)\"%"])

@@ -555,7 +555,7 @@ enum AdminWebController {
     api('/v1/admin/libraries', 'GET').then(function (res) { return res.ok ? res.json() : { libraries: [] }; }).then(function (d) {
       libraries = d.libraries || [];
       $('#lib-list').innerHTML = libraries.length
-        ? libraries.map(function (l) { return '<div class="item"><span><strong>' + esc(l.title) + '</strong> <span class="meta">' + esc(l.kind) + '</span></span><span class="acts"><button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>'; }).join('')
+        ? libraries.map(function (l) { return '<div class="item"><span><strong>' + esc(l.title) + '</strong> <span class="meta">' + esc(l.kind) + '</span></span><span class="acts"><label class="meta" title="Show a collection as a box set only once it has at least this many movies; below it, the movies show individually.">Group at <input class="mini" type="number" min="0" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"></label> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>'; }).join('')
         : '<div class="empty">No libraries yet. Add one below.</div>';
       // refresh every storage form's library pickers (all .lib-movie / .lib-tv selects)
       var opts = '<option value="">— none —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join('');
@@ -683,6 +683,12 @@ enum AdminWebController {
     var id = e.target.getAttribute('data-del-lib'); if (!id) return;
     if (!confirm('Delete this library and its items?')) return;
     api('/v1/admin/libraries/' + id, 'DELETE').then(function () { loadLibraries(); loadSources(); });
+  };
+  // Per-library collection grouping threshold (saves on change).
+  $('#lib-list').onchange = function (e) {
+    var id = e.target.getAttribute('data-thr-lib'); if (!id) return;
+    var v = parseInt(e.target.value, 10); if (isNaN(v) || v < 0) v = 0;
+    api('/v1/admin/libraries/' + id, 'PATCH', { collectionThreshold: v }).then(function () { loadLibraries(); });
   };
 
   // ---- users & permissions ----
