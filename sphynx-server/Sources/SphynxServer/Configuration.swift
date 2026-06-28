@@ -62,7 +62,7 @@ struct ServerConfiguration: Sendable {
         let env = ProcessInfo.processInfo.environment
         return ServerConfiguration(
             hostname: env["SPHYNX_HOST"] ?? "0.0.0.0",
-            port: env["SPHYNX_PORT"].flatMap(Int.init) ?? 8080,
+            port: env["SPHYNX_PORT"].flatMap(Int.init) ?? 9410,
             serverName: env["SPHYNX_SERVER_NAME"] ?? "Sphynx Reference Server",
             serverID: env["SPHYNX_SERVER_ID"] ?? "srv_reference",
             version: env["SPHYNX_VERSION"] ?? "1.0",

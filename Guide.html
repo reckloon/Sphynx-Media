@@ -858,10 +858,10 @@ swift test</code></pre>
 <pre><code><span class="cmt"># From the sphynx-server directory. Set an admin password for the examples below;</span>
 <span class="cmt"># omit SPHYNX_ADMIN_PASSWORD and the server prints a generated one to the log.</span>
 SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
-<span class="cmt"># → serves on http://0.0.0.0:8080</span></code></pre>
+<span class="cmt"># → serves on http://0.0.0.0:9410</span></code></pre>
 
 <p>In another terminal, confirm it's alive. <code>/v1/info</code> is unauthenticated — it's how a client verifies "this URL is a Sphynx server" before showing any login UI:</p>
-<pre><code>curl -s localhost:8080/v1/info</code></pre>
+<pre><code>curl -s localhost:9410/v1/info</code></pre>
 <pre><code><span class="cmt">// abbreviated — capabilities.fields and playstateReportInterval omitted here;
 // see the full /v1/info example under Discovery</span>
 <span class="key">{</span>
@@ -887,7 +887,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
 <table>
   <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
   <tr><td><code>SPHYNX_HOST</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
-  <tr><td><code>SPHYNX_PORT</code></td><td><code>8080</code></td><td>Bind port</td></tr>
+  <tr><td><code>SPHYNX_PORT</code></td><td><code>9410</code></td><td>Bind port</td></tr>
   <tr><td><code>SPHYNX_DB_PATH</code></td><td><code>data/sphynx.sqlite</code></td><td>SQLite file path. The default is a <strong>persistent on-disk</strong> DB (WAL; the directory is created if missing). Use the special value <code>:memory:</code> for an ephemeral in-memory DB that's lost on restart. <em>In Docker, point this at a mounted volume — see <a href="#docker">Docker / Linux</a>.</em></td></tr>
   <tr><td><code>SPHYNX_ADMIN_USERNAME</code></td><td><code>admin</code></td><td>Bootstrap admin (first run only)</td></tr>
   <tr><td><code>SPHYNX_ADMIN_PASSWORD</code></td><td><em>(none)</em></td><td>Bootstrap admin password. Unset ⇒ a strong random one is generated and printed once to the log</td></tr>
@@ -914,7 +914,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>
 </div>
 <div class="callout tip">
-  <p><strong>Web admin page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:8080/admin</code>) — sign in as the admin and manage the server in your browser, no env vars or <code>curl</code> needed. An always-visible <strong>Activity</strong> panel tops every page with catalog coverage (items in source vs in database vs enriched) and live scan/enrich status (from <code>GET /v1/admin/overview</code> + <code>/status</code>). Five tabs: <strong>Libraries</strong> (add / delete shelves <em>and</em> the storage sources that feed them — add / scan / delete sources, one clean connection form per driver, mapping a Movies and a TV library per source), <strong>Users</strong> (every account with a per-permission editor including per-library scoping, avatars, and password resets), <strong>Items</strong> (correct a title's metadata by hand — edits lock the field against re-scan — and re-identify against TMDB), <strong>Settings</strong> (the runtime settings above, plus the <a href="#config">TMDB API key</a>), and <strong>Extensions</strong> — the <strong>Diagnostics</strong> module (Database / Logs) and the optional <strong>Media probe</strong>. It's a static page that drives the <code>/v1/admin/*</code> API. A companion <code>/user</code> page lets each non-admin user manage their own display name, profile picture, password, and watch-history reset.</p>
+  <p><strong>Web admin page.</strong> The server hosts a small admin page at <code>/admin</code> (e.g. <code>http://localhost:9410/admin</code>) — sign in as the admin and manage the server in your browser, no env vars or <code>curl</code> needed. An always-visible <strong>Activity</strong> panel tops every page with catalog coverage (items in source vs in database vs enriched) and live scan/enrich status (from <code>GET /v1/admin/overview</code> + <code>/status</code>). Five tabs: <strong>Libraries</strong> (add / delete shelves <em>and</em> the storage sources that feed them — add / scan / delete sources, one clean connection form per driver, mapping a Movies and a TV library per source), <strong>Users</strong> (every account with a per-permission editor including per-library scoping, avatars, and password resets), <strong>Items</strong> (correct a title's metadata by hand — edits lock the field against re-scan — and re-identify against TMDB), <strong>Settings</strong> (the runtime settings above, plus the <a href="#config">TMDB API key</a>), and <strong>Extensions</strong> — the <strong>Diagnostics</strong> module (Database / Logs) and the optional <strong>Media probe</strong>. It's a static page that drives the <code>/v1/admin/*</code> API. A companion <code>/user</code> page lets each non-admin user manage their own display name, profile picture, password, and watch-history reset.</p>
 </div>
 
 <div class="callout tip">
@@ -930,7 +930,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
 <pre><code><span class="cmt"># From the sphynx-server directory — builds the image and runs it</span>
 docker compose up --build
 <span class="cmt"># then:</span>
-curl http://localhost:8080/v1/info
+curl http://localhost:9410/v1/info
 
 <span class="cmt"># Or run the test suite inside a Swift Linux container (needs Docker)</span>
 ./scripts/test-linux.sh          <span class="cmt"># runs `swift test` inside swift:6.3-noble</span></code></pre>
@@ -938,7 +938,7 @@ curl http://localhost:8080/v1/info
 <p>To build the image by hand:</p>
 <pre><code><span class="cmt"># Note the trailing `..` — context is the PARENT dir with BOTH packages</span>
 docker build -f sphynx-server/Dockerfile -t sphynx-server ..
-docker run -p 8080:8080 -e SPHYNX_ADMIN_PASSWORD='secret' sphynx-server</code></pre>
+docker run -p 9410:9410 -e SPHYNX_ADMIN_PASSWORD='secret' sphynx-server</code></pre>
 
 <div class="callout warn">
   <p><strong>Persist the database.</strong> The DB lives at <code>SPHYNX_DB_PATH</code>, which defaults to a path <em>inside the container</em> — so without a volume it's wiped on every rebuild/recreate (the catalog and admin account vanish). The provided <code>docker-compose.yml</code> handles this: it mounts a named volume <code>sphynx-data</code> at <code>/data</code> and sets <code>SPHYNX_DB_PATH=/data/sphynx.sqlite</code>. If you run with bare <code>docker run</code>, add <code>-v sphynx-data:/data -e SPHYNX_DB_PATH=/data/sphynx.sqlite</code> yourself.</p>
@@ -951,11 +951,11 @@ docker run -p 8080:8080 -e SPHYNX_ADMIN_PASSWORD='secret' sphynx-server</code></
 <!-- ========================= FIRST LIBRARY ========================= -->
 <section id="firstlibrary">
 <h2>Your First Library</h2>
-<p>A full, copy-paste walkthrough. By the end you'll have logged in, created a library, indexed media from a source, and resolved an item to a direct playable URL. Replace <code>localhost:8080</code> with your server if different.</p>
+<p>A full, copy-paste walkthrough. By the end you'll have logged in, created a library, indexed media from a source, and resolved an item to a direct playable URL. Replace <code>localhost:9410</code> with your server if different.</p>
 
 <h3 id="walk-login">1. Log in</h3>
 <p>Authenticate as the bootstrapped admin to get an access token. Send a stable per-install <code>X-Sphynx-Device</code> header so this device can be revoked independently later.</p>
-<pre><code>curl -sX POST localhost:8080/v1/auth/login \
+<pre><code>curl -sX POST localhost:9410/v1/auth/login \
   -H <span class="str">'Content-Type: application/json'</span> \
   -H <span class="str">'X-Sphynx-Device: my-laptop-001'</span> \
   -d <span class="str">'{"username":"admin","password":"changeme"}'</span></code></pre>
@@ -967,14 +967,14 @@ AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
 
 <h3 id="walk-library">2. Create a library</h3>
 <p>Libraries are the top-level collections users browse. Admin-only.</p>
-<pre><code>curl -sX POST localhost:8080/v1/admin/libraries \
+<pre><code>curl -sX POST localhost:9410/v1/admin/libraries \
   -H <span class="str">"$AUTH"</span> -H <span class="str">'Content-Type: application/json'</span> \
   -d <span class="str">'{"title":"Movies","kind":"movies"}'</span>
 <span class="cmt"># → { "id": "lib_…", "title": "Movies", "kind": "movies" }</span></code></pre>
 
 <h3 id="walk-source">3. Add a source</h3>
 <p>A <strong>source</strong> is where the media actually lives, plus how to reach it. The indexer reads a source's <em>manifest</em> (a JSON list of entries — metadata, never bytes) and feeds the named library. Here's an HTTP source pointed at a manifest:</p>
-<pre><code>curl -sX POST localhost:8080/v1/admin/sources \
+<pre><code>curl -sX POST localhost:9410/v1/admin/sources \
   -H <span class="str">"$AUTH"</span> -H <span class="str">'Content-Type: application/json'</span> \
   -d <span class="str">'{ "label":"My CDN", "driver":"http", "libraryId":"lib_…",
        "baseURL":"https://cdn.example",
@@ -1000,13 +1000,13 @@ AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
 
 <h3 id="walk-scan">4. Scan &amp; enrich</h3>
 <p>Index the source: fetch its manifest, diff against the catalog, apply adds/updates/removes.</p>
-<pre><code>curl -sX POST localhost:8080/v1/admin/sources/src_…/scan -H <span class="str">"$AUTH"</span>
+<pre><code>curl -sX POST localhost:9410/v1/admin/sources/src_…/scan -H <span class="str">"$AUTH"</span>
 <span class="cmt"># → { "sourceId":"src_…", "scanned":12, "added":3, "updated":1, "removed":0, "enriched":3 }</span></code></pre>
 <p>If <code>SPHYNX_TMDB_API_KEY</code> is set, the scan also <strong>identifies</strong> each entry against TMDB (movies and TV) and enriches posters, overviews, cast, and — for TV — builds a <strong>series → season → episode</strong> tree with season posters and episode stills. The <code>enriched</code> count reflects that (0 when TMDB isn't configured).</p>
 
 <div class="callout note">
   <p><strong>Don't have a manifest source?</strong> You can add a single item by hand pointing at any direct URL — great for a first end-to-end test:</p>
-  <pre><code>curl -sX POST localhost:8080/v1/admin/items -H "$AUTH" \
+  <pre><code>curl -sX POST localhost:9410/v1/admin/items -H "$AUTH" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Big Buck Bunny","container":"mp4",
        "sourceKey":"https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"}'</code></pre>
@@ -1015,12 +1015,12 @@ AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
 
 <h3 id="walk-play">5. Browse &amp; resolve</h3>
 <p>List libraries, then browse a library's children with <code>parent=</code>:</p>
-<pre><code>curl -s localhost:8080/v1/libraries -H <span class="str">"$AUTH"</span>
-curl -s <span class="str">"localhost:8080/v1/items?parent=lib_…"</span> -H <span class="str">"$AUTH"</span>
+<pre><code>curl -s localhost:9410/v1/libraries -H <span class="str">"$AUTH"</span>
+curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <span class="str">"$AUTH"</span>
 <span class="cmt"># → { "items": [ { "id":"it_…", "type":"movie", "title":"Big Buck Bunny", "year":2008 } ], … }</span></code></pre>
 
 <p>Finally, the heart of Sphynx — <strong>resolve</strong> an item to a direct, playable location at play time. The client streams this URL itself; the server moved no bytes.</p>
-<pre><code>curl -s localhost:8080/v1/resolve/it_… -H <span class="str">"$AUTH"</span>
+<pre><code>curl -s localhost:9410/v1/resolve/it_… -H <span class="str">"$AUTH"</span>
 <span class="cmt"># → { "url":"https://…/BigBuckBunny_320x180.mp4", "container":"mp4",
 #       "terminal":true }</span></code></pre>
 

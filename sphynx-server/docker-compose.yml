@@ -6,7 +6,7 @@
 #
 #   docker compose up --build
 #
-# then:  curl http://localhost:8080/v1/info
+# then:  curl http://localhost:9410/v1/info
 services:
   sphynx:
     build:
@@ -14,10 +14,10 @@ services:
       dockerfile: sphynx-server/Dockerfile
     image: sphynx-server:latest
     ports:
-      - "8080:8080"
+      - "9410:9410"
     environment:
       SPHYNX_HOST: "0.0.0.0"
-      SPHYNX_PORT: "8080"
+      SPHYNX_PORT: "9410"
       SPHYNX_SERVER_NAME: "Sphynx (Docker)"
       # Keep the SQLite DB on the mounted volume below, NOT in the container's
       # throwaway layer — otherwise the catalog + admin account are lost whenever

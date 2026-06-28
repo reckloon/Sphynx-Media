@@ -47,6 +47,6 @@ WORKDIR /app
 RUN useradd --create-home --shell /usr/sbin/nologin sphynx
 COPY --from=build /staging /app
 USER sphynx
-EXPOSE 8080
-ENV SPHYNX_HOST=0.0.0.0 SPHYNX_PORT=8080
+EXPOSE 9410
+ENV SPHYNX_HOST=0.0.0.0 SPHYNX_PORT=9410
 ENTRYPOINT ["/app/SphynxServer"]

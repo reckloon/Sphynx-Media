@@ -28,8 +28,8 @@ package, which this package depends on via a local path. Request/response bodies
 swift build
 swift test
 # Set an admin password, or omit it and copy the random one printed to the log.
-SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer   # serves on http://0.0.0.0:8080
-curl http://localhost:8080/v1/info
+SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer   # serves on http://0.0.0.0:9410
+curl http://localhost:9410/v1/info
 ```
 
 ### Configuration (environment variables)
@@ -37,7 +37,7 @@ curl http://localhost:8080/v1/info
 | Variable                | Default                    | Purpose                          |
 |-------------------------|----------------------------|----------------------------------|
 | `SPHYNX_HOST`           | `0.0.0.0`                  | Bind address                     |
-| `SPHYNX_PORT`           | `8080`                     | Bind port                        |
+| `SPHYNX_PORT`           | `9410`                     | Bind port                        |
 | `SPHYNX_SERVER_NAME`    | `Sphynx Reference Server`  | Name reported by `/v1/info`      |
 | `SPHYNX_SERVER_ID`      | `srv_reference`            | Stable id reported by `/v1/info`  |
 | `SPHYNX_VERSION`        | `1.0`                      | Version reported by `/v1/info`   |
@@ -69,17 +69,17 @@ changes for those keys no longer take effect). See the
 
 ```sh
 # 1. Log in as the bootstrapped admin → returns accessToken + refreshToken.
-curl -sX POST localhost:8080/v1/auth/login -H 'Content-Type: application/json' \
+curl -sX POST localhost:9410/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"changeme"}'
 
 # 2. Manually add an item pointing at a direct media URL (admin only).
-curl -sX POST localhost:8080/v1/admin/items -H "Authorization: Bearer <accessToken>" \
+curl -sX POST localhost:9410/v1/admin/items -H "Authorization: Bearer <accessToken>" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Big Buck Bunny","container":"mp4",
        "sourceKey":"https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"}'
 
 # 3. Resolve it to a direct, playable location (the client streams this itself).
-curl -s localhost:8080/v1/resolve/<itemId> -H "Authorization: Bearer <accessToken>"
+curl -s localhost:9410/v1/resolve/<itemId> -H "Authorization: Bearer <accessToken>"
 ```
 
 Clients send a stable per-install `X-Sphynx-Device` header so one device can be

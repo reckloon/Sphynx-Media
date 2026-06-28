@@ -92,7 +92,7 @@ services:
       dockerfile: sphynx-server/Dockerfile
     image: sphynx-server:latest
     ports:
-      - "8080:8080"            # reach the server at http://localhost:8080
+      - "9410:9410"            # reach the server at http://localhost:9410
     environment:
       SPHYNX_SERVER_NAME: "My Living Room Server"   # the name your player shows
       SPHYNX_ADMIN_PASSWORD: "change-this-please"   # <-- PICK YOUR OWN PASSWORD
@@ -120,16 +120,16 @@ docker compose up --build
 ```
 
 First run takes a couple minutes (it's compiling the server). When it's done
-you'll see it listening on port 8080. Leave that terminal running, or add `-d` to
+you'll see it listening on port 9410. Leave that terminal running, or add `-d` to
 run it in the background.
 
 ### 4. Open the control panel
 
-Once the build finishes, open **http://localhost:8080/admin** in your browser and
+Once the build finishes, open **http://localhost:9410/admin** in your browser and
 sign in as `admin` with the password you set in the Compose file. If the sign-in
 page loads, **you've got a working Sphynx server.** 🎉
 
-> Prefer the terminal? `curl http://localhost:8080/v1/info` returns a little blob
+> Prefer the terminal? `curl http://localhost:9410/v1/info` returns a little blob
 > of JSON with your server's name — same confirmation, no browser needed.
 
 Everything from here on is done in that web panel — no config files, no `curl`.
@@ -156,7 +156,7 @@ Below it you'll see five tabs:
     files next to the video, and embedded chapters — so your player can show a proper
     "Audio: English 5.1 / Subtitles: Spanish" picker.
 
-There's also a separate **http://localhost:8080/user** page where each of your
+There's also a separate **http://localhost:9410/user** page where each of your
 users can sign in and manage their own profile — display name, profile picture,
 password, and a one-click "reset my watch history everywhere."
 
@@ -233,7 +233,7 @@ A server with no player is just a fancy JSON spitter. Here's how a client app
 hooks up — the steps are the same for any Sphynx-speaking app:
 
 1. **Make the server reachable from the player.** On the same home network,
-   that's your machine's local IP, e.g. `http://192.168.1.50:8080`. From outside
+   that's your machine's local IP, e.g. `http://192.168.1.50:9410`. From outside
    the house you'll want it behind a real domain with HTTPS (a reverse proxy like
    Caddy or Nginx makes this a couple of lines — see the guide).
 2. **Point the app at that address.** The app pings `/v1/info` to confirm "yep,
@@ -266,7 +266,7 @@ anything else runs):
 |---|---|
 | `SPHYNX_ADMIN_PASSWORD` | Your admin login password. (Leave it blank and a random one is printed to the log on first start.) |
 | `SPHYNX_TMDB_API_KEY` | Your free TMDB key — fills in posters, plots, cast, episode art. Blank = plain titles only. |
-| `SPHYNX_PORT` | The port it listens on. Default `8080`. |
+| `SPHYNX_PORT` | The port it listens on. Default `9410`. |
 | `SPHYNX_DB_PATH` | Where the catalog database lives. Keep it on the mounted volume (as the Compose file does) so it survives restarts. |
 
 **Change-anytime-in-the-GUI** — open **/admin → Settings** and these are right
@@ -291,7 +291,7 @@ tab is the source of truth.) The exhaustive list with exact units is in
 
 ## When something's off
 
-- **"Connection refused" / nothing on port 8080** — the container probably isn't
+- **"Connection refused" / nothing on port 9410** — the container probably isn't
   up yet (first build is slow) or crashed. Check `docker compose logs`.
 - **I lost my admin password** — you set one in the Compose file; it's right
   there. If you let it auto-generate, search the startup log
