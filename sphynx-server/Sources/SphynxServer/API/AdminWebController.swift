@@ -647,7 +647,7 @@ enum AdminWebController {
       var c = libCounts[l.id];
       var counts = c ? '<span class="meta">' + c.indexed + ' items · ' + c.enriched + ' enriched</span>' : '';
       return '<div class="item"><span><strong>' + esc(l.title) + '</strong> <span class="meta">' + esc(l.kind) + '</span> ' + counts + '</span>' +
-        '<span class="acts"><label class="meta" title="Show a collection as a box set only once it has at least this many movies.">Group at <input class="mini" type="number" min="0" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"></label> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>';
+        '<span class="acts"><label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. To turn box sets off, set this higher than any collection (e.g. 999) so nothing ever groups.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies <span class="meta" style="opacity:.75">(high number = off)</span></label> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>';
     }).join('') : '<div class="empty">No libraries yet. Add one below.</div>';
   }
   function refreshLibPickers() {
