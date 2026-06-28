@@ -181,9 +181,11 @@ just "here's where my files are and how to reach them." Fill in:
 
 - **Label** — any name you'll recognize ("My NAS", "Cloud bucket").
 - **Driver** — how Sphynx reaches the files. Pick **HTTP** for media at web URLs,
-  **Local** for a folder on the server's disk, or **TorBox** to stream your
+  **SMB** / **WebDAV** / **FTP** for a network file server, **TorBox** to stream your
   [TorBox](https://torbox.app) cloud (torrents/usenet/web downloads) — paste your
-  API key, no `.strm` files or mount needed.
+  API key, no `.strm` files or mount needed — or **Local** for a folder on the
+  server's disk (**local testing only — Sphynx doesn't serve the files; see the
+  note below**).
 - **Base URL** *(HTTP)* or **Root path** *(Local)* — the web address or folder
   your media sits under.
 - **Manifest URL** *(HTTP)* — a small list of what to index (see the note below).
@@ -192,6 +194,22 @@ just "here's where my files are and how to reach them." Fill in:
   automatically.
 
 Click **Add source** to save it.
+
+> **You can add as many sources as you like to the same library**, mixing drivers
+> freely — e.g. an HTTP source and an SMB source both pointing at your "Movies"
+> shelf. Each source just maps its movies/TV to a library; they all pile onto the
+> same shelf. (One source can also feed two libraries at once via the separate
+> Movies / TV pickers.)
+
+> ⚠️ **About the Local driver — it does not serve your files.** Sphynx is a
+> metadata server: it hands players a *location* and never streams the bytes
+> itself. The **Local** driver resolves to a `file://` path, which only works for a
+> player running **on the same machine as the server** — so it's only good for
+> **testing a library locally**. To actually serve a local media folder to phones,
+> TVs, or other devices, put a **file-serving service in front of it** (a Samba/SMB
+> share, a WebDAV server, or any HTTP file server) and point Sphynx's matching
+> **SMB / WebDAV / HTTP** driver at that instead. Sphynx then hands players a
+> network-reachable URL the file server actually serves.
 
 > **What's a "manifest"?** For web (HTTP) sources, it's a little text file listing
 > your titles — Sphynx reads the list, not the videos. The

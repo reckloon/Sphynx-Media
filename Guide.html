@@ -993,6 +993,10 @@ AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
   "config": { "rootPath": "/srv/media/movies" } }</code></pre>
 </div>
 
+<div class="callout warn">
+  <p><strong>The <code>local</code> driver does not serve files — it is for testing a library on the same machine only.</strong> Sphynx is metadata-only: <code>resolve</code> hands the client a location and never moves bytes. A plain media file under a <code>local</code> source resolves to a <code>file://</code> path, reachable only by a player running on the server host itself — so a phone, TV, or another computer can't play it. To serve a local media folder to other devices, run a <strong>file-serving service</strong> over it (a Samba/SMB share, a WebDAV server, or any HTTP file server) and use the matching <code>smb</code> / <code>webdav</code> / <code>http</code> driver, so <code>resolve</code> returns a network-reachable URL the file server — not Sphynx — actually serves. (<code>local</code> with <code>.strm</code> files is fine, since those resolve to whatever URL they contain.)</p>
+</div>
+
 <p>Other backends (WebDAV, SMB, FTP) configure through two open maps — <code>config</code> for non-secret settings and <code>secrets</code> for credentials (never returned, never logged):</p>
 <pre><code><span class="key">{ "label":"NAS", "driver":"webdav", "libraryId":"lib_…",
   "config":  { "baseURL":"https://nas.example/remote.php/dav" },
@@ -1199,7 +1203,9 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 <pre><code><span class="key">{ "label":"NAS", "driver":"webdav", "libraryId":"lib_…",
   "config":  { "baseURL":"https://nas.example/remote.php/dav" },
   "secrets": { "username":"alice", "password":"•••" } }</span></code></pre>
-<p>For a <code>local</code> source, set <code>driver</code> to <code>local</code> and <code>config.rootPath</code> to a directory path; the indexer walks that tree, deriving identity from the folder layout (<code>Title (Year)/file</code> for movies, <code>Show (Year)/Season N/file</code> for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated source. <code>.strm</code> files are followed at resolve time to their contained URL.</p>
+<p>For a <code>local</code> source, set <code>driver</code> to <code>local</code> and <code>config.rootPath</code> to a directory path; the indexer walks that tree, deriving identity from the folder layout (<code>Title (Year)/file</code> for movies, <code>Show (Year)/Season N/file</code> for TV). A re-scan re-walks the folder, so it doubles as the periodically-updated source. <code>.strm</code> files are followed at resolve time to their contained URL. <strong>Note that the <code>local</code> driver does not serve files</strong> — a plain media file resolves to a <code>file://</code> path usable only by a player on the server host, so it is for <strong>local testing only</strong>. To serve a local folder to other devices, front it with a Samba/SMB share, WebDAV, or an HTTP file server and use the matching <code>smb</code>/<code>webdav</code>/<code>http</code> driver.</p>
+
+<p><strong>Many sources, one library.</strong> A library can be fed by any number of sources, of any mix of drivers — each source routes its items to a <code>libraryId</code> (or per content category via <code>libraryMap</code>), and nothing requires those targets to be distinct. Point several sources at the same library to merge them onto one shelf; point one source's movie and TV categories at two libraries to split it.</p>
 <p>The manifest is a simple JSON document the indexer reads (metadata, not media). <strong>TV</strong> is detected from the filename (<code>S01E02</code>, <code>1x05</code>, …): the indexer builds a series → season → episode tree, deduping shared series/seasons, and (when TMDB is configured) identifies and enriches them. Entries may instead carry explicit <code>seriesTitle</code> / <code>season</code> / <code>episode</code> hints. Browse the tree via <code>parent=</code> with <code>seriesId</code>, <code>seasonIndex</code>, <code>episodeIndex</code>, and <code>childCount</code> on each item.</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/sources</span></div>
@@ -1366,7 +1372,7 @@ item.markersUpdatedAt = now
 <table>
   <tr><th>Kind</th><th><code>resolve</code> (handoff)</th><th><code>list</code> (enumerate)</th></tr>
   <tr><td><code>http</code> / <code>https</code></td><td>✅ direct URL + headers</td><td>✅ via a JSON manifest</td></tr>
-  <tr><td><code>local</code></td><td>✅ <code>.strm</code> → its URL; else <code>file://</code></td><td>✅ filesystem walk</td></tr>
+  <tr><td><code>local</code> <span class="muted">(local-test only — see note)</span></td><td>✅ <code>.strm</code> → its URL; else <code>file://</code> (same-host players only)</td><td>✅ filesystem walk</td></tr>
   <tr><td><code>webdav</code></td><td>✅ <code>https://</code> + auth header</td><td>✅ recursive <code>PROPFIND</code> over the built-in HTTP client</td></tr>
   <tr><td><code>smb</code></td><td>✅ <code>smb://host/share/key</code></td><td>✅ via <code>smbclient</code> (per-directory <code>ls</code> walk)</td></tr>
   <tr><td><code>ftp</code></td><td>✅ <code>ftp://host/key</code></td><td>✅ via <code>curl</code> (per-directory <code>LIST</code> walk)</td></tr>
