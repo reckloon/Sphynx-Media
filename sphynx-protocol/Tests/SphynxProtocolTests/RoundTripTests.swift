@@ -40,6 +40,30 @@ struct RoundTripTests {
         try assertRoundTrips(ErrorEnvelope(code: .unauthorized, message: "Token expired.", retryable: false))
     }
 
+    @Test("ErrorEnvelope round-trips with a retryAfter hint")
+    func errorEnvelopeWithRetryAfter() throws {
+        try assertRoundTrips(ErrorEnvelope(code: .rateLimited, message: "Slow down.", retryable: true, retryAfter: 30))
+    }
+
+    @Test("retryAfter encodes when set and is omitted when nil")
+    func retryAfterEncodingPresence() throws {
+        let encoder = JSONEncoder()
+
+        // Present when set.
+        let withHint = ErrorEnvelope(code: .unavailable, message: "Down.", retryable: true, retryAfter: 12.5)
+        let withJSON = String(data: try encoder.encode(withHint), encoding: .utf8)!
+        #expect(withJSON.contains("\"retryAfter\""))
+        let withDecoded = try JSONDecoder().decode(ErrorEnvelope.self, from: Data(withJSON.utf8))
+        #expect(withDecoded.error.retryAfter == 12.5)
+
+        // Absent on the wire when nil.
+        let withoutHint = ErrorEnvelope(code: .notFound, message: "Gone.", retryable: false)
+        let withoutJSON = String(data: try encoder.encode(withoutHint), encoding: .utf8)!
+        #expect(!withoutJSON.contains("retryAfter"))
+        let withoutDecoded = try JSONDecoder().decode(ErrorEnvelope.self, from: Data(withoutJSON.utf8))
+        #expect(withoutDecoded.error.retryAfter == nil)
+    }
+
     @Test("Open enums round-trip their known cases")
     func openEnumsKnown() throws {
         try assertRoundTrips(ItemType.movie)
