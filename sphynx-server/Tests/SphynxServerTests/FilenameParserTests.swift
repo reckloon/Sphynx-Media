@@ -98,4 +98,25 @@ struct FilenameParserTests {
         #expect(p.title == "君の名は")
         #expect(p.year == 2016)
     }
+
+    @Test("a leading tracker/site tag is stripped from the title")
+    func trackerSiteTagStripped() {
+        // The exact real-world miss: a `www.Site.org - ` prefix leaked into the title.
+        let p = FilenameParser.parse("www.UIndex.org    -    Planes 2013 BluRay 1080p DTS-HD MA 7.1.mkv")
+        #expect(p.title == "Planes")
+        #expect(p.year == 2013)
+
+        // A bracketed bare-domain tag is also stripped.
+        let b = FilenameParser.parse("[ www.Tracker.to ] Arrival 2016 1080p.mkv")
+        #expect(b.title == "Arrival")
+        #expect(b.year == 2016)
+    }
+
+    @Test("a real title that merely contains a dotted word is not over-stripped")
+    func siteTagDoesNotEatRealTitles() {
+        // No www / brackets and not a domain prefix → left intact.
+        let p = FilenameParser.parse("Up.2009.1080p.BluRay.mkv")
+        #expect(p.title == "Up")
+        #expect(p.year == 2009)
+    }
 }

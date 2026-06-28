@@ -261,4 +261,27 @@ struct PathParserTests {
         let p = PathParser.parse("Riverside (2017)/Season 2/Riverside - S02E03.mkv")
         #expect(p == .episode(series: "Riverside", season: 2, episode: 3, episodeTitle: nil, year: 2017))
     }
+
+    @Test("a TV-pack's extras attach to the show, not a phantom movie (year dropped)")
+    func showPackExtrasAttachToSeries() {
+        // The enclosing folder carries a year AND season markers; left as-is the
+        // year would route the clip to a phantom *movie* parent. The season markers
+        // (and the clip's own episode marker) mark it a SHOW, so parentYear is nil
+        // and the Indexer nests it under the series.
+        let deleted = PathParser.parse(
+            "Brooklyn Nine-Nine (2013) Season 1-8 S01-S08 (1080p)/Deleted Scenes/S01E21 Unsolvable.mkv")
+        #expect(deleted == .extras(bucket: .deletedScene, parentTitle: "Brooklyn Nine-Nine",
+                                   parentYear: nil, title: "S01E21 Unsolvable"))
+
+        // A featurette with no episode marker still attaches via the folder's range.
+        let feat = PathParser.parse(
+            "Brooklyn Nine-Nine (2013) Season 1-8 S01-S08 (1080p)/Featurettes/Get Your Cop On.mkv")
+        #expect(feat == .extras(bucket: .featurette, parentTitle: "Brooklyn Nine-Nine",
+                                parentYear: nil, title: "Get Your Cop On"))
+
+        // Regression: a genuine MOVIE's extras still keep their year (no season marker).
+        let movie = PathParser.parse("Sky Harbor (2020)/Extras/Making Of.mkv")
+        #expect(movie == .extras(bucket: .featurette, parentTitle: "Sky Harbor",
+                                 parentYear: 2020, title: "Making Of"))
+    }
 }
