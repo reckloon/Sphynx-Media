@@ -17,12 +17,22 @@ public struct MediaStream: Codable, Hashable, Sendable {
     public var title: String?
     /// Audio channel count (2 = stereo, 6 = 5.1).
     public var channels: Int?
+    /// Audio sample rate in **Hz** (e.g. 44100, 96000). With `codec` + `bitDepth`,
+    /// this is what tells a client a track is **hi-res / lossless** (e.g. a `flac`
+    /// stream at `sampleRate: 96000`, `bitDepth: 24`). Video streams omit it.
+    public var sampleRate: Int?
+    /// Audio bit depth in **bits per sample** (e.g. 16 for CD, 24 for hi-res).
+    public var bitDepth: Int?
+    /// Stream bit rate in **bits per second** (e.g. 320000 for a 320 kbps MP3).
+    /// For a lossless codec it's informational; for a lossy one it's the quality.
+    public var bitRate: Int?
     public var isDefault: Bool?
     public var isForced: Bool?
 
     public init(
         index: Int, kind: String, codec: String? = nil, language: String? = nil,
-        title: String? = nil, channels: Int? = nil, isDefault: Bool? = nil, isForced: Bool? = nil
+        title: String? = nil, channels: Int? = nil, sampleRate: Int? = nil,
+        bitDepth: Int? = nil, bitRate: Int? = nil, isDefault: Bool? = nil, isForced: Bool? = nil
     ) {
         self.index = index
         self.kind = kind
@@ -30,6 +40,9 @@ public struct MediaStream: Codable, Hashable, Sendable {
         self.language = language
         self.title = title
         self.channels = channels
+        self.sampleRate = sampleRate
+        self.bitDepth = bitDepth
+        self.bitRate = bitRate
         self.isDefault = isDefault
         self.isForced = isForced
     }

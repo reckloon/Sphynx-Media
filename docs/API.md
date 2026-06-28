@@ -430,7 +430,9 @@ The top-level collections a user can browse.
 { "libraries": [ { "id": "lib_…", "title": "Movies", "kind": "movies" } ] }
 ```
 `kind` is an open string enum (`movies`, `tvShows`, `homeVideos`, `musicVideos`,
-`boxSets`, `collection`, `other`, …); clients map unknown kinds to a default.
+`music`, `audiobooks`, `boxSets`, `collection`, `other`, …); clients map unknown
+kinds to a default. `music`/`audiobooks` are protocol-modelled but **not produced by
+the reference server** — see [Music & audiobooks](#music--audiobooks).
 
 ### `GET /v1/items` — auth required
 
@@ -567,6 +569,63 @@ ordering, so both backends present a filmography identically.
 - A well-formed `pe_…` id always returns **200** with a possibly-empty `items` list
   (the server keeps no person registry, so "unknown person" and "known person with
   no credits" are indistinguishable). **404** is reserved for a malformed id.
+
+---
+
+## Music & audiobooks
+
+> **The reference server does not implement music or audiobooks** — it has no
+> audio identification/enrichment (TMDB is film/TV only), so it never produces these
+> item types and won't advertise their fields in `capabilities.fields`. The
+> **protocol**, however, fully models them, so another Sphynx-compatible server can
+> serve an audio library without any wire changes. This section is that contract.
+
+Audio reuses the same primitives as everything else — libraries, the parent/child
+tree (`parentId` + `?parent=`), `resolve`, playstate, per-user state — with audio
+types and a few ordering fields.
+
+**Libraries.** `Library.kind` gains `music` and `audiobooks` (distinct from the
+existing `musicVideos`, which is video).
+
+**Hierarchy** (mirrors series → season → episode), nested via `parentId`:
+
+| Domain | Tree | `Item.type` |
+|---|---|---|
+| Music | artist → album → track | `artist` / `album` / `track` |
+| Audiobooks | audiobook → chapter | `audiobook` / `chapter` |
+
+**Item fields for audio** (all optional; a server sets what applies):
+
+- `artistName`, `albumTitle` — denormalized parent names so a track tile renders
+  without extra fetches (the audio analogue of `seriesTitle`). For an **audiobook**,
+  map author → `artistName`, book → `albumTitle`, chapter № → `trackNumber`.
+- `trackNumber` — 1-based track/chapter number within its album/audiobook.
+- `discNumber` — 1-based disc for a multi-disc album (absent ⇒ single disc).
+- `runtime` (seconds), `images`, `genres`, `communityRating`, `cast` (performers),
+  `extra` (anything beyond the canonical set — BPM, ISRC, narrator, …) all apply
+  unchanged.
+
+**Lossless / hi-res audio.** A client learns a track's quality from the described
+streams on `resolve` — `MediaStream` carries the audio detail:
+
+```json
+"tracks": { "streams": [
+  { "index": 0, "kind": "audio", "codec": "flac",
+    "sampleRate": 96000, "bitDepth": 24, "channels": 2, "bitRate": 4600000 }
+]}
+```
+
+- `codec` + `bitDepth` + `sampleRate` is what marks a stream **lossless / hi-res** —
+  e.g. `flac`/`alac` at `bitDepth: 24`, `sampleRate: 96000` renders as "FLAC 24/96".
+  A lossy stream (`aac`/`mp3`) sets `bitRate` and omits `bitDepth`.
+- When a title exists in multiple qualities (FLAC **and** MP3), expose them as
+  [versions](#multi-version--editions): each `MediaVersion.label` names the quality
+  ("FLAC 24/96", "MP3 320"), and `resolve?version=<id>` picks one — exactly the
+  movie 4K/1080p mechanism, reused for audio.
+
+A field-rich audio server populates these from a tag/probe pass (e.g. an
+`ffprobe`-style extension, the same shape the media-probe extension already uses for
+video streams).
 
 ---
 

@@ -500,7 +500,10 @@
 <p>The top-level collections a user can browse.</p>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "libraries": [ { "id":"lib_…", "title":"Movies", "kind":"movies" } ] }</span></code></pre>
-<p><code>kind</code> is an open string enum (<code>movies</code>, <code>tvShows</code>, <code>homeVideos</code>, <code>musicVideos</code>, <code>boxSets</code>, <code>collection</code>, <code>other</code>, …); clients map unknown kinds to a default.</p>
+<p><code>kind</code> is an open string enum (<code>movies</code>, <code>tvShows</code>, <code>homeVideos</code>, <code>musicVideos</code>, <code>music</code>, <code>audiobooks</code>, <code>boxSets</code>, <code>collection</code>, <code>other</code>, …); clients map unknown kinds to a default.</p>
+<div class="callout">
+  <p><strong>Music &amp; audiobooks.</strong> The <strong>reference server doesn't implement audio</strong> (no music identification — TMDB is film/TV only), but the <strong>protocol fully models it</strong> so another server can, with no wire changes. It reuses the same primitives: libraries (<code>kind: music</code> / <code>audiobooks</code>), the parent/child tree, <code>resolve</code>, playstate. Item types <code>artist → album → track</code> and <code>audiobook → chapter</code> (nested via <code>parentId</code>); ordering rides on <code>artistName</code>, <code>albumTitle</code>, <code>discNumber</code>, <code>trackNumber</code> (for an audiobook: author→<code>artistName</code>, book→<code>albumTitle</code>, chapter №→<code>trackNumber</code>). <strong>Lossless / hi-res</strong> is expressed on <code>resolve</code>'s described streams — <code>MediaStream</code> carries <code>codec</code> + <code>sampleRate</code> + <code>bitDepth</code> + <code>bitRate</code>, so <code>{ codec:"flac", sampleRate:96000, bitDepth:24 }</code> renders as "FLAC 24/96"; FLAC-vs-MP3 alternatives use the same <a href="#api-resolve">multi-version</a> picker. Full contract in <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md#music--audiobooks">API.md → Music &amp; audiobooks</a>.</p>
+</div>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items</span><span class="badge auth">auth</span></div>
 <p>Children of a container.</p>

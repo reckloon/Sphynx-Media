@@ -135,6 +135,20 @@ public struct Item: Codable, Hashable, Sendable {
     public var episodeIndex: Int?
     public var childCount: Int?
 
+    // Music / audiobook positioning (present as applicable). A `track`/`chapter`
+    // nests under its `album`/`audiobook` via `parentId`; these denormalize the
+    // ordering + parent names so a tile renders without extra fetches — the audio
+    // analogue of `seriesTitle`/`episodeIndex`. The **reference server never sets
+    // them** (no music support); they're here so another server can. For an
+    // audiobook, map author → `artistName`, book → `albumTitle`, chapter №→
+    // `trackNumber`. See the music/audiobooks notes in `docs/API.md`.
+    public var artistName: String?
+    public var albumTitle: String?
+    /// 1-based disc number for a multi-disc album (absent ⇒ disc 1 / single disc).
+    public var discNumber: Int?
+    /// 1-based track (or chapter) number within its album/audiobook.
+    public var trackNumber: Int?
+
     /// Generic parent link. The container this item nests under when it isn't the
     /// TV season/series relationship above — e.g. a bonus/extra under its movie or
     /// show, or a movie under its collection. A client browses an item's children
@@ -246,6 +260,10 @@ public struct Item: Codable, Hashable, Sendable {
         seasonIndex: Int? = nil,
         episodeIndex: Int? = nil,
         childCount: Int? = nil,
+        artistName: String? = nil,
+        albumTitle: String? = nil,
+        discNumber: Int? = nil,
+        trackNumber: Int? = nil,
         parentId: String? = nil,
         collectionId: String? = nil,
         collectionTitle: String? = nil,
@@ -293,6 +311,10 @@ public struct Item: Codable, Hashable, Sendable {
         self.seasonIndex = seasonIndex
         self.episodeIndex = episodeIndex
         self.childCount = childCount
+        self.artistName = artistName
+        self.albumTitle = albumTitle
+        self.discNumber = discNumber
+        self.trackNumber = trackNumber
         self.parentId = parentId
         self.collectionId = collectionId
         self.collectionTitle = collectionTitle
