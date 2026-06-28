@@ -53,7 +53,7 @@ enum AdminWebController {
   .row { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
   .scanrow { display:flex; gap:22px; align-items:center; margin-top:4px; }
   .scanopt { display:flex; align-items:center; gap:7px; margin:0; color:var(--fg); font-size:13.5px; cursor:pointer; }
-  .scanopt input { margin:0; }
+  .scanopt input { width:auto; margin:0; padding:0; }
   .scanopt input:disabled + *, .scanopt:has(input:disabled) { color:var(--muted); cursor:not-allowed; }
   .hint { font-size:12px; color:var(--muted); margin-top:6px; }
   button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#0b1020; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
@@ -372,7 +372,8 @@ enum AdminWebController {
               <label for="torbox-apikey">API key</label><input id="torbox-apikey" type="password" autocomplete="new-password" placeholder="from torbox.app/settings">
               <label for="torbox-categories">Categories <span class="muted">(optional)</span></label><input id="torbox-categories" placeholder="torrents,usenet,webdl">
               <p class="hint">Which buckets to index — any of <code>torrents</code>, <code>usenet</code>, <code>webdl</code>. Blank indexes all three.</p>
-              <label for="torbox-linkttl">Link freshness seconds <span class="muted">(optional)</span></label><input id="torbox-linkttl" type="number" min="0" placeholder="3600">
+              <label for="torbox-linkttl">Link freshness seconds <span class="muted">(optional — best left blank)</span></label><input id="torbox-linkttl" type="number" min="0" placeholder="leave blank">
+              <p class="hint">⚠️ <strong>Recommended: leave this empty.</strong> Sphynx re-resolves every link <em>fresh at play time and never caches it</em>, so a freshness window mostly adds a moving part with its own failure mode (a link that expires mid-session). Only set it if TorBox links are genuinely time-bounded <em>and</em> you hit playback failures after long pauses — see the guide's <a href="https://reckloon.github.io/Sphynx-Media/#api-resolve" target="_blank" rel="noopener">resolve note</a>.</p>
               <label>Scan this source for</label>
               <div class="row scanrow">
                 <label class="scanopt"><input type="checkbox" id="torbox-scan-movie" class="lib-movie-cb" checked> Movies</label>
@@ -742,8 +743,11 @@ enum AdminWebController {
       libCounts = {}; if (o) (o.libraries || []).forEach(function (l) { libCounts[l.id] = l; });
       renderLibraries();
     });
-    api('/v1/admin/libraries', 'GET').then(function (res) { return res.ok ? res.json() : { libraries: [] }; }).then(function (d) {
-      libraries = d.libraries || []; renderLibraries(); refreshLibPickers();
+    api('/v1/admin/libraries', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      // Only replace the cache on a SUCCESSFUL load — a transient failure must not
+      // blank `libraries` and disable every source's scan checkbox with no recovery.
+      if (d) libraries = d.libraries || [];
+      renderLibraries(); refreshLibPickers();
     });
   }
   var SERVER_LIB_TYPES = [
@@ -777,11 +781,17 @@ enum AdminWebController {
     var movieOn = libraries.some(function (l) { return l.kind === 'movies'; });
     var tvOn = libraries.some(function (l) { return l.kind === 'tvShows'; });
     Array.prototype.forEach.call(document.querySelectorAll('.lib-movie-cb'), function (cb) {
-      cb.disabled = !movieOn; if (!movieOn) cb.checked = false;
+      var wasDisabled = cb.disabled;
+      cb.disabled = !movieOn;
+      if (!movieOn) cb.checked = false;        // library off → can't route into it
+      else if (wasDisabled) cb.checked = true; // just came back on → restore the default-on checkbox
       cb.parentNode.title = movieOn ? '' : 'Turn on the Movies library first';
     });
     Array.prototype.forEach.call(document.querySelectorAll('.lib-tv-cb'), function (cb) {
-      cb.disabled = !tvOn; if (!tvOn) cb.checked = false;
+      var wasDisabled = cb.disabled;
+      cb.disabled = !tvOn;
+      if (!tvOn) cb.checked = false;
+      else if (wasDisabled) cb.checked = true;
       cb.parentNode.title = tvOn ? '' : 'Turn on the TV Shows library first';
     });
     var itLib = $('#it-lib'); if (itLib) { var cur = itLib.value; itLib.innerHTML = '<option value="">— pick —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join(''); itLib.value = cur; }
@@ -856,7 +866,7 @@ enum AdminWebController {
     api('/v1/admin/sources', 'POST', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { res.json().then(function (e) { msg(driver + '-msg', (e && e.error && e.error.message) || 'Could not add source.'); }).catch(function () { msg(driver + '-msg', 'Could not add source.'); }); return; }
-      clearSourceForm(driver); msg(driver + '-msg', 'Added.', true); loadSources();
+      clearSourceForm(driver); msg(driver + '-msg', 'Added.', true); loadSources(); loadLibraries();
     }).catch(function () { msg(driver + '-msg', 'Could not reach the server.'); });
   }
   function scanSource(driver, id) {
