@@ -318,6 +318,18 @@ struct Catalog: Sendable {
         }
     }
 
+    /// Every episode of a series (across all its seasons), ordered by
+    /// (season, episode) then insertion — the natural play order. Used to compute
+    /// "next up" (the next unwatched episode) for the unified Continue Watching row.
+    func episodes(seriesId: String) async throws -> [ItemRecord] {
+        try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("type") == "episode" && Column("seriesId") == seriesId)
+                .order(Column("seasonIndex"), Column("episodeIndex"), Column("createdAt"), Column("id"))
+                .fetchAll(db)
+        }
+    }
+
     // MARK: Indexer support
 
     func itemsBySource(sourceId: String) async throws -> [ItemRecord] {

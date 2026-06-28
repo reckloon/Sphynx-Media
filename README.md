@@ -106,9 +106,12 @@ Built spine-first. Working today:
 - **Resolve** — direct playback location + headers, resolved fresh per play and
   never stored (never proxied; optional expiry only for time-bounded source links).
 - **Playstate & per-user state** — resume tracking (start/progress/stop) with
-  failed-stop protection; watched / favorite / play-count / last-played; Continue
-  Watching, Recently Added, and Favorites feeds; browse sort (name/added/rating) +
-  genre/unwatched filter.
+  failed-stop protection; watched / favorite / play-count / last-played; browse
+  sort (name/added/rating) + genre/unwatched filter.
+- **Typed home feed** — `GET /v1/home` returns ordered shelves with a `kind` and
+  tile `aspect`. Continue Watching is **unified**: the next unwatched episode of a
+  show you've started is merged into it — one row, never a separate "Next Up".
+  Plus Recently Added and Favorites.
 - **Bi-directional metadata** — server-configurable, per-field read/write access;
   contributable intro/credit markers; an open `extra` bag for arbitrary
   server-defined metadata. See the [complete guide](https://reckloon.github.io/Sphynx-Media/).
@@ -121,10 +124,9 @@ Built spine-first. Working today:
 Next up is **protocol contract hardening** — wire-contract additions clients can
 rely on. In priority order:
 
-- **High** — a typed home/shelf feed (Continue Watching / Next Up / Recently Added
-  with kind + aspect); per-image placeholder & aspect metadata; track
-  languages/labels + external subtitles in resolve; multiple versions/editions;
-  a `GET /v1/changes?since=` delta feed with deletion tombstones.
+- **High** — per-image placeholder & aspect metadata; track languages/labels +
+  external subtitles in resolve; multiple versions/editions; a
+  `GET /v1/changes?since=` delta feed with deletion tombstones.
 - **Medium** — TV-friendly login (device-code / QR); advertised refresh-token
   lifetime; a typed browse sort/filter contract (+ `totalCount`); rate-limit
   backoff hints; a clear-resume action; the playstate source-of-truth rule in the

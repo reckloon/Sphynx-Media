@@ -66,6 +66,17 @@ struct UserStateService: Sendable {
         }
     }
 
+    /// All of the user's watched rows (watched == true), each carrying
+    /// `lastPlayedAt`. Drives "next up" — the next unwatched episode of a show
+    /// you're partway through — which is merged into the Continue Watching row.
+    func watchedStates(userId: String) async throws -> [UserStateRecord] {
+        try await db.writer.read { db in
+            try UserStateRecord
+                .filter(Column("userId") == userId && Column("watched") == true)
+                .fetchAll(db)
+        }
+    }
+
     /// Item ids the user has marked watched (for an "unwatched" filter).
     func watchedItemIds(userId: String) async throws -> Set<String> {
         let ids = try await db.writer.read { db in
