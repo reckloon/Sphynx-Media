@@ -37,7 +37,7 @@ struct TVEnricher: Sendable {
             backdropImage: TMDBImage.url(details.backdropPath, size: "w1280"),
             thumbImage: TMDBImage.url(details.posterPath, size: "w342"),
             placeholderURL: TMDBImage.url(details.posterPath, size: "w92"),
-            cast: []
+            cast: Enricher.storedCast(details.cast)
         )
     }
 

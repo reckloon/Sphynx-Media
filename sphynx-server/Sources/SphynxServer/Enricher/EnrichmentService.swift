@@ -132,6 +132,9 @@ struct EnrichmentService: Sendable {
                 if !locked.contains(LockableField.placeholder) {
                     updated.placeholderURL = TMDBImage.url(meta.stillPath, size: "w92")
                 }
+                if !locked.contains(LockableField.cast) {
+                    updated.castJSON = meta.guestStars.isEmpty ? nil : Self.encode(Enricher.storedCast(meta.guestStars))
+                }
 
             default:
                 return .skipped

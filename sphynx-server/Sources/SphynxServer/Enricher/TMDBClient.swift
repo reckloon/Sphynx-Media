@@ -69,6 +69,8 @@ struct TMDBTVDetails: Sendable {
     var posterPath: String?
     var backdropPath: String?
     var seasons: [TMDBSeasonSummary]
+    /// Series regulars (TMDB `credits.cast`). Defaulted so stubs need not set it.
+    var cast: [TMDBCastMember] = []
 }
 
 struct TMDBSeasonSummary: Sendable {
@@ -93,6 +95,9 @@ struct TMDBEpisode: Sendable {
     var stillPath: String?
     var airDate: String?
     var runtimeMinutes: Int?
+    /// Episode guest stars (TMDB season `episodes[].guest_stars`). Defaulted so
+    /// stubs need not set it.
+    var guestStars: [TMDBCastMember] = []
 }
 
 /// Builds a full image URL from a TMDB path + size (e.g. `w500`).
@@ -178,7 +183,10 @@ struct TMDBHTTPClient: TMDBClient {
 
     func tvDetails(id: Int) async throws -> TMDBTVDetails {
         var components = URLComponents(string: "\(apiBase)/tv/\(id)")!
-        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "append_to_response", value: "credits"),
+        ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawTVDetails.self, from: data)
         return TMDBTVDetails(
@@ -192,6 +200,9 @@ struct TMDBHTTPClient: TMDBClient {
             backdropPath: raw.backdrop_path,
             seasons: (raw.seasons ?? []).map {
                 TMDBSeasonSummary(seasonNumber: $0.season_number, name: $0.name, episodeCount: $0.episode_count, posterPath: $0.poster_path)
+            },
+            cast: (raw.credits?.cast ?? []).map {
+                TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
             }
         )
     }
@@ -207,7 +218,13 @@ struct TMDBHTTPClient: TMDBClient {
             overview: raw.overview,
             posterPath: raw.poster_path,
             episodes: (raw.episodes ?? []).map {
-                TMDBEpisode(episodeNumber: $0.episode_number, name: $0.name, overview: $0.overview, stillPath: $0.still_path, airDate: $0.air_date, runtimeMinutes: $0.runtime)
+                TMDBEpisode(
+                    episodeNumber: $0.episode_number, name: $0.name, overview: $0.overview,
+                    stillPath: $0.still_path, airDate: $0.air_date, runtimeMinutes: $0.runtime,
+                    guestStars: ($0.guest_stars ?? []).map {
+                        TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
+                    }
+                )
             }
         )
     }
@@ -301,6 +318,7 @@ private struct RawTVDetails: Decodable {
     var poster_path: String?
     var backdrop_path: String?
     var seasons: [RawSeasonSummary]?
+    var credits: RawCredits?
 }
 
 private struct RawSeasonSummary: Decodable {
@@ -325,4 +343,5 @@ private struct RawEpisode: Decodable {
     var still_path: String?
     var air_date: String?
     var runtime: Int?
+    var guest_stars: [RawCast]?
 }

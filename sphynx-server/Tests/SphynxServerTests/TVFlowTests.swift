@@ -27,12 +27,17 @@ struct TVFlowTests {
                 overview: "Mark leads a team whose memories are surgically divided.",
                 year: 2022, genres: ["Drama", "Mystery"], voteAverage: 8.4,
                 posterPath: "/sev.jpg", backdropPath: "/bd.jpg",
-                seasons: [TMDBSeasonSummary(seasonNumber: 1, name: "Season 1", episodeCount: 2, posterPath: "/s1.jpg")]
+                seasons: [TMDBSeasonSummary(seasonNumber: 1, name: "Season 1", episodeCount: 2, posterPath: "/s1.jpg")],
+                cast: [
+                    TMDBCastMember(id: 1, name: "Adam Scott", character: "Mark S.", profilePath: "/adam.jpg"),
+                    TMDBCastMember(id: 2, name: "Britt Lower", character: "Helly R.", profilePath: "/britt.jpg"),
+                ]
             )],
             seasonDetailsByID: [95396: [1: TMDBSeasonDetails(
                 seasonNumber: 1, name: "Season 1", overview: "First season.", posterPath: "/s1.jpg",
                 episodes: [
-                    TMDBEpisode(episodeNumber: 1, name: "Good News About Hell", overview: "Mark is promoted.", stillPath: "/e1.jpg", airDate: "2022-02-18", runtimeMinutes: 57),
+                    TMDBEpisode(episodeNumber: 1, name: "Good News About Hell", overview: "Mark is promoted.", stillPath: "/e1.jpg", airDate: "2022-02-18", runtimeMinutes: 57,
+                                guestStars: [TMDBCastMember(id: 9, name: "Christopher Walken", character: "Burt G.", profilePath: "/walken.jpg")]),
                     TMDBEpisode(episodeNumber: 2, name: "Half Loop", overview: "Helly resists.", stillPath: "/e2.jpg", airDate: "2022-02-18", runtimeMinutes: 49),
                 ]
             )]]
@@ -114,6 +119,20 @@ struct TVFlowTests {
             ) { try $0.decoded() }
             #expect(ep1Full.overview == "Mark is promoted.")
             #expect(ep1Full.runtime == 3420)  // 57 minutes → seconds
+            // People are populated: the episode carries its guest stars…
+            #expect(ep1Full.cast?.count == 1)
+            #expect(ep1Full.cast?.first?.name == "Christopher Walken")
+            #expect(ep1Full.cast?.first?.role == "Burt G.")
+            #expect(ep1Full.cast?.first?.imageURL == "https://image.tmdb.org/t/p/w185/walken.jpg")
+
+            // …and the series carries its regulars (people were missing before).
+            let seriesFull: Item = try await client.execute(
+                uri: "/v1/items/\(series.id)?detail=full", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(seriesFull.cast?.count == 2)
+            #expect(seriesFull.cast?.first?.name == "Adam Scott")
+            #expect(seriesFull.cast?.first?.role == "Mark S.")
+            #expect(seriesFull.cast?.first?.imageURL == "https://image.tmdb.org/t/p/w185/adam.jpg")
 
             // An episode resolves to its direct URL; a container does not.
             let descriptor: ResolveDescriptor = try await client.execute(

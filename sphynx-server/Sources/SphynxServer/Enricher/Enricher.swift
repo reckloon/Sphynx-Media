@@ -32,6 +32,21 @@ struct Enricher: Sendable {
     /// How many cast members to keep.
     var castLimit = 15
 
+    /// Map TMDB cast/guest-star members to the persisted form (top `limit`,
+    /// images sized like the movie path). Shared by movies, series, and episodes
+    /// so people are populated consistently everywhere.
+    static func storedCast(_ members: [TMDBCastMember], limit: Int = 15) -> [StoredCast] {
+        members.prefix(limit).map { member in
+            StoredCast(
+                id: "pe_\(member.id)",
+                name: member.name,
+                role: member.character,
+                imageURL: TMDBImage.url(member.profilePath, size: "w185"),
+                placeholderURL: TMDBImage.url(member.profilePath, size: "w92")
+            )
+        }
+    }
+
     func enrichMovie(tmdbId: Int) async throws -> EnrichedFields {
         let details = try await tmdb.movieDetails(id: tmdbId)
         return EnrichedFields(
@@ -45,15 +60,7 @@ struct Enricher: Sendable {
             thumbImage: TMDBImage.url(details.posterPath, size: "w342"),
             // Self-describing placeholder: a tiny poster URL (no BlurHash compute).
             placeholderURL: TMDBImage.url(details.posterPath, size: "w92"),
-            cast: details.cast.prefix(castLimit).map { member in
-                StoredCast(
-                    id: "pe_\(member.id)",
-                    name: member.name,
-                    role: member.character,
-                    imageURL: TMDBImage.url(member.profilePath, size: "w185"),
-                    placeholderURL: TMDBImage.url(member.profilePath, size: "w92")
-                )
-            },
+            cast: Self.storedCast(details.cast, limit: castLimit),
             originalTitle: (details.originalTitle == details.title) ? nil : details.originalTitle,
             tagline: details.tagline,
             status: details.status,

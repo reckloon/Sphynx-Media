@@ -176,6 +176,10 @@ struct Indexer: Sendable {
                     record.thumbImage = TMDBImage.url(meta.stillPath, size: "w300")
                     record.backdropImage = series.backdropImage
                     record.placeholderURL = TMDBImage.url(meta.stillPath, size: "w92")
+                    // Episode people = its guest stars (series regulars live on the series).
+                    if !meta.guestStars.isEmpty {
+                        record.castJSON = (try? JSONEncoder().encode(Enricher.storedCast(meta.guestStars))).flatMap { String(data: $0, encoding: .utf8) }
+                    }
                     record.enrichedAt = now
                 }
 
@@ -327,6 +331,9 @@ struct Indexer: Sendable {
             record.thumbImage = fields.thumbImage
         }
         if !locked.contains(LockableField.placeholder) { record.placeholderURL = fields.placeholderURL }
+        if !locked.contains(LockableField.cast) {
+            record.castJSON = fields.cast.isEmpty ? nil : (try? JSONEncoder().encode(fields.cast)).flatMap { String(data: $0, encoding: .utf8) }
+        }
         record.enrichedAt = now
     }
 }
