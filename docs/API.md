@@ -867,10 +867,24 @@ Replace a user's permission set. **Body** `{ "permissions": ["library.read", "me
 → **200** with the updated user. This is how the admin controls **per-user
 access**. Setting the admin's permissions is rejected (it holds all implicitly).
 
+### `PUT /v1/admin/users/{userId}/password`
+
+Admin reset of another user's password — **no current password required**. **Body**
+`{ "newPassword": "…" }` → **204**. Revokes that user's existing sessions, so they
+must sign in again. Cannot target the admin account (**403**; the admin changes its
+own via `POST /v1/auth/password`).
+
 ### `DELETE /v1/admin/users/{userId}`
 
 Delete a user and revoke all their sessions + per-user state. **204** on success.
 The admin account cannot be deleted (**403**).
+
+### `GET /v1/admin/items/{itemId}` — `metadata.edit`
+
+Read one item with its current **lock state**, for the admin correction UI. **200**
+→ `{ "item": { … }, "lockedFields": ["title", "overview"] }`. Gated by
+`metadata.edit` for the item's library (admins always pass). The wire `Item` itself
+carries no lock info, so this is how a UI knows which fields are pinned.
 
 ### `PATCH /v1/admin/items/{itemId}` — `metadata.edit`
 

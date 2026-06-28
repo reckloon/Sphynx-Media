@@ -227,6 +227,27 @@ struct AuthService: Sendable {
         if let outcome { throw outcome }
     }
 
+    /// Admin reset of another user's password — no current password required.
+    /// Cannot target the admin account (it changes its own via `changePassword`).
+    func adminSetPassword(userId: String, newPassword: String) async throws {
+        guard !newPassword.isEmpty else { throw SphynxError.badRequest("newPassword is required") }
+        let user = try await db.writer.read { db in
+            try UserRecord.filter(Column("id") == userId).fetchOne(db)
+        }
+        guard let user else { throw SphynxError.notFound("No user '\(userId)'") }
+        guard !user.isAdmin else {
+            throw SphynxError.forbidden("Use the self-service password change for the admin account")
+        }
+        let hash = try await hasher.hash(newPassword)
+        try await db.writer.write { db in
+            _ = try UserRecord.filter(Column("id") == userId)
+                .updateAll(db, Column("passwordHash").set(to: hash))
+            // Force re-login on the user's other devices after an admin reset.
+            try SessionRecord.filter(Column("userId") == userId)
+                .updateAll(db, Column("revoked").set(to: true))
+        }
+    }
+
     /// Change a user's own password after verifying the current one. Revokes
     /// other sessions is left to the caller; the presenting session stays valid.
     func changePassword(userId: String, currentPassword: String, newPassword: String) async throws {
