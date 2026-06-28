@@ -25,15 +25,17 @@ struct UserStateService: Sendable {
         }
     }
 
-    /// Record a completed play: bump the play count and last-played time.
-    /// Returns the resulting state.
+    /// Record a completed play: bump the play count and last-played time. Pass
+    /// `watched: true` to also mark it watched in the same write (a stop at/after the
+    /// completion threshold is a finished play). Returns the resulting state.
     @discardableResult
-    func recordPlay(userId: String, itemId: String, at now: Double = Date().timeIntervalSince1970) async throws -> UserStateRecord {
+    func recordPlay(userId: String, itemId: String, at now: Double = Date().timeIntervalSince1970, watched: Bool? = nil) async throws -> UserStateRecord {
         try await db.writer.write { db in
             var record = try Self.fetch(db, userId: userId, itemId: itemId)
                 ?? UserStateRecord.empty(userId: userId, itemId: itemId)
             record.playCount += 1
             record.lastPlayedAt = now
+            if let watched { record.watched = watched }
             try record.save(db)
             return record
         }

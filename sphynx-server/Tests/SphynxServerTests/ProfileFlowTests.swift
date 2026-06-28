@@ -159,15 +159,18 @@ struct ProfileFlowTests {
                     tmdbId: nil, libraryId: library.id))
             ) { try $0.decoded() }
 
-            // Record some history: a resume position + a watched flag.
-            try await client.execute(
-                uri: "/v1/playstate/\(item.id)/start", method: .post, headers: auth,
-                body: try jsonBody(PlaystateStartBody(position: 123))
-            ) { #expect($0.status == .noContent) }
+            // Record some history: a watched flag, then a resume position. (Order
+            // matters: marking watched clears any existing resume, so set the resume
+            // *after* — re-watching — to have both a state row and a resume row at
+            // reset time.)
             try await client.execute(
                 uri: "/v1/items/\(item.id)/state", method: .put, headers: auth,
                 body: try jsonBody(ItemStateUpdate(watched: true))
             ) { #expect($0.status == .ok) }
+            try await client.execute(
+                uri: "/v1/playstate/\(item.id)/start", method: .post, headers: auth,
+                body: try jsonBody(PlaystateStartBody(position: 123))
+            ) { #expect($0.status == .noContent) }
 
             // Reset everything.
             let reset: PlaystateResetResponse = try await client.execute(

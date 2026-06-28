@@ -863,7 +863,19 @@ auth.
 ### `POST /v1/playstate/{itemId}/stop`
 **Body** `{ "position": 1500.0, "failed": false }` → **204**.
 On `failed: true` the server **does not overwrite** the stored resume point — a
-misfire (the playhead never advanced past startup) can't clobber a good position.
+misfire (the playhead never advanced past startup) can't clobber a good position —
+and nothing below applies.
+
+A **non-failed** stop is resolved against the item's `runtime` (per user):
+
+| Where it stopped | Effect |
+|---|---|
+| **last 5%** (`position ≥ 95%` of runtime) | marked **watched**, resume **cleared** (drops out of Continue Watching), play **counted** — the "scrobble at the end" behavior (Jellyfin PlayedItems / Plex). |
+| **first 5%** (`position ≤ 5%`) | marked **unwatched**, resume **cleared**, **not** counted as a play — a false start is discarded. |
+| in between | resume point **stored**, play **counted** (the ordinary partial-watch case). |
+
+If the item has no known `runtime`, every non-failed stop is treated as a partial
+watch (store resume, count the play).
 
 ### `GET /v1/playstate/{itemId}`
 **200** → `{ "position": 1342.5, "updatedAt": "2026-06-27T16:35:30Z" }`.
@@ -968,6 +980,10 @@ Play count and last-played are tracked server-side from playback (a non-failed
 `POST /v1/playstate/{id}/stop` bumps them); `watched` / `isFavorite` / `rating` are
 explicit here.
 
+- **`watched: true`** — also **clears the caller's resume** for the item (same effect
+  as `DELETE /v1/playstate/{id}`), so `resumePosition` reads back 0 and the item drops
+  out of `GET /v1/home/continue`. Mark-watched implies finished, matching Jellyfin
+  (PlayedItems) and Plex (scrobble).
 - **`rating`** — the caller's own rating on a **0–10** scale (a 5-star UI sends
   stars ×2), folded back as `Item.userRating`. `0` clears it (absent ⇒ unrated, not
   zero); out of range ⇒ **400**. Distinct from the crowd's `communityRating` and the

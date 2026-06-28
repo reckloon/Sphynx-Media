@@ -26,7 +26,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func start(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try await subjectAndReadableItem(context)
+        let (userId, itemId, _) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateStartBody.self, context: context)
         try await playstate.start(userId: userId, itemId: itemId, position: body.position)
         await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
@@ -36,7 +36,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func progress(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try await subjectAndReadableItem(context)
+        let (userId, itemId, _) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateProgressBody.self, context: context)
         try await playstate.progress(userId: userId, itemId: itemId, position: body.position)
         await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
@@ -46,28 +46,67 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func stop(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try await subjectAndReadableItem(context)
+        let (userId, itemId, item) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateStopBody.self, context: context)
-        // A failed stop must not clobber a good resume point — handled in the service.
+        // Store the resume point (a failed stop is a no-op in the service, so it
+        // never clobbers a good one).
         try await playstate.stop(userId: userId, itemId: itemId, position: body.position, failed: body.failed)
-        await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
-                             to: .user(userId))
-        // A real (non-failed) stop counts as a play: bump count + last-played.
-        if !body.failed {
-            let state = try await userState.recordPlay(userId: userId, itemId: itemId)
-            await events.publish(
-                .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
-                               playCount: state.playCount, ts: Self.now()),
-                to: .user(userId))
+
+        // A failed stop changes no per-user state and counts no play; just nudge
+        // listeners with the (unchanged) position.
+        guard !body.failed else {
+            await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()), to: .user(userId))
+            return Response(status: .noContent)
         }
+
+        // Decide the outcome from how far in they got (per user). Completing within
+        // the last 5% marks watched + clears resume (Jellyfin PlayedItems / Plex
+        // scrobble); stopping in the first 5% marks unwatched + clears resume and
+        // doesn't count a play; anything between is a normal partial watch that keeps
+        // its resume point and counts a play.
+        let state: UserStateRecord
+        let resumeAfter: Double
+        switch Self.completion(position: body.position, runtime: item.runtime) {
+        case .completed:
+            state = try await userState.recordPlay(userId: userId, itemId: itemId, watched: true)
+            try await playstate.clear(userId: userId, itemId: itemId)
+            resumeAfter = 0
+        case .abandoned:
+            state = try await userState.update(userId: userId, itemId: itemId, watched: false, isFavorite: nil)
+            try await playstate.clear(userId: userId, itemId: itemId)
+            resumeAfter = 0
+        case .partial:
+            state = try await userState.recordPlay(userId: userId, itemId: itemId)
+            resumeAfter = body.position
+        }
+        await events.publish(.playstate(itemId: itemId, position: resumeAfter, ts: Self.now()), to: .user(userId))
+        await events.publish(
+            .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
+                           playCount: state.playCount, ts: Self.now()),
+            to: .user(userId))
         return Response(status: .noContent)
+    }
+
+    /// How a non-failed stop resolves, from the fraction watched.
+    enum Completion: Equatable { case completed, abandoned, partial }
+    static let completedFraction = 0.95
+    static let abandonedFraction = 0.05
+
+    /// Classify a stop position against the item's runtime. Unknown/zero runtime →
+    /// `.partial` (keep resume, count the play — the prior behavior).
+    static func completion(position: Double, runtime: Double?) -> Completion {
+        guard let runtime, runtime > 0 else { return .partial }
+        let fraction = position / runtime
+        if fraction >= completedFraction { return .completed }
+        if fraction <= abandonedFraction { return .abandoned }
+        return .partial
     }
 
     private static func now() -> Double { Date().timeIntervalSince1970 }
 
     @Sendable
     func get(_ request: Request, context: SphynxRequestContext) async throws -> PlaystateResponse {
-        let (userId, itemId) = try await subjectAndReadableItem(context)
+        let (userId, itemId, _) = try await subjectAndReadableItem(context)
         if let state = try await playstate.get(userId: userId, itemId: itemId) {
             return state
         }
@@ -98,7 +137,7 @@ struct PlaystateController: Sendable {
     /// whether or not a row existed.
     @Sendable
     func clear(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try await subjectAndReadableItem(context)
+        let (userId, itemId, _) = try await subjectAndReadableItem(context)
         try await playstate.clear(userId: userId, itemId: itemId)
         return Response(status: .noContent)
     }
@@ -120,7 +159,7 @@ struct PlaystateController: Sendable {
     /// the caller must be able to read its owning library (admins bypass). Playstate
     /// is row-scoped to the user, but a user must not read/write state for items
     /// outside the libraries they can see — matching browse/resolve/markers.
-    private func subjectAndReadableItem(_ context: SphynxRequestContext) async throws -> (userId: String, itemId: String) {
+    private func subjectAndReadableItem(_ context: SphynxRequestContext) async throws -> (userId: String, itemId: String, item: ItemRecord) {
         let identity = try context.requireIdentity()
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
@@ -132,7 +171,7 @@ struct PlaystateController: Sendable {
         guard identity.canReadLibrary(libraryId) else {   // canReadLibrary admits admins
             throw SphynxError.forbidden("You don't have permission for this item")
         }
-        return (identity.userId, itemId)
+        return (identity.userId, itemId, item)
     }
 }
 

@@ -8,6 +8,9 @@ import SphynxProtocol
 struct UserStateController: Sendable {
     let catalog: Catalog
     let userState: UserStateService
+    /// Marking watched clears the caller's resume for the item, so it leaves
+    /// Continue Watching and `resumePosition` reads back 0.
+    let playstate: PlaystateService
     /// Live updates: a state change publishes a per-subject event.
     let events: EventBus
 
@@ -36,9 +39,17 @@ struct UserStateController: Sendable {
             userId: identity.userId, itemId: itemId,
             watched: body.watched, isFavorite: body.isFavorite, rating: body.rating
         )
+        let now = Date().timeIntervalSince1970
+        // Marking watched means "finished": clear the caller's resume so the item
+        // drops out of Continue Watching and `resumePosition` reads back 0 — matching
+        // Jellyfin (PlayedItems) and Plex (scrobble). No-op if there was no resume.
+        if body.watched == true {
+            try await playstate.clear(userId: identity.userId, itemId: itemId)
+            await events.publish(.playstate(itemId: itemId, position: 0, ts: now), to: .user(identity.userId))
+        }
         await events.publish(
             .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
-                           playCount: state.playCount, ts: Date().timeIntervalSince1970),
+                           playCount: state.playCount, ts: now),
             to: .user(identity.userId))
         var item = record.toProtocol(full: false)
         UserStateService.fold(state, into: &item)

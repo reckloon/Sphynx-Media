@@ -96,7 +96,7 @@ func buildRouter(
     PeopleController(catalog: catalog, userState: userState, playstate: playstate).addRoutes(to: securedV1)
     ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
     PlaystateController(playstate: playstate, userState: userState, catalog: catalog, events: events).addRoutes(to: securedV1)
-    UserStateController(catalog: catalog, userState: userState, events: events).addRoutes(to: securedV1)
+    UserStateController(catalog: catalog, userState: userState, playstate: playstate, events: events).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter, events: events).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
                     settings: settings, configuration: configuration, events: events).addRoutes(to: securedV1)
