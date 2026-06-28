@@ -1372,6 +1372,7 @@ item.extra[<span class="str">"subtitles"</span>] = [
   <li><strong>Typed home feed</strong> — <code>GET /v1/home</code> returns ordered <strong>shelves</strong>, each tagged with a <code>kind</code> and a tile <code>aspect</code> (portrait/landscape) so the client knows how to lay a row out. <strong>Continue Watching is unified</strong>: the next unwatched episode of a show you've started is merged <em>into</em> it alongside in-progress items — one row, never a separate "Next Up". Plus Recently Added and Favorites.</li>
   <li><strong>Live updates</strong> — an additive server→client <a href="#api-events">event stream</a> (<code>GET /v1/events</code>, SSE) for playstate, per-user state, markers, and library changes, access-filtered per subscriber; clients opt in via <code>capabilities.events</code> and otherwise poll.</li>
   <li><strong>Bi-directional metadata</strong> — server-configurable per-field read/write access; contributable <strong>recap / intro / credits / preview</strong> markers (extensible to any segment type); an open <code>extra</code> bag.</li>
+  <li><strong>Extras, collections &amp; people</strong> — bonus content (trailers, featurettes, deleted scenes, behind-the-scenes) classified as its own item types and <strong>nested under its movie or show</strong> via a generic <code>parentId</code>; <strong>collections / box sets</strong> created from TMDB and browsed via <code>items?parent=</code>; a <strong>person filmography</strong> endpoint (<code>GET /v1/people/{id}/items</code>, newest-first across movies and TV). Plus artwork &amp; metadata fills: <code>logo</code>/<code>banner</code>, <code>trailers</code>, <code>tags</code>, <code>sortTitle</code>.</li>
   <li><strong>Source drivers</strong> — HTTP and local fully working; WebDAV/SMB/FTP resolve today (listing scaffolded).</li>
 </ul>
 
@@ -1381,14 +1382,6 @@ item.extra[<span class="str">"subtitles"</span>] = [
 <div class="callout soon">
   <p><strong>Published Docker image.</strong> A pre-built image you can <code>docker run</code> without cloning. For now, <a href="#docker">build it yourself</a> from the included Dockerfile.</p>
 </div>
-
-<h4>Content &amp; catalog breadth</h4>
-<ul>
-  <li><strong>Extras &amp; bonus content.</strong> Trailers, featurettes, deleted scenes, and behind-the-scenes clips classified as their own item types and <strong>nested under their movie or show</strong> (via a generic <code>parentId</code> up-link) instead of landing in the library grid as standalone movies.</li>
-  <li><strong>Collections / box sets.</strong> When a film belongs to a collection, a <code>collection</code> item is created and its members linked to it — browsable through the existing <code>GET /v1/items?parent=</code>, no new endpoint.</li>
-  <li><strong>Person filmography.</strong> <code>GET /v1/people/{personId}/items</code> — the distinct movies and shows a cast/crew member appears in, newest-first, so a client's person screen lists a full filmography across movies <em>and</em> TV instead of guessing from cached items.</li>
-  <li><strong>Artwork &amp; metadata fills.</strong> Populating <code>images.logo</code>/<code>banner</code>, plus <code>trailers</code>, <code>tags</code>, and <code>sortTitle</code> on items.</li>
-</ul>
 
 <h4>High impact</h4>
 <ul>

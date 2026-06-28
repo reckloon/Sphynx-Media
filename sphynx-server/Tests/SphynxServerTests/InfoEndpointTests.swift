@@ -25,10 +25,11 @@ struct InfoEndpointTests {
                 // list is honest: it includes what it fills and omits what it
                 // doesn't, so clients can flag unsupported features.
                 let fields = info.capabilities.fields
-                for present in ["title", "overview", "genres", "cast", "images", "parentId", "resumePosition"] {
+                for present in ["title", "overview", "genres", "cast", "images", "parentId",
+                                "collectionId", "tags", "trailers", "sortTitle", "resumePosition"] {
                     #expect(fields.contains(present), "should advertise \(present)")
                 }
-                for absent in ["criticRating", "tags", "trailers", "chapters", "sortTitle"] {
+                for absent in ["criticRating", "chapters"] {
                     #expect(!fields.contains(absent), "must not over-claim \(absent)")
                 }
             }

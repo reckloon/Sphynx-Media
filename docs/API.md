@@ -44,8 +44,9 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "candidates": false,
     "events": true,
     "metadata": { "markers": "readwrite", "images": "read" },
-    "fields": ["title", "year", "overview", "genres", "communityRating",
-               "cast", "images", "seriesId", "parentId", "resumePosition"],
+    "fields": ["title", "year", "overview", "genres", "communityRating", "cast",
+               "images", "seriesId", "parentId", "collectionId", "tags", "trailers",
+               "sortTitle", "resumePosition"],
     "playstateReportInterval": 5
   }
 }
@@ -74,8 +75,8 @@ field names it can populate (distinct from `metadata`, which is the read/write
 An **absent or empty** `fields` means the server doesn't advertise coverage; a
 client must then assume nothing and simply render whatever each item actually
 carries. (The reference server advertises the full list above and deliberately
-omits `criticRating`, `tags`, `trailers`, `chapters`, `sortTitle`, and the
-`logo`/`banner` image roles, which it does not populate — see [Item shape](#item-shape).)
+omits `criticRating` and `chapters`, which it does not populate — see
+[Item shape](#item-shape).)
 
 ---
 
@@ -186,6 +187,46 @@ An absent `nextCursor` means the end of the list.
 ### `GET /v1/items/{itemId}?detail=full` — auth required
 
 A single item. **404** `not_found` if absent. See [Item shape](#item-shape).
+
+### Extras / bonus content
+
+Trailers, featurettes, deleted scenes, behind-the-scenes clips, and interviews are
+detected from the folder layout: any media under an extras bucket (`Featurettes/`,
+`Extras/`, `Trailers/`, `Deleted Scenes/`, `Behind The Scenes/`, `Bonus/`,
+`Interviews/`) is classified as the matching `type` (`trailer`, `featurette`,
+`deletedScene`, `behindTheScenes`) rather than a standalone movie, and **nested
+under its parent** via `parentId` — the enclosing title (a `Title (Year)/` folder
+resolves to a movie, a bare `Title/` folder to a show). Extras don't appear in a
+library's top-level grid; a client lists a title's extras with
+`GET /v1/items?parent=<parentId>` (alongside a show's seasons).
+
+### Collections / box sets
+
+When a movie belongs to a TMDB collection, the server creates (or reuses, deduped
+by collection id) a `collection`-typed item in that movie's library and links the
+movie to it via `collectionId`/`collectionTitle` **and** the generic `parentId`. The
+collection then appears at the library's top level; its members are browsed with the
+existing `GET /v1/items?parent=<collectionId>`. No new endpoint — a collection is
+just another container. Libraries may use the `boxSets`/`collection` kinds.
+
+### `GET /v1/people/{personId}/items` — auth required
+
+A person's filmography: the distinct movies and series the person is **credited in
+the cast of**, for a client's person-detail screen (the inverse of an item's `cast`
+array). `personId` is a cast-entry id of the form `pe_<tmdbId>`.
+
+Returns the standard `ItemsResponse` (`{ items, nextCursor }`) with the normal item
+projection (including `images.primary`), cursor-paginated, gated by the same
+per-library read permissions as the other browse endpoints. Items are sorted
+**newest-first** by premiere/production date (`premiereDate` when present, else
+`year`), falling back to title — matching the Jellyfin client's `PremiereDate desc`
+ordering, so both backends present a filmography identically.
+
+- The lookup is **cast-only**: crew (directors/writers) are stored as plain names
+  without a person id, so they aren't returned.
+- A well-formed `pe_…` id always returns **200** with a possibly-empty `items` list
+  (the server keeps no person registry, so "unknown person" and "known person with
+  no credits" are indistinguishable). **404** is reserved for a malformed id.
 
 ---
 
@@ -722,6 +763,7 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
   "images": { "primary": "…", "backdrop": "…", "thumb": "…", "logo": "…", "banner": "…" },
   "placeholder": { "url": "…/tiny.jpg" },
   "seriesId": "…", "seriesTitle": "…", "seasonIndex": 1, "episodeIndex": 3, "childCount": 10,
+  "parentId": "it_…", "collectionId": "it_…", "collectionTitle": "…",
   "genres": ["Sci-Fi"], "communityRating": 8.0, "criticRating": 88, "officialRating": "R",
   "cast": [ { "id": "pe_…", "name": "Ryan Gosling", "role": "K", "imageURL": "…", "placeholder": { "url": "…/tiny.jpg" } } ],
   "directors": ["…"], "writers": ["…"], "studios": ["…"], "countries": ["…"], "tags": ["…"],
@@ -746,10 +788,18 @@ extensions (or ride in `extra`); clients must render fine without them.
 
 `images` carries neutral roles (all optional): `primary` (portrait poster; for an
 episode, its landscape still), `backdrop` (wide / **horizontal** art), `thumb` (a
-small variant), `logo`, `banner`. The reference server fills movies with primary +
-backdrop + thumb; series with primary + backdrop; **seasons** and **episodes** also
-inherit the show's `backdrop`, so every enriched item has both a portrait
-(`primary`) and a horizontal (`backdrop`) option. It leaves `logo`/`banner` unset.
+small variant), `logo` (transparent title logo), `banner` (wide banner art). The
+reference server fills movies with primary + backdrop + thumb (+ `logo`/`banner`
+when TMDB has them); series with primary + backdrop; **seasons** and **episodes**
+also inherit the show's `backdrop`, so every enriched item has both a portrait
+(`primary`) and a horizontal (`backdrop`) option.
+
+`parentId` is the generic up-link: the container an item nests under when it isn't
+the TV season/series relationship — a bonus/extra under its movie or show, or a
+movie under its collection. Browse an item's children with `?parent=<id>`.
+`collectionId`/`collectionTitle` mark box-set membership (the collection itself is a
+`collection`-typed item). `sortTitle`, `tags`, and `trailers` are sent at
+`detail=full`; `logo`/`banner` and the collection fields ride along at any detail.
 
 `updatedAt` (RFC 3339) is the last change to **client-rendered** data for the item
 (title, images, enrichment, markers, …) — the max of the server's per-field change

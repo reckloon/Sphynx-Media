@@ -115,6 +115,11 @@ Built spine-first. Working today:
 - **Bi-directional metadata** — server-configurable, per-field read/write access;
   contributable intro/credit markers; an open `extra` bag for arbitrary
   server-defined metadata. See the [complete guide](https://reckloon.github.io/Sphynx-Media/).
+- **Extras, collections & people** — bonus content (trailers, featurettes, deleted
+  scenes, behind-the-scenes) nested under its movie/show via `parentId`; collections
+  / box sets from TMDB, browsed via `items?parent=`; a person-filmography endpoint
+  (`GET /v1/people/{id}/items`), newest-first across movies and TV; plus logo/banner
+  art, trailers, tags, and sortTitle.
 - **Web admin** — a built-in `/admin` page for settings, libraries, sources, and
   users, plus a live activity dashboard (items being parsed/enriched), a read-only
   database browser, and a diagnostics log.
@@ -128,11 +133,6 @@ Two tracks: **content-model breadth** (what items exist and how they relate) and
 **protocol contract hardening** (wire-contract additions clients can rely on). In
 priority order:
 
-- **Content & catalog** — extras / bonus content (trailers, featurettes, deleted
-  scenes nested under their movie or show); collections / box sets (browsable via
-  `items?parent=`); a person-filmography endpoint
-  (`GET /v1/people/{id}/items`); artwork & metadata fills (logo/banner, trailers,
-  tags, sortTitle).
 - **High** — per-image placeholder & aspect metadata; track languages/labels +
   external subtitles in resolve; multiple versions/editions; a
   `GET /v1/changes?since=` delta feed with deletion tombstones.

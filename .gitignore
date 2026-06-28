@@ -17,3 +17,6 @@ xcuserdata/
 *.sqlite-wal
 *.sqlite-shm
 **/data/
+
+# Agent worktrees / local tooling
+.claude/

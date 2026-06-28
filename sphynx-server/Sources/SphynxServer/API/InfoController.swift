@@ -36,8 +36,7 @@ struct InfoController: Sendable {
 
     /// The canonical `Item` fields this reference server can populate, advertised in
     /// `capabilities.fields` so clients know its coverage up front. Notably ABSENT
-    /// (the server does not currently fill these): `criticRating`, `tags`,
-    /// `trailers`, `chapters`, `sortTitle`, and the `logo`/`banner` image roles.
+    /// (the server does not currently fill these): `criticRating` and `chapters`.
     ///
     /// Keep in sync with `ItemRecord.toProtocol(full:)` + the per-user fold.
     static let supportedItemFields: [String] = [
@@ -46,11 +45,11 @@ struct InfoController: Sendable {
         // Tile / identity / structure
         "tmdbId", "year", "images", "placeholder", "dateAdded", "updatedAt",
         "seriesId", "seriesTitle", "seasonIndex", "episodeIndex", "childCount",
-        "parentId", "extra",
+        "parentId", "collectionId", "collectionTitle", "extra",
         // Enrichment (detail=full)
         "overview", "runtime", "genres", "communityRating", "officialRating", "cast",
-        "originalTitle", "tagline", "status", "premiereDate", "endDate",
-        "studios", "directors", "writers", "countries", "externalIds",
+        "originalTitle", "sortTitle", "tagline", "status", "premiereDate", "endDate",
+        "studios", "directors", "writers", "countries", "tags", "trailers", "externalIds",
         // Per-user state
         "resumePosition", "watched", "playCount", "isFavorite", "lastPlayedAt",
     ]
