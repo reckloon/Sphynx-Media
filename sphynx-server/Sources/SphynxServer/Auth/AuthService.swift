@@ -93,7 +93,7 @@ struct AuthService: Sendable {
             session.updatedAt = now
             try session.update(db)
 
-            return TokenResponse(accessToken: access, refreshToken: newRefresh, expiresIn: accessTTL, user: user.toProtocol())
+            return TokenResponse(accessToken: access, refreshToken: newRefresh, expiresIn: accessTTL, refreshExpiresIn: refreshTTL, user: user.toProtocol())
         }
 
         guard let result else { throw SphynxError.unauthorized("Invalid or expired refresh token") }
@@ -258,6 +258,6 @@ struct AuthService: Sendable {
             updatedAt: now
         )
         try await db.writer.write { db in try session.insert(db) }
-        return TokenResponse(accessToken: access, refreshToken: refresh, expiresIn: accessTokenTTL, user: user.toProtocol())
+        return TokenResponse(accessToken: access, refreshToken: refresh, expiresIn: accessTokenTTL, refreshExpiresIn: refreshTokenTTL, user: user.toProtocol())
     }
 }

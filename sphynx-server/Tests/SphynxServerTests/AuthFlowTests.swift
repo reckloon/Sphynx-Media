@@ -29,6 +29,7 @@ struct AuthFlowTests {
             #expect(!tokens.accessToken.isEmpty)
             #expect(!tokens.refreshToken.isEmpty)
             #expect(tokens.expiresIn == 3600)
+            #expect(tokens.refreshExpiresIn == 86_400)
             #expect(tokens.user.displayName == "admin")
 
             // 2. Manually enter an item pointing at the known media URL.
@@ -86,6 +87,8 @@ struct AuthFlowTests {
             }
             #expect(second.accessToken != first.accessToken)
             #expect(second.refreshToken != first.refreshToken)
+            #expect(first.refreshExpiresIn == 86_400)
+            #expect(second.refreshExpiresIn == 86_400)
 
             // The old refresh token must no longer work.
             try await client.execute(
