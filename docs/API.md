@@ -145,6 +145,22 @@ one is immediately invalidated). Same response shape as login.
 Revokes the presented refresh token's session. `allDevices: true` revokes every
 session on the same device id. **204 No Content** on success (idempotent).
 
+### `GET /v1/auth/sessions` — auth required
+
+The caller's active sign-in sessions (one per device), newest-active first. **200** →
+```json
+{ "sessions": [ { "id": "ses_…", "deviceId": "phone", "current": true,
+                  "createdAt": "…", "lastActiveAt": "…", "expiresAt": "…" } ] }
+```
+`current` flags the requesting session. Powers the "signed-in devices" list on the
+[`/user`](#discovery) page.
+
+### `DELETE /v1/auth/sessions/{sessionId}` — auth required
+
+Sign out one of the caller's **own** devices. **204**; idempotent; scoped to the
+caller (a user can only revoke their own sessions). Revoking the current session
+signs this device out on its next request.
+
 ### `GET /v1/auth/me` — auth required
 
 The authenticated user plus **that user's effective** permissions. Where
@@ -1089,16 +1105,25 @@ and episode stills/titles/overviews. Entries may instead carry explicit
 library → series → seasons → episodes — with `seriesId`, `seasonIndex`,
 `episodeIndex`, and `childCount` on each item.
 
-### `POST /v1/admin/sources/{sourceId}/scan`
+### `POST /v1/admin/sources/{sourceId}/scan` — `catalog.scan`
 
 Index one source: fetch its manifest, diff against the catalog, apply
 adds/updates/removes. **200** →
 `{ "sourceId": "src_…", "scanned": 12, "added": 3, "updated": 1, "removed": 0, "enriched": 3 }`
 (`enriched` is the count identified+enriched during the scan; `0` when TMDB isn't configured).
+Gated by `catalog.scan` (held globally or scoped to a library the source feeds).
 
-### `POST /v1/admin/scan`
+### `POST /v1/admin/libraries/{libraryId}/scan` — `catalog.scan`
 
-Scan every source. **200** → `{ "sources": [ <scan summary>, … ] }`.
+Re-scan every source feeding one library (a **per-library refresh**). **200** →
+`{ "sources": [ <scan summary>, … ] }`. Gated by `catalog.scan` for that library
+(or globally). The admin **Refresh** button per library and a delegated scanner both
+use this.
+
+### `POST /v1/admin/scan` — `catalog.scan` (unscoped)
+
+Scan every source. **200** → `{ "sources": [ <scan summary>, … ] }`. Requires the
+**unscoped** `catalog.scan` grant (a per-library scope can't authorize this).
 
 ### Permissions
 
@@ -1112,23 +1137,30 @@ forward-compatible — unknown keys are tolerated. Well-known keys:
 | `library.read` | Browse libraries + resolve/play their items | `/v1/libraries`, `/v1/items`, `/v1/resolve`, `/v1/home/*`, `/v1/playstate/*`, item state |
 | `metadata.markers.write` | Contribute intro/credit markers | `PUT /v1/items/{id}/markers` |
 | `metadata.images.write` | Contribute artwork *(reserved — no wire endpoint yet; see note below)* | — |
-| `metadata.edit` | Read/edit item metadata and lock fields against auto-refresh | `GET /v1/admin/items*`, `GET`/`PATCH /v1/admin/items/{id}` |
+| `metadata.edit` | Read/edit item metadata, lock fields, **re-identify / re-enrich** a title | `GET`/`PATCH /v1/admin/items*`, `POST /v1/admin/items/{id}/identity`, `POST /v1/admin/items/{id}/enrich` |
+| `catalog.scan` | Trigger a re-scan/refresh of a source or library (not its config/credentials) | `POST /v1/admin/sources/{id}/scan`, `POST /v1/admin/libraries/{id}/scan`, `POST /v1/admin/scan` |
 
-A key may be **scoped to one library** with a `:<libraryId>` suffix, e.g.
-`library.read:lib_abc` grants read for that library only. A user may hold both
-the global key and any number of scoped keys; a gated action passes if the caller
-holds the global key **or** the key scoped to the relevant library. The admin
-always passes.
+A key may be **scoped to one library or one item** with a `:<id>` suffix, e.g.
+`library.read:lib_abc` grants read for that library only, and `metadata.edit:it_123`
+grants editing of a single title. A user may hold the global key and any number of
+scoped keys; a gated action passes if the caller holds the global key **or** the key
+scoped to the relevant library **or** (where applicable) the relevant item. The
+admin always passes. `POST /v1/admin/scan` (whole catalog) needs the **unscoped**
+`catalog.scan` — a per-library scope can't authorize a full-catalog scan.
 
-**Admin role vs. permissions.** Most `/v1/admin/*` endpoints (settings, libraries,
-sources, users, scan, enrich, identity, diagnostics) require the **admin role** —
-there is exactly one admin (the bootstrap account). The exception is **item
-correction**: `GET /v1/admin/items*`, `GET /v1/admin/items/{id}`, and
-`PATCH /v1/admin/items/{id}` are gated by the **`metadata.edit` permission**, not the
-role, so the admin can delegate metadata fixing to a trusted non-admin (globally or
-per-library). A user who holds `metadata.edit` gets a **Library correction** panel on
-the [`/user`](#discovery) page; re-identify/re-enrich (which spend TMDB calls) stay
-admin-only.
+**Admin role vs. permissions.** Most `/v1/admin/*` endpoints (settings, source
+config/credentials, libraries CRUD, users, diagnostics) require the **admin role** —
+there is exactly one admin (the bootstrap account). The exceptions are delegable to
+non-admins via permissions: **item correction** (`metadata.edit`, incl. re-identify
+and re-enrich) and **scanning** (`catalog.scan`). A user who holds `metadata.edit`
+gets a **Library correction** panel on the [`/user`](#discovery) page.
+
+**Permission denied is a clean `403`.** A gated action the caller may not perform
+returns **`403` `forbidden`** (the error envelope). Clients should disable/hide the
+affordance up front from `GET /v1/auth/me`, surface a clear "you don't have
+permission" message on a `403`, and treat it as **terminal and non-retryable**
+(distinct from `401` re-auth and `5xx`/timeout retries) — never a silently dead
+button.
 
 The permission set is replaced wholesale via
 [`PUT /v1/admin/users/{userId}/permissions`](#put-v1adminusersuseridpermissions)

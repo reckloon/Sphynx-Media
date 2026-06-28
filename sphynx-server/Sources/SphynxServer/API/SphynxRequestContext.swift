@@ -13,12 +13,14 @@ struct AuthIdentity: Sendable {
     let permissions: Set<String>
 
     /// Whether this user holds a permission. The admin holds all permissions.
-    /// When `libraryId` is given, a library-scoped grant (`key:<libraryId>`)
-    /// also satisfies the check.
-    func has(_ key: String, inLibrary libraryId: String? = nil) -> Bool {
+    /// A global grant (`key`), a library-scoped grant (`key:<libraryId>`), or an
+    /// item-scoped grant (`key:<itemId>`) each satisfy the check — so access can be
+    /// delegated broadly, per library, or down to a single item.
+    func has(_ key: String, inLibrary libraryId: String? = nil, forItem itemId: String? = nil) -> Bool {
         if isAdmin { return true }
         if permissions.contains(key) { return true }
         if let libraryId, permissions.contains(Permissions.scoped(key, to: libraryId)) { return true }
+        if let itemId, permissions.contains(Permissions.scoped(key, to: itemId)) { return true }
         return false
     }
 

@@ -160,8 +160,10 @@ Below it you'll see five tabs:
 
 There's also a separate **http://localhost:9410/user** page where each of your
 users can sign in and manage their own profile — display name, profile picture,
-password, and a one-click "reset my watch history everywhere." Users you've granted
-the "edit metadata" permission also get a **Library correction** panel there.
+password, **passkeys** (passwordless sign-in), their **signed-in devices** (sign out
+any one), and a one-click "reset my watch history everywhere." Users you've granted
+the "edit metadata" permission also get a **Library correction** panel there, and
+"scan / refresh" lets a trusted user re-index a library without bugging the admin.
 
 That's the whole server. No config files to hand-edit, no JSON to memorize.
 

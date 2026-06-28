@@ -48,10 +48,10 @@ swift test
 The wire contract as built today: discovery (`ServerInfo`, `Capabilities`), auth +
 per-user permissions (`TokenResponse`, `MeResponse`, `PasswordChangeRequest`,
 self-service `ProfileUpdateRequest` + server-hosted avatars, `PlaystateResetResponse`
-for a full watch-history reset, optional passkey/WebAuthn sign-in
-(`capabilities.passkeys`, `PasskeyInfo`/`PasskeyListResponse`/`PasskeyRenameRequest`;
-the ceremony payloads themselves are standard W3C WebAuthn JSON and intentionally
-not modelled here)), the
+for a full watch-history reset, `SessionInfo`/`SessionsResponse` for per-device
+sign-out, optional passkey/WebAuthn sign-in (`capabilities.passkeys`,
+`PasskeyInfo`/`PasskeyListResponse`/`PasskeyRenameRequest`; the ceremony payloads
+themselves are standard W3C WebAuthn JSON and intentionally not modelled here)), the
 `Item` model (images incl. per-image `ItemImages.variants`/`ImageInfo`, placeholder
 one-of, cast, TV positioning, `parentId`/`collectionId`, open `extra`), browse +
 pagination, the typed home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`),
@@ -72,10 +72,23 @@ signed-in user may do. Well-known keys:
 | `metadata.images.write` | Contribute artwork *(reserved — no endpoint yet)* |
 | `metadata.edit` | Read/edit item metadata and lock fields (admin correction surface) |
 
-Any key may be **scoped to a single library** with a `:<libraryId>` suffix
-(`library.read:lib_abc`). A client should treat the set as opaque and
-forward-compatible — match the keys it understands, ignore the rest, and never
-reject an unknown key. The keys gate server features; clients use them only to
+Any key may be **scoped to a single library or item** with a `:<id>` suffix
+(`library.read:lib_abc`, `metadata.edit:it_123`). A client should treat the set as
+opaque and forward-compatible — match the keys it understands, ignore the rest, and
+never reject an unknown key. The keys gate server features; clients use them only to
 decide which affordances to show (e.g. show a "fix metadata" button when the user
-holds `metadata.edit`). `MeResponse.metadata` is the narrower per-field
-contribute view (server policy ∩ the user's write permissions).
+holds `metadata.edit`). `MeResponse.metadata` is the narrower per-field contribute
+view (server policy ∩ the user's write permissions).
+
+#### Handling "permission denied"
+
+A permission-gated action the caller isn't allowed to perform returns **`403`** with
+`error.code = "forbidden"` (the [error envelope](#errors)). **Clients MUST surface
+this cleanly** — show a short "you don't have permission to do that" message (or
+disable/hide the affordance up front based on `GET /v1/auth/me`), and treat it as a
+**terminal, non-retryable** outcome. Do **not** let the action silently do nothing,
+spin, or look like a network failure: a `403` is a definitive "no", distinct from
+`401` (re-authenticate) and `5xx`/timeouts (retry). Because permissions are granted
+per-user and can be scoped per-library/per-item, the same action may be allowed for
+one item and denied for another — decide per target from `/v1/auth/me`, and still
+handle a `403` gracefully if the grant changed since.

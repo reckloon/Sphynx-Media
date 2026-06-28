@@ -138,6 +138,21 @@ enum UserWebController {
       <div id="device-msg" class="msg"></div>
     </div>
 
+    <div class="card">
+      <h2>Signed-in devices</h2>
+      <p class="sub">Each device you've signed in from. Sign out any you don't recognize.</p>
+      <div id="sessions-list"><div class="empty">Loading…</div></div>
+      <div id="sessions-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Passkeys</h2>
+      <p class="sub">Passwordless sign-in with Face ID, Touch ID, Windows Hello, or a security key. <span id="pk-unavailable" class="muted" hidden>This server doesn't have passkeys enabled.</span></p>
+      <div id="passkeys-list"><div class="empty">Loading…</div></div>
+      <div class="row"><button id="pk-add-btn">Add a passkey</button></div>
+      <div id="passkeys-msg" class="msg"></div>
+    </div>
+
     <div class="card" id="correction-card" hidden>
       <h2>Library correction</h2>
       <p class="sub">You can fix titles in the libraries you have edit access to. Browse the library, open a title, and correct its details. Anything you change is <strong>locked</strong> 🔒 so a re-scan won't overwrite it.</p>
@@ -217,7 +232,72 @@ enum UserWebController {
       $('#dname').value = d.user.displayName || '';
       renderAvatar();
       initCorrection(d.permissions || []);
+      loadSessions();
+      loadPasskeys();
     });
+  }
+
+  // ---- signed-in devices (sessions) ----
+  function loadSessions() {
+    api('/v1/auth/sessions', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      if (!d) return;
+      var list = d.sessions || [];
+      $('#sessions-list').innerHTML = list.length ? list.map(function (s) {
+        var when = (s.lastActiveAt || '').replace('T', ' ').replace(/(\.\d+)?(Z|[+-]\d\d:?\d\d)?$/, '');
+        var tag = s.current ? ' <span class="muted">· this device</span>' : '';
+        return '<div class="item"><span><strong>' + esc(s.deviceId || 'device') + '</strong>' + tag + ' <span class="meta">last active ' + esc(when) + '</span></span>' +
+          '<button class="mini ' + (s.current ? 'secondary' : 'danger') + '" data-revoke="' + esc(s.id) + '">' + (s.current ? 'Sign out' : 'Sign out') + '</button></div>';
+      }).join('') : '<div class="empty">No active sessions.</div>';
+    });
+  }
+  $('#sessions-list').onclick = function (e) {
+    var id = e.target.getAttribute('data-revoke'); if (!id) return;
+    if (!confirm('Sign out this device?')) return;
+    api('/v1/auth/sessions/' + id, 'DELETE').then(function (res) {
+      if (!res.ok) { msg('sessions-msg', 'Could not sign that device out.'); return; }
+      // If it was the current session, the next request will 401 and bounce to login.
+      msg('sessions-msg', 'Signed out.', true); loadSessions();
+    });
+  };
+
+  // ---- passkeys ----
+  function b64urlToBuf(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var bin = atob(s); var b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b.buffer; }
+  function bufToB64url(buf) { var b = new Uint8Array(buf), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function loadPasskeys() {
+    api('/v1/auth/passkeys', 'GET').then(function (res) {
+      if (res.status === 404) { $('#pk-unavailable').hidden = false; $('#pk-add-btn').disabled = true; $('#passkeys-list').innerHTML = ''; return null; }
+      return res.ok ? res.json() : null;
+    }).then(function (d) {
+      if (!d) return;
+      var list = d.passkeys || [];
+      $('#passkeys-list').innerHTML = list.length ? list.map(function (p) {
+        return '<div class="item"><span><strong>' + esc(p.label || 'Passkey') + '</strong>' + (p.backedUp ? ' <span class="muted">· synced</span>' : '') + '</span><button class="mini danger" data-pk="' + esc(p.id) + '">Remove</button></div>';
+      }).join('') : '<div class="empty">No passkeys yet. Add one to sign in without a password.</div>';
+    });
+  }
+  $('#passkeys-list').onclick = function (e) {
+    var id = e.target.getAttribute('data-pk'); if (!id) return;
+    if (!confirm('Remove this passkey?')) return;
+    api('/v1/auth/passkeys/' + id, 'DELETE').then(function (res) { if (res.ok) { msg('passkeys-msg', 'Removed.', true); loadPasskeys(); } else msg('passkeys-msg', 'Could not remove it.'); });
+  };
+  function addPasskey() {
+    if (!window.PublicKeyCredential) { msg('passkeys-msg', 'This browser does not support passkeys.'); return; }
+    msg('passkeys-msg', 'Follow your device prompt…');
+    api('/v1/auth/passkeys/register/begin', 'POST', {}).then(function (res) { return res.ok ? res.json() : null; }).then(function (opts) {
+      if (!opts) { msg('passkeys-msg', 'Could not start registration.'); return; }
+      var pk = opts.publicKey || opts;
+      pk.challenge = b64urlToBuf(pk.challenge);
+      pk.user.id = b64urlToBuf(pk.user.id);
+      if (pk.excludeCredentials) pk.excludeCredentials = pk.excludeCredentials.map(function (c) { return { id: b64urlToBuf(c.id), type: c.type, transports: c.transports }; });
+      return navigator.credentials.create({ publicKey: pk }).then(function (cred) {
+        var body = { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+          response: { clientDataJSON: bufToB64url(cred.response.clientDataJSON), attestationObject: bufToB64url(cred.response.attestationObject) } };
+        return api('/v1/auth/passkeys/register/finish', 'POST', body).then(function (r) {
+          if (!r.ok) { msg('passkeys-msg', 'Registration failed.'); return; }
+          msg('passkeys-msg', 'Passkey added.', true); loadPasskeys();
+        });
+      });
+    }).catch(function () { msg('passkeys-msg', 'Registration was cancelled or failed.'); });
   }
 
   // ---- library correction (shown only to users who hold metadata.edit) ----
@@ -373,6 +453,7 @@ enum UserWebController {
   $('#pw-btn').onclick = changePassword;
   $('#reset-history-btn').onclick = resetHistory;
   $('#logout-all-btn').onclick = logoutEverywhere;
+  $('#pk-add-btn').onclick = addPasskey;
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   if (token) enter();
 </script>

@@ -16,14 +16,18 @@ enum Permissions {
     static let markersWrite = "metadata.markers.write"
     /// Contribute artwork/images.
     static let imagesWrite = "metadata.images.write"
-    /// Edit item metadata (title/overview/images/…) and lock fields against
-    /// auto-refresh.
+    /// Edit item metadata (title/overview/images/…), lock fields against
+    /// auto-refresh, and re-identify / re-enrich an item from TMDB.
     static let metadataEdit = "metadata.edit"
+    /// Trigger a scan/refresh of a source or library (re-index its content).
+    /// Source *configuration and credentials* remain admin-only — this grants only
+    /// the "go look again" action.
+    static let catalogScan = "catalog.scan"
 
     /// Every well-known key. Used as the admin's effective set in `/v1/auth/me`
     /// and to validate (but not restrict) admin-assigned permissions.
     static let wellKnown: [String] = [
-        libraryRead, markersWrite, imagesWrite, metadataEdit,
+        libraryRead, markersWrite, imagesWrite, metadataEdit, catalogScan,
     ]
 
     /// The default permissions a freshly created user receives: enough to browse
@@ -38,16 +42,17 @@ enum Permissions {
         "images": imagesWrite,
     ]
 
-    /// Scope a permission key to a specific library: `key:<libraryId>`. A user
-    /// granted the scoped form holds the permission for that library only.
-    static func scoped(_ key: String, to libraryId: String) -> String {
-        "\(key):\(libraryId)"
+    /// Scope a permission key to a specific **library or item**: `key:<id>`. A user
+    /// granted the scoped form holds the permission for that one library (e.g.
+    /// `metadata.edit:lib_abc`) or that single item (`metadata.edit:it_123`) only.
+    static func scoped(_ key: String, to id: String) -> String {
+        "\(key):\(id)"
     }
 
-    /// Split a stored permission key into its base key and optional library scope.
-    /// `"library.read:lib_abc"` → `("library.read", "lib_abc")`;
+    /// Split a stored permission key into its base key and optional scope id
+    /// (a library or item id). `"metadata.edit:it_123"` → `("metadata.edit", "it_123")`;
     /// `"library.read"` → `("library.read", nil)`.
-    static func split(_ key: String) -> (base: String, libraryId: String?) {
+    static func split(_ key: String) -> (base: String, scope: String?) {
         guard let colon = key.firstIndex(of: ":") else { return (key, nil) }
         return (String(key[..<colon]), String(key[key.index(after: colon)...]))
     }
@@ -68,7 +73,11 @@ enum Permissions {
             scopable: true, reserved: false),
         PermissionCapability(
             key: metadataEdit, label: "Edit metadata",
-            description: "Edit item metadata and lock fields against auto-refresh.",
+            description: "Edit item metadata, lock fields, and re-identify/re-enrich a title. Scopable per library or per item.",
+            scopable: true, reserved: false),
+        PermissionCapability(
+            key: catalogScan, label: "Scan / refresh",
+            description: "Trigger a re-scan of a source or library (not its credentials).",
             scopable: true, reserved: false),
         PermissionCapability(
             key: imagesWrite, label: "Contribute artwork",

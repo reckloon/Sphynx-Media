@@ -433,6 +433,12 @@
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/logout</span></div>
 <p><strong>Body</strong> <code>{ "refreshToken":"…", "allDevices":false }</code>. Revokes the presented refresh token's session. <code>allDevices:true</code> revokes every session on the same device id. <strong>204 No Content</strong> on success (idempotent).</p>
 
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/sessions</span><span class="badge auth">auth</span></div>
+<p>The caller's active sign-in sessions (devices), newest-active first. <strong>200</strong> → <code>{ "sessions":[{ "id","deviceId","current","createdAt","lastActiveAt","expiresAt" }] }</code>. <code>current</code> flags the requesting session. Powers the "signed-in devices" list on <code>/user</code>.</p>
+
+<div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/auth/sessions/{sessionId}</span><span class="badge auth">auth</span></div>
+<p>Sign out one of the caller's <strong>own</strong> devices. <strong>204</strong>; idempotent; scoped to the caller. Revoking the current session signs this device out on its next request.</p>
+
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/me</span><span class="badge auth">auth</span></div>
 <p>The authenticated user plus <strong>that user's effective</strong> permissions. Where <code>/v1/info</code> advertises what the <em>server</em> supports, this reflects what <em>this user</em> may actually do (permissions are granted per-user by the admin).</p>
 <pre><code><span class="cmt">// 200</span>
@@ -1256,8 +1262,11 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/sources/{sourceId}/scan</span></div>
 <p>Index one source: fetch its manifest, diff against the catalog, apply adds/updates/removes. <strong>200</strong> → <code>{ "sourceId":"src_…", "scanned":12, "added":3, "updated":1, "removed":0, "enriched":3 }</code>.</p>
 
+<div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/libraries/{libraryId}/scan</span></div>
+<p>Re-scan every source feeding one library (a <strong>per-library refresh</strong>). <strong>200</strong> → <code>{ "sources":[ &lt;scan summary&gt;, … ] }</code>. Gated by <code>catalog.scan</code> for that library (or globally) — the admin's per-library <strong>Refresh</strong> button and a delegated scanner both use it.</p>
+
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/scan</span></div>
-<p>Scan every source. <strong>200</strong> → <code>{ "sources": [ &lt;scan summary&gt;, … ] }</code>.</p>
+<p>Scan every source. <strong>200</strong> → <code>{ "sources": [ &lt;scan summary&gt;, … ] }</code>. Requires the <strong>unscoped</strong> <code>catalog.scan</code>.</p>
 
 <h4 id="api-permissions">Permissions</h4>
 <p>Authorization is a <strong>single admin</strong> (the bootstrap account, which holds every permission implicitly and is the only admin) plus an <strong>open per-user permission set</strong> the admin grants. Permissions are string keys, stored uniformly and forward-compatible — unknown keys are tolerated. Well-known keys:</p>
@@ -1266,10 +1275,14 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
   <tr><td><code>library.read</code></td><td>Browse libraries + resolve/play their items</td><td>browse, items, resolve, home, playstate, item state</td></tr>
   <tr><td><code>metadata.markers.write</code></td><td>Contribute intro/credit markers</td><td><code>PUT /v1/items/{id}/markers</code></td></tr>
   <tr><td><code>metadata.images.write</code></td><td>Contribute artwork <em>(reserved — no endpoint yet)</em></td><td>—</td></tr>
-  <tr><td><code>metadata.edit</code></td><td>Read/edit item metadata and lock fields against auto-refresh</td><td><code>GET</code>/<code>PATCH /v1/admin/items*</code></td></tr>
+  <tr><td><code>metadata.edit</code></td><td>Read/edit item metadata, lock fields, and re-identify/re-enrich a title</td><td><code>GET</code>/<code>PATCH /v1/admin/items*</code>, <code>…/identity</code>, <code>…/enrich</code></td></tr>
+  <tr><td><code>catalog.scan</code></td><td>Trigger a re-scan of a source or library (not its credentials)</td><td><code>POST …/sources/{id}/scan</code>, <code>…/libraries/{id}/scan</code>, <code>…/scan</code></td></tr>
 </table>
-<p>A key may be <strong>scoped to one library</strong> with a <code>:&lt;libraryId&gt;</code> suffix, e.g. <code>library.read:lib_abc</code> grants read for that library only. A user may hold the global key and any number of scoped keys; a gated action passes if the caller holds the global key <em>or</em> the key scoped to the relevant library. The admin always passes.</p>
-<p><strong>Admin role vs. permission.</strong> Most <code>/v1/admin/*</code> endpoints require the <strong>admin role</strong> (the single bootstrap account). The exception is <strong>item correction</strong> — the <code>/v1/admin/items*</code> read/edit endpoints are gated by the <code>metadata.edit</code> <em>permission</em> instead, so the admin can delegate metadata fixing to a trusted non-admin (globally or per library). A user holding <code>metadata.edit</code> gets a <strong>Library correction</strong> panel on the <code>/user</code> page; re-identify/re-enrich (which spend TMDB calls) stay admin-only.</p>
+<p>A key may be <strong>scoped to one library or one item</strong> with a <code>:&lt;id&gt;</code> suffix, e.g. <code>library.read:lib_abc</code> grants read for that library only, and <code>metadata.edit:it_123</code> grants editing of a single title. A user may hold the global key and any number of scoped keys; a gated action passes if the caller holds the global key <em>or</em> the key scoped to the relevant library <em>or</em> item. The admin always passes. A full-catalog <code>POST /v1/admin/scan</code> needs the <strong>unscoped</strong> <code>catalog.scan</code>.</p>
+<p><strong>Admin role vs. permission.</strong> Most <code>/v1/admin/*</code> endpoints require the <strong>admin role</strong> (the single bootstrap account, holding source credentials, settings, user management). Two capabilities are <strong>delegable to non-admins</strong> via permissions: <strong>item correction</strong> (<code>metadata.edit</code> — including re-identify/re-enrich) and <strong>scanning</strong> (<code>catalog.scan</code>). A user holding <code>metadata.edit</code> gets a <strong>Library correction</strong> panel on the <code>/user</code> page.</p>
+<div class="callout warn">
+  <p><strong>Permission denied is a clean <code>403</code>.</strong> A gated action the caller may not perform returns <code>403 forbidden</code>. Clients <strong>must</strong> surface this clearly — disable/hide the affordance up front from <code>GET /v1/auth/me</code>, show a short "you don't have permission" message on a <code>403</code>, and treat it as <strong>terminal and non-retryable</strong> (distinct from <code>401</code> re-auth and <code>5xx</code>/timeout retries). Never let the action silently do nothing or look like a network error.</p>
+</div>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/permissions</span></div>
 <p>The permission vocabulary for the admin editor, so the UI is data-driven rather than hardcoding keys. <strong>200</strong> → <code>{ "permissions":[{ "key":"library.read", "label":"Browse &amp; play", "description":"…", "scopable":true, "reserved":false }], "libraries":[{ "id":"lib_…", "title":"Movies" }] }</code>. <code>scopable</code> keys may be granted per-library; <code>reserved</code> keys are stored but not yet enforced.</p>

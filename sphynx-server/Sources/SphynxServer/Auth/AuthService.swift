@@ -273,6 +273,42 @@ struct AuthService: Sendable {
         }
     }
 
+    // MARK: Self-service sessions (own devices)
+
+    /// The caller's active (non-revoked, unexpired) sessions, newest-active first.
+    func listSessions(userId: String, currentSessionId: String) async throws -> [SessionInfo] {
+        let now = Date().timeIntervalSince1970
+        let records = try await db.writer.read { db in
+            try SessionRecord
+                .filter(Column("userId") == userId && Column("revoked") == false && Column("refreshExpiresAt") > now)
+                .order(Column("updatedAt").desc)
+                .fetchAll(db)
+        }
+        return records.map { r in
+            SessionInfo(
+                id: r.id, deviceId: r.deviceId, current: r.id == currentSessionId,
+                createdAt: Self.iso8601(r.createdAt),
+                lastActiveAt: Self.iso8601(r.updatedAt),
+                expiresAt: Self.iso8601(r.refreshExpiresAt))
+        }
+    }
+
+    /// Revoke one of the caller's own sessions (sign out a single device). Scoped
+    /// to the user, so a user can only revoke their own. Silent if it doesn't
+    /// exist (don't leak whether a session id is valid).
+    func revokeSession(userId: String, sessionId: String) async throws {
+        let now = Date().timeIntervalSince1970
+        try await db.writer.write { db in
+            _ = try SessionRecord
+                .filter(Column("id") == sessionId && Column("userId") == userId)
+                .updateAll(db, Column("revoked").set(to: true), Column("updatedAt").set(to: now))
+        }
+    }
+
+    private static func iso8601(_ epoch: Double) -> String {
+        ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: epoch))
+    }
+
     // MARK: Self-service profile
 
     /// Update a user's own profile. Only non-nil fields change. A provided

@@ -83,6 +83,43 @@ public struct ProfileUpdateRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// One of the caller's active sign-in sessions (a device). Returned by
+/// `GET /v1/auth/sessions` so a user can review and sign out individual devices
+/// from the `/user` page — not just "sign out everywhere".
+public struct SessionInfo: Codable, Hashable, Sendable {
+    public var id: String
+    /// Client-supplied device label (the `X-Sphynx-Device` header), or "default".
+    public var deviceId: String
+    /// Whether this is the session making the request (don't offer to revoke it
+    /// without a clear "this device" note).
+    public var current: Bool
+    /// When the session was created (RFC 3339 / ISO 8601).
+    public var createdAt: String
+    /// When the session was last refreshed/used (RFC 3339 / ISO 8601).
+    public var lastActiveAt: String
+    /// When the session's refresh token expires (RFC 3339 / ISO 8601).
+    public var expiresAt: String
+
+    public init(id: String, deviceId: String, current: Bool, createdAt: String, lastActiveAt: String, expiresAt: String) {
+        self.id = id
+        self.deviceId = deviceId
+        self.current = current
+        self.createdAt = createdAt
+        self.lastActiveAt = lastActiveAt
+        self.expiresAt = expiresAt
+    }
+}
+
+/// `GET /v1/auth/sessions` response: the caller's active sessions, newest-active
+/// first.
+public struct SessionsResponse: Codable, Hashable, Sendable {
+    public var sessions: [SessionInfo]
+
+    public init(sessions: [SessionInfo]) {
+        self.sessions = sessions
+    }
+}
+
 /// `POST /v1/auth/password` request body: change the authenticated user's own
 /// password. The caller must present its current password.
 public struct PasswordChangeRequest: Codable, Hashable, Sendable {

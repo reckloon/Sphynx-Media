@@ -14,6 +14,7 @@ extension ServerInfo: @retroactive ResponseEncodable {}
 extension ErrorEnvelope: @retroactive ResponseEncodable {}
 extension TokenResponse: @retroactive ResponseEncodable {}
 extension MeResponse: @retroactive ResponseEncodable {}
+extension SessionsResponse: @retroactive ResponseEncodable {}
 extension Item: @retroactive ResponseEncodable {}
 extension ResolveDescriptor: @retroactive ResponseEncodable {}
 extension LibrariesResponse: @retroactive ResponseEncodable {}

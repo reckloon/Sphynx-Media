@@ -691,7 +691,7 @@ enum AdminWebController {
       var c = libCounts[l.id];
       var counts = c ? '<span class="meta">' + c.indexed + ' items · ' + c.enriched + ' enriched</span>' : '';
       return '<div class="item"><span><strong>' + esc(l.title) + '</strong> <span class="meta">' + esc(l.kind) + '</span> ' + counts + '</span>' +
-        '<span class="acts"><label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. To turn box sets off, set this higher than any collection (e.g. 999) so nothing ever groups.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies <span class="meta" style="opacity:.75">(high number = off)</span></label> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>';
+        '<span class="acts"><label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. To turn box sets off, set this higher than any collection (e.g. 999) so nothing ever groups.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies <span class="meta" style="opacity:.75">(high number = off)</span></label> <button class="mini" data-scan-lib="' + esc(l.id) + '" title="Re-scan every source feeding this library">Refresh</button> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>';
     }).join('') : '<div class="empty">No libraries yet. Add one below.</div>';
   }
   function refreshLibPickers() {
@@ -780,6 +780,17 @@ enum AdminWebController {
     var del = e.target.getAttribute('data-del-src'), scan = e.target.getAttribute('data-scan');
     if (del) { if (confirm('Delete this source and its items?')) api('/v1/admin/sources/' + del, 'DELETE').then(function () { loadSources(); loadLibraries(); }); return; }
     if (scan) { scanSource(storActive, scan); return; }
+    var rl = e.target.getAttribute('data-scan-lib');
+    if (rl) {
+      msg('lib-msg', 'Refreshing…');
+      api('/v1/admin/libraries/' + rl + '/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+        if (!d) { msg('lib-msg', 'Refresh failed.'); return; }
+        var n = (d.sources || []).reduce(function (a, s) { return a + (s.scanned || 0); }, 0);
+        msg('lib-msg', 'Refreshed ' + (d.sources || []).length + ' source(s), ' + n + ' item(s).', true);
+        loadLibraries(); loadOverview();
+      }).catch(function () { msg('lib-msg', 'Refresh failed.'); });
+      return;
+    }
     var dl = e.target.getAttribute('data-del-lib');
     if (dl) { if (confirm('Delete this library and its items?')) api('/v1/admin/libraries/' + dl, 'DELETE').then(function () { loadLibraries(); loadSources(); }); }
   };
