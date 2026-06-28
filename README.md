@@ -129,9 +129,9 @@ Built spine-first. Working today:
 
 ### Roadmap
 
-Two tracks: **content-model breadth** (what items exist and how they relate) and
-**protocol contract hardening** (wire-contract additions clients can rely on). In
-priority order:
+Next up is **protocol contract hardening** — wire-contract additions clients can
+rely on (the content-model breadth track — extras, collections, people — has
+landed; see Features above). In priority order:
 
 - **High** — per-image placeholder & aspect metadata; track languages/labels +
   external subtitles in resolve; multiple versions/editions; a
