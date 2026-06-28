@@ -23,6 +23,8 @@ struct AdminController: Sendable {
         let admin = group.group("admin")
         admin.get("settings", use: getSettings)
         admin.patch("settings", use: updateSettings)
+        admin.get("tmdb", use: getTMDB)
+        admin.patch("tmdb", use: updateTMDB)
         admin.post("libraries", use: createLibrary)
         admin.get("libraries", use: listLibraries)
         admin.patch("libraries/:libraryId", use: updateLibrary)
@@ -135,6 +137,34 @@ struct AdminController: Sendable {
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
+    }
+
+    /// Persisted-settings key for the TMDB v3 API key. Core metadata config (not an
+    /// extension): identification + enrichment depend on it. Seeded once from
+    /// `SPHYNX_TMDB_API_KEY`; read at boot, so a change applies on the next restart.
+    static let tmdbAPIKeySetting = "tmdb.apiKey"
+
+    /// Masked view of the TMDB key — never returns the full value.
+    @Sendable
+    func getTMDB(_ request: Request, context: SphynxRequestContext) async throws -> TMDBKeyStatus {
+        try requireAdmin(context)
+        return try await tmdbStatus()
+    }
+
+    @Sendable
+    func updateTMDB(_ request: Request, context: SphynxRequestContext) async throws -> TMDBKeyStatus {
+        try requireAdmin(context)
+        let body = try await request.decode(as: TMDBKeyUpdate.self, context: context)
+        if let key = body.apiKey {
+            try await settings.set([Self.tmdbAPIKeySetting: key.trimmingCharacters(in: .whitespaces)])
+        }
+        return try await tmdbStatus()
+    }
+
+    private func tmdbStatus() async throws -> TMDBKeyStatus {
+        let key = (try await settings.all())[Self.tmdbAPIKeySetting] ?? ""
+        let hint = key.count >= 4 ? "…" + String(key.suffix(4)) : (key.isEmpty ? nil : "set")
+        return TMDBKeyStatus(configured: !key.isEmpty, keyHint: hint, appliesOnRestart: true)
     }
 
     @Sendable
@@ -495,6 +525,19 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var markersStaleAfter: Double?
     var playstateRetention: Double?
     var maintenanceInterval: Double?
+}
+
+/// Masked TMDB-key status: never returns the full key.
+struct TMDBKeyStatus: Codable, Sendable, ResponseEncodable {
+    var configured: Bool
+    /// A short, non-secret hint (e.g. `…1b87`); nil when unset.
+    var keyHint: String?
+    /// A changed key takes effect on the next server restart.
+    var appliesOnRestart: Bool
+}
+
+struct TMDBKeyUpdate: Codable, Sendable {
+    var apiKey: String?
 }
 
 struct UpdateLibraryRequest: Codable, Sendable {

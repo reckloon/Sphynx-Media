@@ -108,16 +108,16 @@ func buildApplication(
     let drivers = DriverFactory(fetcher: fetcher)
     let resolver = Resolver(catalog: catalog, drivers: drivers)
 
-    // TMDB key: configured in the GUI (Extensions → Metadata), seeded once from
+    // TMDB key: core metadata config set in the GUI (Settings), seeded once from
     // the env var, then DB-authoritative. Read here so a GUI change applies on the
     // next restart, like the other runtime settings.
     let tmdbAPIKey: String
     let storedSettings = try await settingsStore.all()
-    if let stored = storedSettings[ExtensionsController.Key.tmdbAPIKey] {
+    if let stored = storedSettings[AdminController.tmdbAPIKeySetting] {
         tmdbAPIKey = stored
     } else {
         tmdbAPIKey = envConfiguration.tmdbAPIKey
-        if !tmdbAPIKey.isEmpty { try await settingsStore.set([ExtensionsController.Key.tmdbAPIKey: tmdbAPIKey]) }
+        if !tmdbAPIKey.isEmpty { try await settingsStore.set([AdminController.tmdbAPIKeySetting: tmdbAPIKey]) }
     }
 
     // Identification + enrichment are available only when TMDB is configured

@@ -182,10 +182,15 @@ enum AdminWebController {
           <p class="hint">Refreshes stale info and tidies old data. e.g. 1440 = 1 day; 0 = off.</p></div>
       </div>
 
+      <div class="group-title">Metadata (TMDB)</div>
+      <label for="tmdb-key">TMDB API key <span id="tmdb-status" class="muted"></span></label>
+      <input id="tmdb-key" type="password" placeholder="Paste your TMDB v3 API key" autocomplete="off">
+      <p class="hint">Identifies titles and fetches posters, overviews, and cast. <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free key →</a> Leave blank to keep the current key; saving applies on the next restart.</p>
+
       <button id="save-btn">Save settings</button>
       <button id="scan-all-btn" class="secondary" style="margin-left:8px;">Scan all sources now</button>
       <div id="save-msg" class="msg"></div>
-      <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server. The TMDB key and per-source refresh times are configured under <strong>Extensions</strong>.)</p>
+      <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server. Per-source refresh times are set under <strong>Extensions → Storage</strong>.)</p>
     </section>
 
     <section id="tab-libraries" hidden>
@@ -451,14 +456,6 @@ enum AdminWebController {
         </div>
       </div>
 
-      <div id="mod-tmdb" class="ext-mod" hidden>
-        <p class="hint" style="margin-top:0;">Your TMDB v3 API key — used to identify titles and fetch posters, overviews, and cast. <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free key →</a></p>
-        <label for="tmdb-key">TMDB API key <span id="tmdb-status" class="muted"></span></label>
-        <input id="tmdb-key" type="password" placeholder="Paste your TMDB v3 API key" autocomplete="off">
-        <button id="tmdb-save">Save key</button>
-        <div id="tmdb-msg" class="msg"></div>
-        <p class="hint">Stored on the server; takes effect on the next restart. Leave the field blank to keep the current key.</p>
-      </div>
     </section>
   </div>
 </div>
@@ -515,16 +512,32 @@ enum AdminWebController {
       if (res.status === 403) { msg('login-msg', 'That account is not the admin.'); logout(); return null; }
       return res.ok ? res.json() : null;
     }).then(function (s) { if (s) sfields.forEach(function (f) { var el = $('#' + f); if (el) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); });
+    loadTMDBStatus();
+  }
+  function loadTMDBStatus() {
+    var el = $('#tmdb-key'); if (el) el.value = '';
+    api('/v1/admin/tmdb', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (c) {
+      if (!c) return;
+      $('#tmdb-status').innerHTML = c.configured
+        ? '— <span class="res-enriched">configured</span>' + (c.keyHint ? ' <span class="meta">' + esc(c.keyHint) + '</span>' : '')
+        : '— <span class="muted">not set</span>';
+    });
   }
   function saveSettings() {
     msg('save-msg', '');
     var body = {};
     // The number fields are durations shown in minutes; the API stores seconds.
     sfields.forEach(function (f) { var el = $('#' + f); body[f] = snumbers.indexOf(f) >= 0 ? Math.round(Number(el.value) * 60) : el.value; });
+    // Save the TMDB key alongside (only when a new one was entered).
+    var tmdbKey = ($('#tmdb-key') ? $('#tmdb-key').value : '').trim();
+    var tmdbSave = tmdbKey ? api('/v1/admin/tmdb', 'PATCH', { apiKey: tmdbKey }) : Promise.resolve(null);
     api('/v1/admin/settings', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { res.json().then(function (e) { msg('save-msg', (e && e.error && e.error.message) || 'Save failed.'); }).catch(function () { msg('save-msg', 'Save failed.'); }); return; }
-      msg('save-msg', 'Saved. Restart the server for changes to take effect.', true);
+      return tmdbSave.then(function () {
+        msg('save-msg', 'Saved. Restart the server for changes to take effect.', true);
+        loadTMDBStatus();
+      });
     }).catch(function () { msg('save-msg', 'Could not reach the server.'); });
   }
   function scanAllSources() {
@@ -838,7 +851,6 @@ enum AdminWebController {
     if (id === 'storage') { showStorage(storActive); loadSources(); }
     else if (id === 'diagnostics') showSub(diagState.sub);
     else if (id === 'media-probe') loadProbeConfig();
-    else if (id === 'tmdb') loadTMDBConfig();
   }
   $('#ext-nav').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.mod) activateModule(b.dataset.mod); };
 
@@ -865,27 +877,6 @@ enum AdminWebController {
       $('#mp-avail').innerHTML = badge + (c.resolvedPath ? ' <span class="meta">' + esc(c.resolvedPath) + '</span>' : '');
     });
   }
-  // ---- module: metadata (TMDB key) ----
-  function loadTMDBConfig() {
-    $('#tmdb-key').value = '';
-    api('/v1/admin/extensions/tmdb', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
-      if (!c) return;
-      $('#tmdb-status').innerHTML = c.configured
-        ? '— <span class="ok-badge">configured</span>' + (c.keyHint ? ' <span class="meta">' + esc(c.keyHint) + '</span>' : '')
-        : '— <span class="off-badge">not set</span>';
-    });
-  }
-  function saveTMDBConfig() {
-    var key = $('#tmdb-key').value.trim();
-    if (!key) { msg('tmdb-msg', 'Enter a key to save (or leave blank to keep the current one).'); return; }
-    msg('tmdb-msg', '');
-    api('/v1/admin/extensions/tmdb', 'PATCH', { apiKey: key }).then(function (res) {
-      if (res.status === 401) { logout(); return; }
-      if (!res.ok) { msg('tmdb-msg', 'Save failed.'); return; }
-      msg('tmdb-msg', 'Saved. Restart the server to start enriching with this key.', true); loadTMDBConfig(); enterExtensions();
-    }).catch(function () { msg('tmdb-msg', 'Could not reach the server.'); });
-  }
-
   function saveProbeConfig() {
     msg('mp-msg', '');
     api('/v1/admin/extensions/media-probe', 'PATCH', { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value }).then(function (res) {
@@ -925,7 +916,6 @@ enum AdminWebController {
   $('#lib-add-btn').onclick = addLibrary;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
-  $('#tmdb-save').onclick = saveTMDBConfig;
   $('#mp-probe-btn').onclick = runProbe;
   $('#mp-item').addEventListener('keydown', function (e) { if (e.key === 'Enter') runProbe(); });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });

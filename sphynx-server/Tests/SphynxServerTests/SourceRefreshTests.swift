@@ -53,18 +53,25 @@ struct SourceRefreshTests {
             ) { try $0.decoded() }
             #expect(list.sources.first { $0.id == src.id }?.refreshInterval == 1800)
 
-            // TMDB key: unset → configured false; set → masked hint, configured true.
-            let before: TMDBExtConfig = try await client.execute(
-                uri: "/v1/admin/extensions/tmdb", method: .get, headers: jsonHeaders(bearer: token)
+            // TMDB key: core Settings config (not an extension). Unset → configured
+            // false; set → masked hint, configured true; never echoes the key.
+            let before: TMDBKeyStatus = try await client.execute(
+                uri: "/v1/admin/tmdb", method: .get, headers: jsonHeaders(bearer: token)
             ) { try $0.decoded() }
             #expect(before.configured == false)
 
-            let after: TMDBExtConfig = try await client.execute(
-                uri: "/v1/admin/extensions/tmdb", method: .patch, headers: jsonHeaders(bearer: token),
-                body: try jsonBody(TMDBExtUpdate(apiKey: "abcd1234"))
+            let after: TMDBKeyStatus = try await client.execute(
+                uri: "/v1/admin/tmdb", method: .patch, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(TMDBKeyUpdate(apiKey: "abcd1234"))
             ) { #expect($0.status == .ok); return try $0.decoded() }
             #expect(after.configured == true)
             #expect(after.keyHint == "…1234")
+
+            // It is NOT advertised as an extension.
+            let exts: ExtensionsResponse = try await client.execute(
+                uri: "/v1/admin/extensions", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(exts.extensions.contains { $0.id == "tmdb" } == false)
         }
     }
 }

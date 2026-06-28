@@ -542,7 +542,17 @@ Update any subset of the runtime settings. **Body** e.g.
 `{ "serverName": "My Library", "markersAccess": "read", "enrichmentTTL": 1209600 }`
 → **200** with the full updated settings. Persisted; applies on the next restart.
 **400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
-(host, port, DB path, admin bootstrap, TMDB key) remain environment variables.
+(host, port, DB path, admin bootstrap) remain environment variables.
+
+### `GET /v1/admin/tmdb` · `PATCH /v1/admin/tmdb`
+
+The **TMDB v3 API key** — core metadata config (identification + enrichment depend
+on it), set in the GUI instead of (or in addition to) the environment.
+
+- **`GET`** → `{ "configured", "keyHint", "appliesOnRestart" }`. The key is **never**
+  returned — only whether one is set and a short hint (e.g. `…1b87`).
+- **`PATCH`** `{ "apiKey" }` → stores the key (seeded once from `SPHYNX_TMDB_API_KEY`,
+  DB-authoritative thereafter). Takes effect on the next server restart.
 
 ### `POST /v1/admin/libraries`
 
@@ -808,15 +818,6 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   to its direct location (as a player would), runs `ffprobe`, and returns
   `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ] }`.
   Returns **400** when the extension is disabled or `ffprobe` isn't available.
-
-**Metadata / TMDB** (`id: tmdb`) — the TMDB v3 API key used for identification +
-enrichment, configurable here instead of via the environment.
-
-- **`GET /v1/admin/extensions/tmdb`** → `{ "configured", "keyHint", "appliesOnRestart" }`
-  (the key itself is **never** returned — only whether one is set and a short hint).
-- **`PATCH /v1/admin/extensions/tmdb`** `{ "apiKey" }` → stores the key (seeded once
-  from `SPHYNX_TMDB_API_KEY`; DB-authoritative thereafter). Takes effect on the next
-  server restart.
 
 ---
 
