@@ -571,6 +571,9 @@
 <div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/playstate/{itemId}</span></div>
 <p><strong>Clear resume / remove from Continue Watching.</strong> Deletes the caller's stored playstate for the item, so its <code>resumePosition</code> reads back as 0 and it drops out of <code>/v1/home/continue</code>. <strong>204</strong>; idempotent. Only ever affects the caller's own row.</p>
 
+<div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/playstate</span></div>
+<p><strong>Reset the caller's entire watch history (cross-device).</strong> Clears <em>all</em> stored resume positions <strong>and</strong> per-item state (watched flag, play count, last-played) for the authenticated user, everywhere. Only ever affects the caller's own rows; idempotent. <strong>200</strong> → <code>{ "cleared": 12 }</code> (rows removed). This is the "reset my watch history" action on the <code>/user</code> page.</p>
+
 <div class="callout note">
   <p><code>resumePosition</code> is folded into item responses for the authenticated user as a <strong>convenience snapshot</strong> — but it does <strong>not</strong> move <code>updatedAt</code>, so a cached value can be stale. <code>/v1/playstate</code> is the authoritative source: read it (single or batch) when you need the current position (e.g. to resume playback), and use the folded <code>resumePosition</code> for display hints only.</p>
 </div>
@@ -1226,16 +1229,20 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 <h4 id="api-permissions">Permissions</h4>
 <p>Authorization is a <strong>single admin</strong> (the bootstrap account, which holds every permission implicitly and is the only admin) plus an <strong>open per-user permission set</strong> the admin grants. Permissions are string keys, stored uniformly and forward-compatible — unknown keys are tolerated. Well-known keys:</p>
 <table>
-  <tr><th>Key</th><th>Grants</th></tr>
-  <tr><td><code>library.read</code></td><td>Browse libraries + resolve/play their items</td></tr>
-  <tr><td><code>metadata.markers.write</code></td><td>Contribute intro/credit markers</td></tr>
-  <tr><td><code>metadata.images.write</code></td><td>Contribute artwork</td></tr>
-  <tr><td><code>metadata.edit</code></td><td>Edit item metadata and lock fields against auto-refresh</td></tr>
+  <tr><th>Key</th><th>Grants</th><th>Gates</th></tr>
+  <tr><td><code>library.read</code></td><td>Browse libraries + resolve/play their items</td><td>browse, items, resolve, home, playstate, item state</td></tr>
+  <tr><td><code>metadata.markers.write</code></td><td>Contribute intro/credit markers</td><td><code>PUT /v1/items/{id}/markers</code></td></tr>
+  <tr><td><code>metadata.images.write</code></td><td>Contribute artwork <em>(reserved — no endpoint yet)</em></td><td>—</td></tr>
+  <tr><td><code>metadata.edit</code></td><td>Read/edit item metadata and lock fields against auto-refresh</td><td><code>GET</code>/<code>PATCH /v1/admin/items*</code></td></tr>
 </table>
-<p>A key may be <strong>scoped to one library</strong> with a <code>:&lt;libraryId&gt;</code> suffix, e.g. <code>library.read:lib_abc</code> grants read for that library only. Each gated action checks the caller's effective permission; the admin always passes.</p>
+<p>A key may be <strong>scoped to one library</strong> with a <code>:&lt;libraryId&gt;</code> suffix, e.g. <code>library.read:lib_abc</code> grants read for that library only. A user may hold the global key and any number of scoped keys; a gated action passes if the caller holds the global key <em>or</em> the key scoped to the relevant library. The admin always passes.</p>
+<p><strong>Admin role vs. permission.</strong> Most <code>/v1/admin/*</code> endpoints require the <strong>admin role</strong> (the single bootstrap account). The exception is <strong>item correction</strong> — the <code>/v1/admin/items*</code> read/edit endpoints are gated by the <code>metadata.edit</code> <em>permission</em> instead, so the admin can delegate metadata fixing to a trusted non-admin (globally or per library). A user holding <code>metadata.edit</code> gets a <strong>Library correction</strong> panel on the <code>/user</code> page; re-identify/re-enrich (which spend TMDB calls) stay admin-only.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/permissions</span></div>
+<p>The permission vocabulary for the admin editor, so the UI is data-driven rather than hardcoding keys. <strong>200</strong> → <code>{ "permissions":[{ "key":"library.read", "label":"Browse &amp; play", "description":"…", "scopable":true, "reserved":false }], "libraries":[{ "id":"lib_…", "title":"Movies" }] }</code>. <code>scopable</code> keys may be granted per-library; <code>reserved</code> keys are stored but not yet enforced.</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/users</span></div>
-<p>List all accounts. <strong>200</strong> → <code>{ "users": [ { "id":"u_…", "username":"bob", "displayName":"Bob", "isAdmin":false, "permissions":["library.read"] }, … ] }</code>. The admin's <code>permissions</code> reflects the full implicit set.</p>
+<p>List all accounts. <strong>200</strong> → <code>{ "users": [ { "id":"u_…", "username":"bob", "displayName":"Bob", "avatarURL":"/v1/users/u_…/avatar?v=…", "isAdmin":false, "permissions":["library.read"] }, … ] }</code>. <code>avatarURL</code> is omitted when the user has no picture. The admin's <code>permissions</code> reflects the full implicit set.</p>
 
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/admin/users</span></div>
 <p>Create a <strong>non-admin</strong> user (there is exactly one admin — any <code>isAdmin</code> in the body is ignored). <strong>Body</strong> <code>{ "username":"bob", "password":"…", "displayName":"Bob", "permissions":["library.read"] }</code>. <code>permissions</code> defaults to <code>["library.read"]</code> when omitted, so a new user can browse and play immediately. <strong>200</strong> → the created user. <strong>409</strong> if the username is taken.</p>
@@ -1245,6 +1252,12 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 
 <div class="ep"><span class="method badge delete">DELETE</span><span class="path">/v1/admin/users/{userId}</span></div>
 <p>Delete a user and revoke all their sessions + per-user state. <strong>204</strong> on success. The admin account cannot be deleted (<strong>403</strong>).</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/items?parent={id}</span></div>
+<p>Browse the catalog as a <strong>raw file hierarchy</strong> for the correction UI: the direct children of <code>parent</code> (a library id → its top level; an item id → that container's children). <strong>200</strong> → <code>{ "items":[&lt;Item&gt;,…] }</code> (full projection — <code>type</code>, <code>images</code>, <code>childCount</code>). Unlike the player-facing <code>/v1/items</code>, this applies <strong>no collection grouping</strong> — a collection is its own openable row and member movies appear individually, a 1-to-1 mirror of the indexed source tree. Reads the catalog only (no driver/CDN traffic). Gated by <code>metadata.edit</code> for the resolved library.</p>
+
+<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/admin/items/{itemId}</span></div>
+<p>Read one item with its current <strong>lock state</strong>, for the correction editor. <strong>200</strong> → <code>{ "item":&lt;Item&gt;, "lockedFields":["title","overview"] }</code>. Gated by <code>metadata.edit</code>. The wire <code>Item</code> carries no lock info, so this is how a UI knows which fields are pinned.</p>
 
 <div class="ep"><span class="method badge patch">PATCH</span><span class="path">/v1/admin/items/{itemId}</span></div>
 <p>Edit an item's metadata and <strong>lock</strong> each edited field against auto-refresh. Gated by the <code>metadata.edit</code> <a href="#api-permissions">permission</a> (honoring per-library scoping), not the admin role — so a non-admin editor can be granted it. Every field is optional; each one <strong>present is written and locked</strong>, so it survives every scan, TTL refresh, and forced enrich.</p>
@@ -1290,7 +1303,7 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
 <h4 id="api-diagnostics">Diagnostics &amp; extensions</h4>
 <p>These power the web admin's <strong>Extensions</strong> tab (Diagnostics + optional modules) and are server-specific, not part of the wire protocol. Brief shapes here; the exhaustive reference is in <a href="https://github.com/reckloon/Sphynx-Media/blob/main/docs/API.md#extensions--admin-only">docs/API.md</a>.</p>
 <ul>
-  <li><strong>Diagnostics</strong> (all <code>GET</code>, admin-only) — <code>GET /v1/admin/status</code> (activity snapshot: current parse/enrich activity + counters); <code>GET /v1/admin/logs?after=&amp;limit=&amp;level=</code> (paged diagnostics log lines); <code>GET /v1/admin/db/tables</code> and <code>GET /v1/admin/db/query?table=&amp;limit=&amp;offset=</code> (read-only, whitelisted database browser with secret columns redacted).</li>
+  <li><strong>Diagnostics</strong> (all <code>GET</code>, admin-only) — <code>GET /v1/admin/status</code> (activity snapshot: current parse/enrich activity + counters); <code>GET /v1/admin/logs?after=&amp;limit=&amp;level=</code> (paged diagnostics log lines); <code>GET /v1/admin/db/tables</code> and <code>GET /v1/admin/db/query?table=&amp;limit=&amp;offset=&amp;tmdbId=&amp;name=</code> (read-only, whitelisted database browser with secret columns redacted; optional <code>tmdbId</code> exact-match and <code>name</code> title-substring search when the table has those columns); <code>GET /v1/admin/overview</code> (catalog coverage: items in source vs indexed vs enriched, per library and source).</li>
   <li><strong>Extensions registry</strong> — <code>GET /v1/admin/extensions</code> lists each module (<code>kind</code> <code>builtin</code> like <code>diagnostics</code>, or <code>optional</code>; <code>available</code> reflects prerequisites such as <code>ffprobe</code> being installed).</li>
   <li><strong>Media probe</strong> (<code>id: media-probe</code>, opt-in) — <code>GET</code>/<code>PATCH /v1/admin/extensions/media-probe</code> read/set <code>{ enabled, ffprobePath }</code> (applied live, no restart); <code>GET /v1/admin/extensions/media-probe/probe?itemId=</code> runs <code>ffprobe</code> on the item's resolved location and caches the streams / external subtitles / <code>chapters</code> back onto the item, so <a href="#api-resolve">resolve</a> and item detail then serve them without re-probing. <strong>400</strong> when disabled or <code>ffprobe</code> is unavailable.</li>
 </ul>

@@ -1107,18 +1107,28 @@ permission implicitly and is the only admin) plus an **open per-user permission
 set** the admin grants. Permissions are string keys, stored uniformly and
 forward-compatible — unknown keys are tolerated. Well-known keys:
 
-| Key | Grants |
-|---|---|
-| `library.read` | Browse libraries + resolve/play their items |
-| `metadata.markers.write` | Contribute intro/credit markers |
-| `metadata.images.write` | Contribute artwork *(reserved — no wire endpoint yet; see note below)* |
-| `metadata.edit` | Edit item metadata and lock fields against auto-refresh |
+| Key | Grants | Gates |
+|---|---|---|
+| `library.read` | Browse libraries + resolve/play their items | `/v1/libraries`, `/v1/items`, `/v1/resolve`, `/v1/home/*`, `/v1/playstate/*`, item state |
+| `metadata.markers.write` | Contribute intro/credit markers | `PUT /v1/items/{id}/markers` |
+| `metadata.images.write` | Contribute artwork *(reserved — no wire endpoint yet; see note below)* | — |
+| `metadata.edit` | Read/edit item metadata and lock fields against auto-refresh | `GET /v1/admin/items*`, `GET`/`PATCH /v1/admin/items/{id}` |
 
 A key may be **scoped to one library** with a `:<libraryId>` suffix, e.g.
 `library.read:lib_abc` grants read for that library only. A user may hold both
 the global key and any number of scoped keys; a gated action passes if the caller
 holds the global key **or** the key scoped to the relevant library. The admin
 always passes.
+
+**Admin role vs. permissions.** Most `/v1/admin/*` endpoints (settings, libraries,
+sources, users, scan, enrich, identity, diagnostics) require the **admin role** —
+there is exactly one admin (the bootstrap account). The exception is **item
+correction**: `GET /v1/admin/items*`, `GET /v1/admin/items/{id}`, and
+`PATCH /v1/admin/items/{id}` are gated by the **`metadata.edit` permission**, not the
+role, so the admin can delegate metadata fixing to a trusted non-admin (globally or
+per-library). A user who holds `metadata.edit` gets a **Library correction** panel on
+the [`/user`](#discovery) page; re-identify/re-enrich (which spend TMDB calls) stay
+admin-only.
 
 The permission set is replaced wholesale via
 [`PUT /v1/admin/users/{userId}/permissions`](#put-v1adminusersuseridpermissions)
