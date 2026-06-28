@@ -20,11 +20,16 @@ struct ErrorMiddleware<Context: RequestContext>: RouterMiddleware {
         } catch let error as SphynxError {
             return try error.response(from: request, context: context)
         } catch let error as HTTPError {
+            // 429/503 are inherently retryable; other statuses retry only on 5xx.
+            // No backoff hint is known here (HTTPError carries none), so retryAfter
+            // stays nil and no Retry-After header is emitted for these.
+            let status = error.status
+            let retryable = status.code == 429 || status.code == 503 || status.code >= 500
             let mapped = SphynxError(
-                status: error.status,
-                code: Self.code(for: error.status),
+                status: status,
+                code: Self.code(for: status),
                 message: error.body ?? "Request failed",
-                retryable: error.status.code >= 500
+                retryable: retryable
             )
             return try mapped.response(from: request, context: context)
         } catch {

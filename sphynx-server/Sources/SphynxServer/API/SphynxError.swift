@@ -12,19 +12,27 @@ struct SphynxError: HTTPResponseError {
     let code: ErrorCode
     let message: String
     let retryable: Bool
+    /// Seconds the client SHOULD wait before retrying. Set only where the server
+    /// knows a hint (rate-limited / temporarily unavailable); nil otherwise.
+    let retryAfter: Double?
 
-    init(status: HTTPResponse.Status, code: ErrorCode, message: String, retryable: Bool = false) {
+    init(status: HTTPResponse.Status, code: ErrorCode, message: String, retryable: Bool = false, retryAfter: Double? = nil) {
         self.status = status
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.retryAfter = retryAfter
     }
 
     func response(from request: Request, context: some RequestContext) throws -> Response {
-        let envelope = ErrorEnvelope(code: code, message: message, retryable: retryable)
+        let envelope = ErrorEnvelope(code: code, message: message, retryable: retryable, retryAfter: retryAfter)
         let data = try JSONEncoder().encode(envelope)
         var headers = HTTPFields()
         headers[.contentType] = "application/json; charset=utf-8"
+        // Mirror the body hint into the standard Retry-After header (integer seconds).
+        if let retryAfter {
+            headers[.retryAfter] = String(Int(retryAfter.rounded()))
+        }
         return Response(
             status: status,
             headers: headers,
@@ -56,5 +64,13 @@ struct SphynxError: HTTPResponseError {
     }
     static func serverError(_ message: String) -> SphynxError {
         .init(status: .internalServerError, code: .serverError, message: message, retryable: true)
+    }
+    /// 429 with an optional backoff hint (seconds the client should wait).
+    static func rateLimited(_ message: String, retryAfter: Double? = nil) -> SphynxError {
+        .init(status: .tooManyRequests, code: .rateLimited, message: message, retryable: true, retryAfter: retryAfter)
+    }
+    /// 503 with an optional backoff hint (seconds the client should wait).
+    static func unavailable(_ message: String, retryAfter: Double? = nil) -> SphynxError {
+        .init(status: .serviceUnavailable, code: .unavailable, message: message, retryable: true, retryAfter: retryAfter)
     }
 }

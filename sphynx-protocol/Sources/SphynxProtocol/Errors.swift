@@ -50,11 +50,16 @@ public struct APIError: Codable, Hashable, Sendable {
     public var message: String
     /// Whether the client may retry the same request.
     public var retryable: Bool
+    /// Seconds the client SHOULD wait before retrying. Set only when the server
+    /// knows a hint (e.g. rate-limited or temporarily unavailable); omitted
+    /// (and absent from the wire) otherwise.
+    public var retryAfter: Double?
 
-    public init(code: ErrorCode, message: String, retryable: Bool = false) {
+    public init(code: ErrorCode, message: String, retryable: Bool = false, retryAfter: Double? = nil) {
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.retryAfter = retryAfter
     }
 }
 
@@ -67,7 +72,7 @@ public struct ErrorEnvelope: Codable, Hashable, Sendable {
     }
 
     /// Convenience for constructing an envelope from its parts.
-    public init(code: ErrorCode, message: String, retryable: Bool = false) {
-        self.error = APIError(code: code, message: message, retryable: retryable)
+    public init(code: ErrorCode, message: String, retryable: Bool = false, retryAfter: Double? = nil) {
+        self.error = APIError(code: code, message: message, retryable: retryable, retryAfter: retryAfter)
     }
 }
