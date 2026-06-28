@@ -278,6 +278,36 @@ since a timestamp, plus **tombstones** for deletions.
 
 ---
 
+## Search — optional
+
+Search is an **optional** capability. A server advertises whether it implements
+server-side search via `capabilities.search`; the **reference server sets it to
+`false`** and does **not** expose `/v1/search`. When `search` is `false` the
+endpoint is absent (a call returns **404**), and the client searches its **own**
+synced catalogue — which is encouraged (see the
+[guide](https://reckloon.github.io/Sphynx-Media/#search) for client-side strategies,
+including Ocelot's on-device LLM search).
+
+The protocol standardizes only the **shape** so that any server which *does* offer
+search is interchangeable:
+
+### `GET /v1/search?q=<query>` — auth required *(only when `capabilities.search`)*
+
+Query parameters: `q` (the query, **required**), `type` (optional `ItemType`
+filter, e.g. `movie`), `limit`, `cursor` (opaque, from a prior `nextCursor`).
+
+**200** — a `SearchResponse`, shaped like [`/v1/items`](#browse) so the client
+reuses the same rendering:
+```json
+{ "items": [ /* Item, most-relevant first */ ], "nextCursor": "offset:20", "query": "blade" }
+```
+- `items` — matching items, server-ranked. `nextCursor` — absent at end of results.
+  `query` — the query echoed back (optional).
+- How matching/ranking is done is entirely the server's choice; the protocol
+  constrains only the request params and the response shape.
+
+---
+
 ## Markers (bi-directional)
 
 Timeline-segment markers are **item-level** (shared across a server's clients) and
@@ -1009,7 +1039,10 @@ clients keep working. `extra` is omitted entirely when empty.
 
 Defined in the protocol but not yet implemented by the reference server:
 
-- `GET /v1/search` (`capabilities.search`).
+- **Search** (`GET /v1/search` → `SearchResponse`, `capabilities.search`) — the
+  shape is standardized and **optional**; the reference server deliberately leaves
+  it to the client (see [Search](#search--optional) above). A different server may
+  implement it; this one advertises `search: false`.
 - Ranked `candidates` in the `/resolve` descriptor (`capabilities.candidates`).
 
 All five source drivers now both resolve **and** list: `local`, `http`

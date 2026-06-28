@@ -322,7 +322,24 @@
     <div class="toc-card"><a href="#firstlibrary">📚 Your First Library</a><p>A copy-paste walkthrough: login → source → scan → resolve → play.</p></div>
     <div class="toc-card"><a href="#api">🔌 API — wire surface</a><p>Every protocol endpoint with request/response shapes. (The server-only admin API lives in Part&nbsp;II.)</p></div>
     <div class="toc-card"><a href="#parser">🧠 Identifier &amp; Parser</a><p>How the reference server turns messy filenames + folders into a confident identity.</p></div>
-    <div class="toc-card"><a href="#roadmap">🚧 Coming Soon</a><p>The published Docker image, a fuller web panel, search, and more.</p></div>
+    <div class="toc-card"><a href="#roadmap">🚧 Coming Soon</a><p>The published Docker image, a fuller web panel, multiple editions, and more.</p></div>
+  </div>
+
+  <div class="callout note" id="spec-vs-server">
+    <p><strong>What's the spec, and what's just this server?</strong> The line matters if you're building a client or a third-party backend — only the left column is the contract you must honor. Everything on the right is how the reference server <em>happens</em> to work, and a conforming server may do all of it completely differently (or not at all).</p>
+    <table>
+      <tr><th>In the spec — the wire protocol <span class="badge">must honor</span></th><th>Reference-server only — not the spec</th></tr>
+      <tr>
+        <td>
+          Discovery &amp; capabilities (<code>/v1/info</code>) · auth &amp; sessions · browse (libraries/items, sort/filter) · the <a href="#api-item">Item</a> shape (images/variants, cast, markers, <code>extra</code>) · <a href="#api-resolve">resolve</a> (+ <code>tracks</code>/streams) · playstate &amp; per-user state · <a href="#api-home">home shelves</a> · <a href="#api-changes">changes</a> feed + tombstones · <a href="#api-markers">markers</a> (bi-directional) · <a href="#api-events">events</a> (SSE) · <a href="#search">search</a> (optional) · errors.<br>
+          <span class="muted">Defined as value types in <code>sphynx-protocol/</code>; this is the JSON any two implementations agree on.</span>
+        </td>
+        <td>
+          The <a href="#api-admin">admin API</a> (<code>/v1/admin/*</code> — library/source/item/user/settings CRUD, scan, enrich) · the web admin page (<code>/admin</code>) · the <a href="#extending">Extensions</a> framework (Diagnostics; the <code>ffprobe</code> media probe) · source drivers (<code>http</code>/<code>local</code>/<code>webdav</code>/<code>smb</code>/<code>ftp</code>) · TMDB identification &amp; enrichment · the filename/folder <a href="#parser">parser</a> · background maintenance &amp; per-source auto-refresh.<br>
+          <span class="muted">Implementation detail of <code>sphynx-server</code> — useful, but never assumed by a client.</span>
+        </td>
+      </tr>
+    </table>
   </div>
 </section>
 
@@ -463,6 +480,19 @@
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/items/{itemId}?detail=full</span><span class="badge auth">auth</span></div>
 <p>A single item. <strong>404</strong> <code>not_found</code> if absent. See <a href="#api-item">Item shape</a>.</p>
 
+<h3 id="search">Search <span class="badge soon">optional</span></h3>
+<p>Search is <strong>optional</strong>, and on purpose. A server advertises whether it implements server-side search through <code>capabilities.search</code>; when that is <code>false</code> the <code>/v1/search</code> endpoint is simply absent. The <strong>reference server ships <code>search:false</code></strong> and implements no server-side search — it leaves search to the client, which is usually the better place for it.</p>
+<div class="callout">
+  <p><strong>Why the client is the right place to search.</strong> A client already mirrors the whole library locally — it browses the tree and stays current through the <a href="#api-changes"><code>/v1/changes</code></a> delta feed. So it can search that local cache instantly, offline, with zero server round-trip, and rank results however suits its UI. The server holding a second search index would only duplicate what the client already has.</p>
+</div>
+<p>Encouraged client-side approaches, simplest to richest:</p>
+<ul>
+  <li><strong>In-memory match</strong> — a substring or fuzzy match over the cached items' titles (and <code>originalTitle</code>, cast, genres). Trivial to ship; enough for most libraries.</li>
+  <li><strong>Local store query</strong> — if the client persists its catalogue (SQLite, Core Data, …), search becomes an indexed query over its own database — typo-tolerance, prefix matching, and field weighting for free.</li>
+  <li><strong>Semantic / natural-language</strong> — go further with embeddings or an on-device model. <strong>Ocelot ships a proprietary on-device LLM search</strong> over its synced catalogue, answering natural-language queries ("that 90s heist movie with the twist") locally, with no server cost or privacy trade-off.</li>
+</ul>
+<p><strong>The protocol standardizes only the shape</strong>, so that a server which <em>does</em> choose to offer search is drop-in interchangeable. <code>GET /v1/search?q=<em>query</em></code> (params: <code>q</code> required, optional <code>type</code> <code>ItemType</code> filter, <code>limit</code>, <code>cursor</code>) returns a <code>SearchResponse</code> shaped like <a href="#api-browse"><code>/v1/items</code></a> — <code>{ "items":[…], "nextCursor":"…", "query":"…" }</code> — so the client reuses the same result rendering. How matching and ranking work is left entirely to the implementer; the contract fixes only the request params and the response shape.</p>
+
 <h3 id="api-markers">Markers <span class="badge live">bi-directional</span></h3>
 <p>Timeline-segment markers are <strong>item-level</strong> (shared across a server's clients) and gated by <code>capabilities.metadata["markers"]</code>. See <a href="#ext-contribute">Extending</a> for the contribution model (e.g. a client bridging TheIntroDB).</p>
 <p>A marker maps a <strong>segment type</strong> to a <code>{ start, end }</code> window (seconds; <code>end</code> optional for open-ended). The four well-known types — <code>recap</code>, <code>intro</code>, <code>credits</code>, <code>preview</code> — power "Skip Recap / Skip Intro / Next Episode" affordances. The type space is <strong>open</strong>: a server or extension may contribute any segment type (e.g. <code>sponsor</code>), and clients ignore types they don't recognise. On the wire it's a flat object keyed by type.</p>
@@ -531,7 +561,7 @@
   <p><code>resumePosition</code> is folded into item responses for the authenticated user as a <strong>convenience snapshot</strong> — but it does <strong>not</strong> move <code>updatedAt</code>, so a cached value can be stale. <code>/v1/playstate</code> is the authoritative source: read it (single or batch) when you need the current position (e.g. to resume playback), and use the folded <code>resumePosition</code> for display hints only.</p>
 </div>
 
-<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home</span><span class="badge auth">auth</span></div>
+<div class="ep" id="api-home"><span class="method badge get">GET</span><span class="path">/v1/home</span><span class="badge auth">auth</span></div>
 <p>The <strong>typed home feed</strong>: the ordered shelves that make up the user's home screen. <strong>200</strong> → <code>{ "shelves": [ { "id", "title", "kind", "aspect", "items":[…] } ] }</code>. Each shelf carries a <code>kind</code> (open enum: <code>continueWatching</code>, <code>recentlyAdded</code>, <code>favorites</code>) and an <code>aspect</code> (<code>portrait</code> | <code>landscape</code> | <code>square</code>) telling the client the tile shape — so which rows are landscape is <strong>contract, not convention</strong>. Empty shelves are omitted; each shelf shows a capped preview, paged in full via its per-row endpoint below. <strong>Continue Watching is unified</strong> — there is deliberately <strong>no <code>nextUp</code> kind</strong>: the next unwatched episode of a show you've started is merged into <code>continueWatching</code>, one row, never a separate "Next Up".</p>
 
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/home/continue</span><span class="badge auth">auth</span></div>
@@ -547,7 +577,7 @@
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/people/{personId}/items</span><span class="badge auth">auth</span></div>
 <p>A person's <strong>filmography</strong>: the distinct movies and series the person is credited in the cast of (the inverse of an item's <code>cast</code> array), for a person-detail screen. <code>personId</code> is a cast-entry id of the form <code>pe_&lt;tmdbId&gt;</code>. Returns the standard <code>ItemsResponse</code> with <code>images.primary</code> and the normal projection, cursor-paginated and gated by the same per-library read permissions; sorted <strong>newest-first</strong> by premiere/production date then title. The lookup is <strong>cast-only</strong> (crew aren't stored with person ids). A well-formed id always returns <strong>200</strong> with a possibly-empty list (the server keeps no person registry); <strong>404</strong> is reserved for a malformed id.</p>
 
-<div class="ep"><span class="method badge get">GET</span><span class="path">/v1/changes</span><span class="badge auth">auth</span></div>
+<div class="ep" id="api-changes"><span class="method badge get">GET</span><span class="path">/v1/changes</span><span class="badge auth">auth</span></div>
 <p><strong>Incremental sync</strong> without re-listing the library. Params: <code>since</code> (epoch seconds <em>or</em> an RFC 3339 timestamp; default <code>0</code> = full sync), plus <code>cursor</code>/<code>limit</code>/<code>detail</code>. <strong>200</strong> → <code>{ "changes":[…items…], "tombstones":[{ "id", "deletedAt" }], "until":"…", "nextCursor"? }</code>. <code>changes</code> are items whose client-rendered data changed after <code>since</code> (same notion as <code>updatedAt</code> — <strong>not</strong> playstate), in change-time order, <strong>permission-filtered</strong> to readable libraries. <code>tombstones</code> are deletions in the window (id-only, returned in full, not permission-filtered — the item is gone, so nothing to leak); drop those ids from the cache. <strong>The loop:</strong> start <code>since=0</code>, drain all pages of a window via <code>nextCursor</code> with the same <code>since</code>, then store <code>until</code> and pass it as the next <code>since</code> — <code>until</code> carries sub-second precision so the loop is gap-free.</p>
 
 <h3 id="api-events">Events <span class="badge live">server-sent</span></h3>
@@ -626,7 +656,7 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <p>The canonical fields above are the neutral contract: each has a fixed meaning and unit; a client only maps the <em>name</em> to whatever it calls the field internally. For anything beyond the canonical set, an item may carry an <code>extra</code> object of arbitrary server-defined metadata. A client reads the keys it understands and ignores the rest. Together with the forward-compatibility rules, this is what lets a server serve whatever metadata it wants while older clients keep working. <code>extra</code> is omitted entirely when empty.</p>
 
 <h4>Planned</h4>
-<p>Defined in the protocol but not yet implemented by the reference server: <code>GET /v1/search</code> (<code>capabilities.search</code>); ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>).</p>
+<p>Defined in the protocol but not implemented by the reference server: ranked <code>candidates</code> in the <code>/resolve</code> descriptor (<code>capabilities.candidates</code>). <strong>Search</strong> (<code>capabilities.search</code>) is likewise optional and unimplemented here — but it's a deliberate non-goal for this server rather than a to-do; the <a href="#search">Search</a> section explains why the client is the better place for it.</p>
 </section>
 
 <!-- ========================= PROTOCOL ========================= -->

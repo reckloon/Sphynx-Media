@@ -44,6 +44,9 @@ public enum MetadataAccess: OpenEnum {
 /// unknown keys are ignored. `metadata` is the **bi-directional access policy**:
 /// a per-field map declaring what clients may read/contribute (§4, EXTENDING.md).
 public struct Capabilities: Codable, Hashable, Sendable {
+    /// Does the server implement the **optional** search endpoint
+    /// (`GET /v1/search` → `SearchResponse`)? `false` ⇒ the endpoint is absent and
+    /// the client searches its own synced catalogue instead (see `SearchResponse`).
     public var search: Bool
     public var playstate: Bool
     /// Does `/resolve` return ranked fallbacks?
