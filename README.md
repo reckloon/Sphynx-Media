@@ -142,7 +142,7 @@ You'll see four tabs along the top:
 - **Extensions** — optional add-ons, each with its own controls:
   - **Storage** — *where* your media actually lives and how to reach it (one clean
     connection form per driver: local, http, webdav, smb, ftp).
-  - **Diagnostics** — a live activity dashboard, a database peek, and logs for when
+  - **Diagnostics** — a live **Activity** dashboard, a database peek, and logs for when
     you're curious or something's stuck.
   - **Media probe** — uses [ffmpeg](https://ffmpeg.org/)'s `ffprobe` to read each
     title's real audio/subtitle tracks (languages, codecs, channels), any subtitle
@@ -192,7 +192,7 @@ Click **Add source** to save it.
 Find your new source in the **Extensions → Storage** list and click **Scan**. Sphynx walks through
 everything, adds each title to the right shelf, and — if you set a TMDB key —
 fetches posters, descriptions, cast, and episode art. Pop over to the
-**Extensions → Activity** view to watch it work in real time.
+**Extensions → Diagnostics** module's **Activity** view to watch it work in real time.
 
 When the scan finishes, your library is live. **That's it** — there's nothing
 left to configure to start watching.

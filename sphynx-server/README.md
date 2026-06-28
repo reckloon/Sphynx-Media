@@ -46,7 +46,7 @@ curl http://localhost:8080/v1/info
 | `SPHYNX_ADMIN_PASSWORD` | *(none)*                   | Bootstrap admin password. Unset ⇒ a strong random one is generated + printed once to the log |
 | `SPHYNX_ACCESS_TTL`     | `3600`                     | Access-token lifetime (seconds)  |
 | `SPHYNX_REFRESH_TTL`    | `2592000`                  | Refresh-token lifetime (seconds) |
-| `SPHYNX_TMDB_API_KEY`   | *(empty)*                  | TMDB v3 key; empty disables identification/enrichment |
+| `SPHYNX_TMDB_API_KEY`   | *(empty)*                  | TMDB v3 key; empty disables identification/enrichment. Initial **seed** only — also settable in the admin GUI (Settings, `GET`/`PATCH /v1/admin/tmdb`), persisted in the DB; a change applies on the next restart |
 | `SPHYNX_ENRICH_TTL`     | `7776000` (90d)            | Server-owned enrichment freshness; re-fetched by maintenance |
 | `SPHYNX_MARKERS_ACCESS` | `readwrite`                | Marker access: `none` \| `read` \| `readwrite` (writes still granted per-user) |
 | `SPHYNX_MARKERS_STALE_AFTER` | `604800` (7d)         | Age after which markers are reported `stale` for client refresh |
@@ -56,7 +56,10 @@ curl http://localhost:8080/v1/info
 | `SPHYNX_EVENTS_HEARTBEAT`    | `15`                      | Keep-alive ping interval for the `/v1/events` SSE stream (seconds) |
 
 Only the **startup/secret** vars (`SPHYNX_HOST`, `SPHYNX_PORT`, `SPHYNX_DB_PATH`,
-`SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. The rest are
+`SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. Note `SPHYNX_TMDB_API_KEY`
+is read at boot but isn't an immutable boot secret: it's GUI-manageable and
+DB-persisted (Settings tab / `GET`/`PATCH /v1/admin/tmdb`), seeded from the env var on
+first boot, after which a change applies on the next restart. The rest are
 **runtime settings**: the env var seeds them on first run, after which they're
 stored in the database and edited via `GET`/`PATCH /v1/admin/settings` (env
 changes for those keys no longer take effect). See the

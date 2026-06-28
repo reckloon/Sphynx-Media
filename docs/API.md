@@ -26,6 +26,9 @@ the full narrative — protocol, server design, and extending — is the
 
 ## Discovery
 
+> The built-in web admin UI is served at **`GET /admin`** (an HTML page, outside
+> the `/v1` API surface) — not part of the JSON protocol described here.
+
 ### `GET /v1/info` — unauthenticated
 
 Confirm a URL is a Sphynx server and learn its capabilities.
@@ -47,7 +50,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
                "dateAdded", "updatedAt", "seriesId", "seriesTitle", "seasonIndex",
                "episodeIndex", "childCount", "parentId", "collectionId", "collectionTitle",
-               "extra", "overview", "runtime", "genres", "communityRating", "officialRating",
+               "extra", "overview", "runtime", "genres", "chapters", "communityRating", "officialRating",
                "cast", "originalTitle", "sortTitle", "tagline", "status", "premiereDate",
                "endDate", "studios", "directors", "writers", "countries", "tags", "trailers",
                "externalIds", "resumePosition", "watched", "playCount", "isFavorite",
@@ -84,7 +87,8 @@ carries. (The reference server advertises the full list above. It now serves
 — `ffprobe -show_chapters`, since TMDB has no chapter data. The one field it never
 fills is `criticRating`: TMDB exposes only an audience score (`vote_average` →
 `communityRating`), not a critic aggregate, so a critic rating needs a different
-source — see [Item shape](#item-shape).)
+source — see [Item shape](#item-shape). Don't conflate the two: `criticRating` is
+**0–100** (Int); `communityRating` is **0–10** (Double).)
 
 ---
 
@@ -145,6 +149,9 @@ may actually do (permissions are granted per-user by the admin).
   unknown keys as opaque and ignore them (forward-compatible).
 - **`metadata`** — a per-field metadata-access view (server policy narrowed to
   this user's write permissions), kept for the contribute affordance.
+- **`user.avatarURL`** — the `User` object carries an optional `avatarURL` in the
+  protocol, but the **reference server never populates it** (always omitted).
+  Reserved for a future build; clients tolerate its absence.
 
 A client should use this (not `/v1/info`) to decide which affordances to show
 (browse, contribute markers, edit metadata, …).
@@ -288,7 +295,9 @@ since a timestamp, plus **tombstones** for deletions.
 - **The sync loop:** start at `since=0`; drain all pages of a window by following
   `nextCursor` while keeping the **same** `since`; then store `until` and pass it as
   the next `since`. `until` carries sub-second precision, so the loop is gap-free and
-  never re-delivers boundary items.
+  never re-delivers boundary items. **`since` is EXCLUSIVE** of the prior call's
+  `until` instant, and items sharing an exact change-timestamp are ordered by item
+  id — so a same-instant change is never double-delivered nor dropped.
 
 ---
 
@@ -364,6 +373,11 @@ custom ones beyond the four well-known.
 - **409** `conflict` if authoritative markers exist and the caller isn't admin —
   a best-effort client contribution may not clobber server-detected/admin data.
 
+A non-authoritative `PUT` is **last-writer-wins**: there is **no version/ETag
+precondition**, so two clients that refresh the same stale markers simply overwrite
+each other — the most recent contribution wins. Only authoritative markers are
+protected (by the 409 above).
+
 Contributed markers also appear in the `/resolve` descriptor's `markers`.
 
 ---
@@ -392,6 +406,10 @@ play time, never cached from browse.
   produced, *not* a probe of the origin — it says nothing about ordinary HTTP
   redirects (the client's HTTP stack follows those) or timing (resolution is
   always fresh at play time). Absent/false means resolve `url` yourself first.
+  A server **SHOULD always emit `terminal` explicitly**; the built-in `http` and
+  `local` drivers always emit `terminal: true`. The absent/false fallback above
+  remains defined for servers that don't set it, but **relying on absence is
+  discouraged** (it has caused real client bugs).
 - `ttl` (time-to-live, seconds) — *optional.* When the source returns a time-bounded link (e.g. a signed
   CDN URL), how many seconds it stays valid; the server passes the driver's value
   straight through and never persists it. The built-in `http`/`local` drivers
@@ -399,7 +417,9 @@ play time, never cached from browse.
 - `tracks` — *optional.* Track selection hints plus, once the media has been probed,
   the full per-track detail:
   - `preferredAudio` / `preferredSubtitle` / `copyableAudio` — source-relative
-    **indices** (the always-available, cheap hint).
+    **indices** (the always-available, cheap hint). `copyableAudio` is defined in
+    the protocol but **not populated by the reference server** today; clients
+    tolerate its absence.
   - `streams` — described in-container streams, each
     `{ "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" }`
     (`kind` is `audio` | `subtitle` | `video` | …). Lets a client render an
@@ -412,6 +432,9 @@ play time, never cached from browse.
   [media-probe extension](#extensions--admin-only) and probing the item; the result
   is cached on the item and folded in here on subsequent resolves.
 - `markers`, `candidates` — optional; `candidates` absent in the current build.
+  The descriptor **omits the `markers` field entirely when none are stored** —
+  mirroring the **404** from the dedicated `GET …/markers`, so the "no markers yet"
+  signal is preserved on both paths.
 
 **404** `not_found` (no such item) / `no_media_source` (item's source unavailable).
 
@@ -491,17 +514,22 @@ episode is finished is represented by its **next regular-season episode**
 (specials, season 0, don't generate a next-up). A finished movie does not
 reappear.
 
-The server only stores and exposes the data (per-user position + `updatedAt`,
-ordered by recency) — **the client owns presentation and policy**: it has each
-item's runtime, so it decides what counts as "finished", whether to hide it, how
-to sort, etc. A client that wants raw timestamps for its own logic can read them
-via `GET /v1/playstate?items=…` (each entry carries `updatedAt`).
+**Server-side next-up rule:** the server emits a next-up episode only when the
+latest **played** episode is marked `watched == true`. That decision — whether the
+next-up row exists at all — is the server's, not the client's.
+
+The server stores and exposes the data (per-user position + `updatedAt`, ordered by
+recency), and **the client owns presentation policy** — display, sort, and hide
+decisions. It has each item's runtime, so it decides what to *show*, but **not**
+whether the next-up row exists (that is fixed by the `watched == true` rule above).
+A client that wants raw timestamps for its own logic can read them via
+`GET /v1/playstate?items=…` (each entry carries `updatedAt`).
 
 ### `GET /v1/home/recent` — auth required
 
-**Recently Added**: top-level items (movies + series) newest first, per-user state
-folded in. Cursor-paginated; `detail` selects skeleton/full. Same `ItemsResponse`
-shape.
+**Recently Added**: all top-level items (movies, series, and `collection`/box-set
+tiles) newest first, per-user state folded in. Cursor-paginated; `detail` selects
+skeleton/full. Same `ItemsResponse` shape.
 
 ### `GET /v1/home/favorites` — auth required
 
@@ -739,12 +767,19 @@ forward-compatible — unknown keys are tolerated. Well-known keys:
 |---|---|
 | `library.read` | Browse libraries + resolve/play their items |
 | `metadata.markers.write` | Contribute intro/credit markers |
-| `metadata.images.write` | Contribute artwork |
+| `metadata.images.write` | Contribute artwork *(reserved — no wire endpoint yet; see note below)* |
 | `metadata.edit` | Edit item metadata and lock fields against auto-refresh |
 
 A key may be **scoped to one library** with a `:<libraryId>` suffix, e.g.
 `library.read:lib_abc` grants read for that library only. Each gated action
 checks the caller's effective permission; the admin always passes.
+
+> **Image contribution is not yet wire-defined.** There is no image-write endpoint
+> in the protocol (no `PUT …/images`), and `images` is only ever advertised
+> `read`. The `metadata.images.write` permission and any `images: readwrite`
+> advertisement are **reserved for a future endpoint**. Today the only
+> client-contributable metadata is **markers**, via
+> `PUT /v1/items/{id}/markers`.
 
 ### `GET /v1/admin/users`
 
@@ -789,6 +824,11 @@ field survives every scan, TTL refresh, and forced enrich, so manual edits stick
   "unlock": ["overview"],               // remove specific locks (re-enable refresh)
   "unlockAll": false }                  // or clear every lock
 ```
+Here `placeholder` is a **bare image-URL string** — a convenience the server
+stores and re-serves as the `{ "url": … }` one-of. (The read [Item shape](#item-shape)
+keeps `placeholder` as the one-of object; only this admin-edit body takes a bare
+string.)
+
 **200** → `{ "item": <Item>, "lockedFields": ["overview", "title"] }`. To revert a
 field to automatic TMDB data, `unlock` it (or `unlockAll`) and re-enrich.
 
