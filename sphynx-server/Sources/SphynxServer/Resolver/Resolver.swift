@@ -47,6 +47,20 @@ struct Resolver: Sendable {
             ResolveRequest(key: sourceKey, container: container)
         )
 
+        // Ranked fallbacks (§6): a title's *other* versions, each resolved to its own
+        // URL, so a client can fall back to another quality/edition if the chosen
+        // location fails. Any driver-supplied candidates lead (true mirrors of the
+        // same file); the alternates follow, best-first. Absent for single-file items.
+        var candidates = location.candidates ?? []
+        let alternates = item.storedVersions().filter { $0.sourceKey != sourceKey }
+        for (index, alt) in alternates.enumerated() {
+            if let loc = try? await driver.resolve(
+                ResolveRequest(key: alt.sourceKey, container: alt.container ?? item.container)
+            ) {
+                candidates.append(Candidate(url: loc.url, headers: loc.headers, priority: index + 1))
+            }
+        }
+
         return ResolveDescriptor(
             url: location.url,
             headers: location.headers,
@@ -58,7 +72,7 @@ struct Resolver: Sendable {
             tracks: item.storedTracks(),
             // Convenience: fold in any stored intro/credit markers (§6).
             markers: item.storedMarkers(),
-            candidates: location.candidates
+            candidates: candidates.isEmpty ? nil : candidates
         )
     }
 }

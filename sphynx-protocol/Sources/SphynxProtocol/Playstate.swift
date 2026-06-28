@@ -6,10 +6,14 @@ import Foundation
 public struct ItemStateUpdate: Codable, Hashable, Sendable {
     public var watched: Bool?
     public var isFavorite: Bool?
+    /// The caller's personal rating on a **0–10** scale (a 5-star UI sends stars ×2).
+    /// `0` clears it; omitted ⇒ unchanged; out of range ⇒ **400**.
+    public var rating: Double?
 
-    public init(watched: Bool? = nil, isFavorite: Bool? = nil) {
+    public init(watched: Bool? = nil, isFavorite: Bool? = nil, rating: Double? = nil) {
         self.watched = watched
         self.isFavorite = isFavorite
+        self.rating = rating
     }
 }
 

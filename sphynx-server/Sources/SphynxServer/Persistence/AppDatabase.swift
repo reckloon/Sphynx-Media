@@ -349,6 +349,14 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m23_user_rating") { db in
+            // The caller's personal rating (0–10), per (userId, itemId). Distinct
+            // from the crowd's communityRating and the press's criticRating.
+            try db.alter(table: "useritemstate") { t in
+                t.add(column: "rating", .double)
+            }
+        }
+
         return migrator
     }
 }

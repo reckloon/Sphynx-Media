@@ -162,6 +162,8 @@ struct UserStateRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var playCount: Int
     var isFavorite: Bool
     var lastPlayedAt: Double?
+    /// The caller's personal rating, 0–10 (nil = unrated).
+    var rating: Double? = nil
 
     /// An empty state for `(userId, itemId)` (nothing recorded yet).
     static func empty(userId: String, itemId: String) -> UserStateRecord {

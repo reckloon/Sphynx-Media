@@ -12,12 +12,14 @@ struct UserStateService: Sendable {
     /// Apply an explicit user action (watched / favorite); only non-nil fields
     /// change. Returns the resulting state.
     @discardableResult
-    func update(userId: String, itemId: String, watched: Bool?, isFavorite: Bool?) async throws -> UserStateRecord {
+    func update(userId: String, itemId: String, watched: Bool?, isFavorite: Bool?, rating: Double? = nil) async throws -> UserStateRecord {
         try await db.writer.write { db in
             var record = try Self.fetch(db, userId: userId, itemId: itemId)
                 ?? UserStateRecord.empty(userId: userId, itemId: itemId)
             if let watched { record.watched = watched }
             if let isFavorite { record.isFavorite = isFavorite }
+            // A 0 clears the rating; any positive value sets it.
+            if let rating { record.rating = rating > 0 ? rating : nil }
             try record.save(db)
             return record
         }
@@ -105,6 +107,7 @@ struct UserStateService: Sendable {
         guard let state else { return }
         if state.watched { item.watched = true }
         if state.isFavorite { item.isFavorite = true }
+        if let rating = state.rating, rating > 0 { item.userRating = rating }
         if state.playCount > 0 { item.playCount = state.playCount }
         if let last = state.lastPlayedAt {
             item.lastPlayedAt = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: last))

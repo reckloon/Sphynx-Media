@@ -25,7 +25,7 @@ struct InfoController: Sendable {
             capabilities: Capabilities(
                 search: false,
                 playstate: true,
-                candidates: false,
+                candidates: true,
                 events: true,
                 metadata: policy.advertised,
                 fields: Self.supportedItemFields,
@@ -66,6 +66,6 @@ struct InfoController: Sendable {
         // Selectable versions/editions (multiple files of one title)
         "versions",
         // Per-user state
-        "resumePosition", "watched", "playCount", "isFavorite", "lastPlayedAt",
+        "resumePosition", "watched", "playCount", "isFavorite", "userRating", "lastPlayedAt",
     ]
 }

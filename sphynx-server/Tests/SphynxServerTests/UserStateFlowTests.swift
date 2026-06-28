@@ -68,6 +68,42 @@ struct UserStateFlowTests {
         }
     }
 
+    @Test("per-user rating round-trips, folds in, clears at 0, and rejects out-of-range")
+    func userRating() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let token = try await login(client)
+            let lib = try await library(client, token)
+            let m = try await item(client, token, "Heat", lib)
+
+            // Set a rating (0–10); it folds into the response.
+            let rated: Item = try await client.execute(
+                uri: "/v1/items/\(m.id)/state", method: .put, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(ItemStateUpdate(rating: 8.5))
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(rated.userRating == 8.5)
+
+            // Persisted: a fresh read still carries it.
+            let read: Item = try await client.execute(
+                uri: "/v1/items/\(m.id)", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(read.userRating == 8.5)
+
+            // 0 clears it (absent ⇒ unrated, not 0).
+            let cleared: Item = try await client.execute(
+                uri: "/v1/items/\(m.id)/state", method: .put, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(ItemStateUpdate(rating: 0))
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(cleared.userRating == nil)
+
+            // Out of range is a 400.
+            try await client.execute(
+                uri: "/v1/items/\(m.id)/state", method: .put, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(ItemStateUpdate(rating: 42))
+            ) { #expect($0.status == .badRequest) }
+        }
+    }
+
     @Test("recently-added newest-first; sort by name; unwatched filter")
     func feedsAndSort() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

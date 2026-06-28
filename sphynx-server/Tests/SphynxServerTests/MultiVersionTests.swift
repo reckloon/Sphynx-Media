@@ -75,6 +75,9 @@ struct MultiVersionTests {
                 uri: "/v1/resolve/\(movie.id)", method: .get, headers: jsonHeaders(bearer: token)
             ) { #expect($0.status == .ok); return try $0.decoded() }
             #expect(def.url == "\(baseURL)/\(uhdKey)")
+            // The descriptor offers the other version as a ranked fallback candidate.
+            let candidates = try #require(def.candidates)
+            #expect(candidates.contains { $0.url == "\(baseURL)/\(hdKey)" })
 
             // resolve?version=<1080p id> plays the 1080p file, not the default.
             let hd1080 = try #require(versions.first { $0.resolution == "1080p" })

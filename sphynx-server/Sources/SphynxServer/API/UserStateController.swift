@@ -29,9 +29,12 @@ struct UserStateController: Sendable {
             throw SphynxError.forbidden("You don't have permission to view this item")
         }
         let body = try await request.decode(as: ItemStateUpdate.self, context: context)
+        if let rating = body.rating, !(0...10).contains(rating) {
+            throw SphynxError.badRequest("rating must be between 0 and 10")
+        }
         let state = try await userState.update(
             userId: identity.userId, itemId: itemId,
-            watched: body.watched, isFavorite: body.isFavorite
+            watched: body.watched, isFavorite: body.isFavorite, rating: body.rating
         )
         await events.publish(
             .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,

@@ -58,7 +58,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
                "cast", "originalTitle", "sortTitle", "tagline", "status", "premiereDate",
                "endDate", "studios", "directors", "writers", "countries", "tags", "trailers",
                "externalIds", "versions", "resumePosition", "watched", "playCount",
-               "isFavorite", "lastPlayedAt"],
+               "isFavorite", "userRating", "lastPlayedAt"],
     "browse": { "sorts": ["added", "name", "rating"], "filters": ["genre", "year", "unwatched"] },
     "playstateReportInterval": 5
   }
@@ -532,7 +532,13 @@ handed the 1080p.
   built-in resolve path doesn't probe. Populate them by enabling the
   [media-probe extension](#extensions--admin-only) and probing the item; the result
   is cached on the item and folded in here on subsequent resolves.
-- `markers`, `candidates` — optional; `candidates` absent in the current build.
+- `candidates` — *optional.* Ranked fallback locations: if `url` fails, try these in
+  order (`{ "url", "headers", "priority" }`, lower `priority` first). The reference
+  server populates them from the title's **[other versions](#multi-version--editions)**
+  — so a client can fall back to another quality/edition — and advertises
+  `capabilities.candidates: true`. Absent for a single-file item. Any
+  driver-supplied true mirrors (same file, alternate hosts) lead the list.
+- `markers` — optional.
   The descriptor **omits the `markers` field entirely when none are stored** —
   mirroring the **404** from the dedicated `GET …/markers`, so the "no markers yet"
   signal is preserved on both paths.
@@ -680,11 +686,16 @@ The caller's favourited items, most-recently-played first. Cursor-paginated; sam
 ### `PUT /v1/items/{itemId}/state` — auth required
 
 Set the caller's state for an item (row-scoped to the subject). **Body** (any
-subset) `{ "watched": true, "isFavorite": true }` → **200** with the item, the new
-state folded in. `403` if the caller can't read the item's library. Play count and
-last-played are tracked server-side from playback (a non-failed
-`POST /v1/playstate/{id}/stop` bumps them); `watched` / `isFavorite` are explicit
-here.
+subset) `{ "watched": true, "isFavorite": true, "rating": 8.5 }` → **200** with the
+item, the new state folded in. `403` if the caller can't read the item's library.
+Play count and last-played are tracked server-side from playback (a non-failed
+`POST /v1/playstate/{id}/stop` bumps them); `watched` / `isFavorite` / `rating` are
+explicit here.
+
+- **`rating`** — the caller's own rating on a **0–10** scale (a 5-star UI sends
+  stars ×2), folded back as `Item.userRating`. `0` clears it (absent ⇒ unrated, not
+  zero); out of range ⇒ **400**. Distinct from the crowd's `communityRating` and the
+  press's `criticRating`.
 
 ---
 
@@ -1176,7 +1187,9 @@ fields (images, placeholder, year, `dateAdded`) and omits the heavier enrichment
   "status": "Released", "premiereDate": "2017-10-06", "endDate": "…",
   "dateAdded": "2026-06-27T12:00:00Z",
   "externalIds": { "imdb": "tt1856101", "tvdb": "…" },
-  "resumePosition": 1342.5, "watched": true, "playCount": 3, "isFavorite": true, "lastPlayedAt": "2026-06-27T12:00:00Z",
+  "resumePosition": 1342.5, "watched": true, "playCount": 3, "isFavorite": true,
+  "userRating": 9.0, "lastPlayedAt": "2026-06-27T12:00:00Z",
+  "versions": [ { "id": "v_…", "label": "4K · HDR10 · Remux", "resolution": "4K" } ],
   "updatedAt": "2026-06-27T12:00:00Z",
   "extra": { "anything": [1, 2, 3] }
 }

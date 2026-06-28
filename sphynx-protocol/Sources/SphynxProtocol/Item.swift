@@ -197,6 +197,9 @@ public struct Item: Codable, Hashable, Sendable {
     public var playCount: Int?
     /// Per-user: the user favorited it.
     public var isFavorite: Bool?
+    /// Per-user: the caller's own rating on a **0–10** scale (distinct from the
+    /// crowd's `communityRating` and the press's `criticRating`). Absent ⇒ unrated.
+    public var userRating: Double?
     /// Per-user: when the user last played it (RFC 3339).
     public var lastPlayedAt: String?
 
@@ -267,6 +270,7 @@ public struct Item: Codable, Hashable, Sendable {
         watched: Bool? = nil,
         playCount: Int? = nil,
         isFavorite: Bool? = nil,
+        userRating: Double? = nil,
         lastPlayedAt: String? = nil,
         updatedAt: String? = nil,
         versions: [MediaVersion]? = nil,
@@ -313,6 +317,7 @@ public struct Item: Codable, Hashable, Sendable {
         self.watched = watched
         self.playCount = playCount
         self.isFavorite = isFavorite
+        self.userRating = userRating
         self.lastPlayedAt = lastPlayedAt
         self.updatedAt = updatedAt
         self.versions = versions
