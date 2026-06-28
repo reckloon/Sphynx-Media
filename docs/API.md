@@ -1213,5 +1213,5 @@ All five source drivers now both resolve **and** list: `local`, `http`
 (JSON manifest), `webdav` (`PROPFIND` over the built-in HTTP client), `smb` (via
 `smbclient`), and `ftp` (via `curl`). SMB/FTP listing needs `smbclient`/`curl` on
 the server's `PATH`; resolve/playback work without them. Configure sources in the
-web admin's **Extensions → Storage** tabs (one per driver) or via
+web admin's **Libraries → Storage sources** (one connection form per driver) or via
 `POST /v1/admin/sources`.
