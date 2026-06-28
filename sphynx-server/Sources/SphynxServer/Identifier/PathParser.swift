@@ -30,6 +30,9 @@ enum PathParser {
         "anime", "cartoons", "kids", "documentaries", "documentary",
         "downloads", "download", "complete", "incoming", "library",
         "plex", "jellyfin", "emby", "collections", "collection",
+        // Extras/bonus subfolders that never carry the show title.
+        "featurettes", "extras", "deleted scenes", "bonus", "behind the scenes",
+        "interviews", "trailers", "samples", "sample",
         // Other languages (фильмы=ru, 映画/ドラマ/アニメ=ja, 电影/电视剧=zh, 영화/드라마=ko, …)
         "películas", "peliculas", "filmes", "filme", "cine", "videos",
         "фильмы", "кино", "сериалы", "мультфильмы",
@@ -82,7 +85,9 @@ enum PathParser {
         // --- Movie ---
         // Prefer the immediate parent folder when it's informative; the folder
         // carries the clean, canonical title even when the filename is foreign.
-        let file = FilenameParser.parse(filename)
+        // Parse the filename from the extension-stripped stem so a stacked
+        // container suffix (`.mkv.strm`) never leaks a `mkv` token into the title.
+        let file = FilenameParser.parse(stem)
         if let parent = dirs.last, isInformativeFolder(parent) {
             let folder = FolderName.parse(parent)
             if !folder.title.isEmpty {
@@ -94,6 +99,12 @@ enum PathParser {
                 let bucketish = folder.year == nil && file.year != nil
                     && !file.title.isEmpty && !related(folder.title, file.title)
                 if !bucketish {
+                    // A junk-laden folder that still carries release tokens after
+                    // cleaning loses to a clean inner file (`Big Hero 6 2014 UHD …/
+                    // Big Hero 6 (2014).mkv`).
+                    if titleHasJunk(folder.title), !file.title.isEmpty, !titleHasJunk(file.title) {
+                        return .movie(title: file.title, year: file.year ?? folder.year)
+                    }
                     return .movie(title: folder.title, year: folder.year ?? file.year)
                 }
             }
@@ -112,24 +123,96 @@ enum PathParser {
     /// no season folder — the deepest informative directory. Falls back to the
     /// filename prefix before the episode marker.
     private static func seriesTitle(dirs: [String], seasonFolderIndex: Int?, filenameStem: String, markerStart: String.Index?) -> (title: String, year: Int?) {
-        var showFolder: String?
+        // Scan for the folder that carries the show title, nearest-first: the
+        // ancestors above a season folder (skipping generic/extras buckets like
+        // `Featurettes`), then the season folder itself (a flat `Show … Season 1`
+        // pack carries its own title). `cleanSeriesName` strips the season marker,
+        // so even a multi-season pack folder (`Show … Season 1-8 …`) yields the
+        // clean title — and a pure season folder (`Season 1`) cleans to empty and
+        // is skipped.
+        var candidates: [String] = []
         if let i = seasonFolderIndex {
-            showFolder = (i - 1 >= 0) ? dirs[i - 1] : nil
+            if i - 1 >= 0 { candidates.append(contentsOf: dirs[0...(i - 1)].reversed()) }
+            candidates.append(dirs[i])
         } else {
-            showFolder = dirs.last
+            candidates.append(contentsOf: dirs.reversed())
         }
-        if let showFolder, isInformativeFolder(showFolder) {
-            let parsed = FolderName.parse(showFolder)
-            if !parsed.title.isEmpty { return (parsed.title, parsed.year) }
+        for candidate in candidates where !isGenericBucket(candidate) {
+            let parsed = cleanSeriesName(candidate)
+            if !parsed.title.isEmpty { return parsed }
         }
-        // Fall back to the cleaned filename prefix before the marker, dropping a
-        // leading `[group]` fansub tag (`[SubsPlease] One Piece` → `One Piece`).
-        var prefix = markerStart.map { String(filenameStem[filenameStem.startIndex..<$0]) } ?? filenameStem
-        if let r = prefix.range(of: #"^\s*\[[^\]]+\]\s*"#, options: .regularExpression) {
-            prefix.removeSubrange(r)
+        // Fall back to the cleaned filename prefix before the marker.
+        let prefix = markerStart.map { String(filenameStem[filenameStem.startIndex..<$0]) } ?? filenameStem
+        let parsed = cleanSeriesName(prefix)
+        return (parsed.title.isEmpty ? prefix.trimmingCharacters(in: .whitespaces) : parsed.title, parsed.year)
+    }
+
+    /// A top-level/library or extras bucket that never carries a show title.
+    private static func isGenericBucket(_ name: String) -> Bool {
+        genericFolders.contains(name.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
+    /// Extract a clean series title (and year hint) from a folder or filename
+    /// prefix. The series title is the text *before* the first season/episode
+    /// marker (`S01`, `Season 1`, `Series 2`), so a scene/pack name collapses to
+    /// the real title: `Foundation.S01.2160p.WEB-DL` → `Foundation`, `The Boys S02
+    /// Eng Fre …` → `The Boys`, `Show Complete Season 1 (2010–11)` → `Show`.
+    /// Curated names with no marker pass through with punctuation intact.
+    static func cleanSeriesName(_ raw: String) -> (title: String, year: Int?) {
+        var name = raw.trimmingCharacters(in: .whitespaces)
+        // Drop a leading `[group]` fansub tag.
+        if let r = name.range(of: #"^\s*\[[^\]]+\]\s*"#, options: .regularExpression) {
+            name.removeSubrange(r)
         }
-        let parsed = FilenameParser.parse(prefix)
-        return (parsed.title.isEmpty ? prefix : parsed.title, parsed.year)
+        // Cut at the earliest season/episode marker.
+        let markers = [
+            #"(?i)(?:^|[ ._\-(\[])s\d{1,2}(?:e\d{1,4})?(?=[ ._\-)\]]|$)"#,   // S01 / S01E01 / S01-S08
+            #"(?i)(?:^|[ ._\-(\[])seasons?[ ._]+\d"#,                          // Season 1 / Seasons 1-8
+            #"(?i)(?:^|[ ._\-(\[])series[ ._]+\d"#,                            // Series 2
+        ]
+        var cut: String.Index?
+        for pattern in markers {
+            if let r = name.range(of: pattern, options: .regularExpression) {
+                cut = min(cut ?? r.lowerBound, r.lowerBound)
+            }
+        }
+        if let cut { name = String(name[..<cut]) }
+        // Trim trailing/leading separators left by the cut or a dotted filename
+        // prefix (`Friends.` → `Friends`).
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: " ._-–·"))
+        guard !name.isEmpty else { return ("", nil) }
+
+        // Clean the prefix: release-style → strip junk; else preserve punctuation.
+        // For the release case, normalise dot/underscore separators to spaces first
+        // so `FilenameParser` doesn't mistake a trailing word for a file extension
+        // (`The.Boys` must become `The Boys`, not `The`).
+        let cleaned: (title: String, year: Int?)
+        if FolderName.looksLikeReleaseName(name) {
+            let spaced = name.replacingOccurrences(of: ".", with: " ")
+                             .replacingOccurrences(of: "_", with: " ")
+            let p = FilenameParser.parse(spaced)
+            cleaned = (p.title, p.year)
+        } else {
+            cleaned = FolderName.parse(name)
+        }
+        return (trimTrailingJunk(cleaned.title), cleaned.year)
+    }
+
+    /// Drop trailing release/pack tokens that survive cleaning (`… Complete`,
+    /// `… REPACK`) without disturbing internal punctuation.
+    private static func trimTrailingJunk(_ title: String) -> String {
+        var tokens = title.split(separator: " ").map(String.init)
+        let extra: Set<String> = ["complete", "repack", "multi", "proper", "uncut"]
+        while let last = tokens.last, FilenameParser.isJunk(last) || extra.contains(last.lowercased()) {
+            tokens.removeLast()
+        }
+        return tokens.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Whether a title still carries a release-junk token (used to prefer a clean
+    /// inner filename over a junk folder for movies).
+    private static func titleHasJunk(_ title: String) -> Bool {
+        title.split(separator: " ").contains { FilenameParser.isJunk(String($0)) }
     }
 
     private static func isInformativeFolder(_ name: String) -> Bool {
@@ -142,16 +225,20 @@ enum PathParser {
 
     private enum SeasonFolderKind { case numbered(Int); case range; case specials }
 
-    /// Classify a directory name as a season-level folder, if it is one.
+    /// Classify a directory name as a season-level folder, if it is one. Matches
+    /// both clean folders (`Season 2`, `S02`, `Specials`) and a season marker
+    /// embedded in a longer scene/pack name (`Show Complete Season 1 (2010–11)`,
+    /// `Foundation.S01.2160p.WEB-DL`, `… Season 1-8 S01-S08 (1080p…)`).
     private static func seasonFolderKind(_ name: String) -> SeasonFolderKind? {
         let s = name.trimmingCharacters(in: .whitespaces)
-        // Range, e.g. "Seasons 1-3" / "Season 1 - 3" → a season-level container
-        // with no single number (the SxxExx in the filename supplies it).
-        if matches(s, #"^seasons?\s+\d{1,3}\s*[-–]\s*\d{1,3}$"#) { return .range }
-        if matches(s, #"^specials?$"#) { return .specials }
-        if let n = capture(s, #"^season\s+0*(\d{1,3})$"#) { return .numbered(n) }
-        if let n = capture(s, #"^series\s+0*(\d{1,3})$"#) { return .numbered(n) }
-        if let n = capture(s, #"^s\s*0*(\d{1,2})$"#) { return .numbered(n) }
+        // A season *range* anywhere (`Seasons 1-3`, `Season 1-8 S01-S08`) is a
+        // multi-season container; the filename's SxxExx supplies the number.
+        if matches(s, #"(?i)seasons?\s*\d{1,3}\s*[-–]\s*\d{1,3}"#) { return .range }
+        if matches(s, #"(?i)(?:^|[ ._\-(\[])s\d{1,2}\s*[-–]\s*s?\d{1,2}(?=[ ._\-)\]]|$)"#) { return .range }
+        if matches(s, #"(?i)(?:^|[ ._\-(\[])specials?(?=[ ._\-)\]]|$)"#) { return .specials }
+        if let n = capture(s, #"(?i)(?:^|[ ._\-(\[])seasons?[ ._]+0*(\d{1,3})(?![0-9])"#) { return .numbered(n) }
+        if let n = capture(s, #"(?i)(?:^|[ ._\-(\[])series[ ._]+0*(\d{1,3})(?![0-9])"#) { return .numbered(n) }
+        if let n = capture(s, #"(?i)(?:^|[ ._\-(\[])s\s*0*(\d{1,2})(?=[ ._\-)\]]|$)"#) { return .numbered(n) }
         return nil
     }
 
@@ -393,12 +480,17 @@ enum FolderName {
         return (title, year)
     }
 
-    /// A dot/underscore-delimited folder carrying release junk (resolution, codec,
-    /// source tag). A curated `Title (Year)` folder uses spaces, so this never
-    /// fires on `Rogue One - A Star Wars Story (2016)` or `Big Hero 6 (2014)`.
-    private static func looksLikeReleaseName(_ name: String) -> Bool {
-        guard name.contains("."), !name.contains(" ") else { return false }
-        let tokens = name.lowercased().split(whereSeparator: { "._-+".contains($0) }).map(String.init)
-        return tokens.contains { FilenameParser.isJunk($0) }
+    /// Whether a folder name is a scene release string rather than a curated
+    /// `Title (Year)` name. Fires when it carries release junk (resolution, codec,
+    /// source/audio tag) *however* it's delimited — `Big Hero 6 2014 UHD BluRay…`
+    /// (spaces) as well as `Cars.2006.1080p.x264-GROUP` (dots) — or when it's a
+    /// dot/underscore-delimited multi-token name with no spaces (`Maniac.2018`).
+    /// A clean, space-delimited name with no junk (`Rogue One - A Star Wars Story
+    /// (2016)`) does NOT match, so its punctuation is preserved.
+    static func looksLikeReleaseName(_ name: String) -> Bool {
+        let tokens = name.lowercased().split(whereSeparator: { "._-+ []()".contains($0) }).map(String.init)
+        if tokens.contains(where: { FilenameParser.isJunk($0) }) { return true }
+        let dotted = (name.contains(".") || name.contains("_")) && !name.contains(" ")
+        return dotted && tokens.count >= 2
     }
 }

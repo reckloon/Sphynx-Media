@@ -174,4 +174,52 @@ struct PathParserTests {
         #expect(PathParser.parse("The.Daily.Show.2024.01.15.1080p.WEB.mkv")
             == .episode(series: "The Daily Show", season: 2024, episode: 115, episodeTitle: nil, year: nil))
     }
+
+    // MARK: - Scene-release folders (raw downloads, not a curated library)
+
+    @Test("a flat dotted scene pack gives a clean series title (cut at the marker)")
+    func sceneSeriesDotted() {
+        let p = PathParser.parse("Foundation.S01.2160p.Hybrid.ATVP.WEB-DL.DoVi.HDR10.HEVC-Rutracker/Foundation.S01E01.The.Emperors.Peace.2160p.WEB-DL.mkv.strm")
+        #expect(p == .episode(series: "Foundation", season: 1, episode: 1, episodeTitle: nil, year: nil))
+    }
+
+    @Test("a space-delimited scene pack gives a clean series title")
+    func sceneSeriesSpaced() {
+        let p = PathParser.parse("The Boys S02 Eng Fre Ger Ita Por Spa WEBMux HDR10Plus DDP-SGF/The.Boys.S02E03.2160p.mkv.strm")
+        #expect(p == .episode(series: "The Boys", season: 2, episode: 3, episodeTitle: nil, year: nil))
+    }
+
+    @Test("a dotted title before the marker isn't mistaken for a file extension")
+    func sceneSeriesDottedTitleNotExtension() {
+        // `The.Boys` must clean to `The Boys`, not `The` (`.Boys` is not an extension).
+        let p = PathParser.parse("The.Boys.S01.2019.2160p.AMZN.WEB-DL/The.Boys.S01E01.2160p.AMZN.WEB-DL.mkv.strm")
+        #expect(p == .episode(series: "The Boys", season: 1, episode: 1, episodeTitle: nil, year: nil))
+    }
+
+    @Test("an embedded 'Season N' folder with loose 'Episode N' is detected")
+    func embeddedSeasonFolderLooseEpisode() {
+        let p = PathParser.parse("Scooby-Doo! Mystery Incorporated Complete Season 1 (2010-11)/Episode 1 Beware the Beast from Below.mp4.strm")
+        #expect(p == .episode(series: "Scooby-Doo! Mystery Incorporated", season: 1, episode: 1,
+                              episodeTitle: "Beware the Beast from Below", year: nil))
+    }
+
+    @Test("a clean inner file wins over a junk scene movie folder")
+    func sceneMoviePrefersCleanInnerFile() {
+        let p = PathParser.parse("Big Hero 6 2014 UHD BluRay 2160p HDR10 DV HEVC TrueHD Atmos 7.1 x265-E/Big Hero 6 (2014).mkv.strm")
+        #expect(p == .movie(title: "Big Hero 6", year: 2014))
+    }
+
+    @Test("a dotted scene movie folder is cleaned to title + year")
+    func sceneMovieDotted() {
+        let p = PathParser.parse("Тачки 2.2011.Hybrid.UHD.Blu-Ray.Remux.2160p/Тачки 2.2011.Hybrid.UHD.Blu-Ray.Remux.2160p.mkv.strm")
+        #expect(p == .movie(title: "Тачки 2", year: 2011))
+    }
+
+    @Test("a stacked .mkv.strm container suffix never leaks into a movie title")
+    func stackedExtensionStripped() {
+        let p = PathParser.parse("Some Show/Featurettes/Season 3/Get Your Cop On.mkv.strm")
+        if case .movie(let title, _) = p {
+            #expect(title == "Get Your Cop On")  // not "Get Your Cop On mkv"
+        }
+    }
 }
