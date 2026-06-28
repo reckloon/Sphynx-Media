@@ -88,6 +88,50 @@ struct ChangesFlowTests {
         }
     }
 
+    @Test("a paginated window has a fixed `until` ceiling — later changes wait for the next window")
+    func stableWindowCeiling() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let lib = try await createLibrary(client, admin: admin, title: "Movies")
+            let a = try await createItem(client, admin: admin, title: "A", libraryId: lib)
+            let b = try await createItem(client, admin: admin, title: "B", libraryId: lib)
+
+            // Open the window (page 1 of 2 with limit=1) — this fixes `until`.
+            let p1: ChangesResponse = try await client.execute(
+                uri: "/v1/changes?since=0&limit=1", method: .get, headers: jsonHeaders(bearer: admin)
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(p1.changes.count == 1)
+            #expect(p1.nextCursor != nil)
+
+            // A new item created AFTER the window opened must NOT leak into it.
+            let c = try await createItem(client, admin: admin, title: "C", libraryId: lib)
+
+            // Drain the remaining pages of the SAME window via the cursor.
+            var collected = Set(p1.changes.map(\.id))
+            var cursor = p1.nextCursor
+            var lastUntil = p1.until
+            while let cur = cursor {
+                let pg: ChangesResponse = try await client.execute(
+                    uri: "/v1/changes?since=0&limit=1&cursor=\(cur)", method: .get, headers: jsonHeaders(bearer: admin)
+                ) { #expect($0.status == .ok); return try $0.decoded() }
+                collected.formUnion(pg.changes.map(\.id))
+                lastUntil = pg.until
+                cursor = pg.nextCursor
+            }
+            // The window delivered exactly A and B — never C (it changed after `until`).
+            #expect(collected == [a.id, b.id])
+            #expect(!collected.contains(c.id))
+            #expect(lastUntil == p1.until)   // `until` is stable across the window's pages
+
+            // The next window (since = until) is where C surfaces — no gap, no loss.
+            let nextWindow: ChangesResponse = try await client.execute(
+                uri: "/v1/changes?since=\(p1.until)", method: .get, headers: jsonHeaders(bearer: admin)
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(nextWindow.changes.map(\.id) == [c.id])
+        }
+    }
+
     @Test("changes are permission-filtered; tombstones are id-only and not filtered")
     func permissionFiltering() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

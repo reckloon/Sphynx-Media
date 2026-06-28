@@ -26,13 +26,15 @@ struct ChangesController: Sendable {
         let query = try request.uri.decodeQuery(as: ChangesQuery.self, context: context)
         let since = Self.parseSince(query.since)
         let limit = Cursor.clampLimit(query.limit)
-        let offset = Cursor.offset(from: query.cursor)
-        // Snapshot the server clock up front so it's the page's stable upper bound
-        // and the client's next `since`.
-        let now = Date().timeIntervalSince1970
+        // The window's `until` ceiling is fixed when the window opens (first page,
+        // no cursor) and then carried in the cursor, so every page of one window
+        // shares the same `(since, until]` bounds — making pagination gap-free.
+        let page0 = Self.decodeCursor(query.cursor)
+        let offset = page0?.offset ?? 0
+        let until = page0?.until ?? Date().timeIntervalSince1970
 
-        // Changed items, permission-filtered to readable libraries, in change order.
-        let records = try await catalog.changedItems(since: since, limit: limit, offset: offset)
+        // Changed items in the window, permission-filtered to readable libraries.
+        let records = try await catalog.changedItems(since: since, until: until, limit: limit, offset: offset)
         let hasMore = records.count > limit
         let page = hasMore ? Array(records.prefix(limit)) : records
 
@@ -42,18 +44,32 @@ struct ChangesController: Sendable {
         }
         items = try await foldUserData(items, userId: identity.userId)
 
-        // Tombstones for the same window. Ids only — the item is gone and can't be
-        // permission-checked; surfacing a deletion leaks nothing about content.
-        // Not paginated: deletions are cheap and a client must see all of them to
-        // stay consistent.
-        let tombstones = try await catalog.tombstones(since: since).map { $0.toProtocol() }
+        // Tombstones for the same `(since, until]` window. Ids only — the item is
+        // gone and can't be permission-checked; surfacing a deletion leaks nothing
+        // about content. A client dedupes by id across the window's pages.
+        let tombstones = try await catalog.tombstones(since: since, until: until).map { $0.toProtocol() }
 
         return ChangesResponse(
             changes: items,
             tombstones: tombstones,
-            until: Self.rfc3339().string(from: Date(timeIntervalSince1970: now)),
-            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
+            until: Self.rfc3339().string(from: Date(timeIntervalSince1970: until)),
+            nextCursor: hasMore ? Self.encodeCursor(offset: offset + limit, until: until) : nil
         )
+    }
+
+    /// Changes cursor: packs the page `offset` **and** the window's `until`
+    /// ceiling, so the next page reuses the exact same window. Base64 of
+    /// `<offset>:<until>`.
+    private static func encodeCursor(offset: Int, until: Double) -> String {
+        Data("\(offset):\(until)".utf8).base64EncodedString()
+    }
+
+    private static func decodeCursor(_ raw: String?) -> (offset: Int, until: Double)? {
+        guard let raw, let data = Data(base64Encoded: raw),
+              let str = String(data: data, encoding: .utf8) else { return nil }
+        let parts = str.split(separator: ":")
+        guard parts.count == 2, let offset = Int(parts[0]), let until = Double(parts[1]) else { return nil }
+        return (offset, until)
     }
 
     /// RFC3339 with fractional seconds, so `until` round-trips back through

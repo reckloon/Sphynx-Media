@@ -202,6 +202,43 @@ struct PermissionsFlowTests {
         }
     }
 
+    @Test("playstate is gated on the item's owning library (like browse/resolve)")
+    func playstateLibraryScoped() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = try await login(client, "admin", "test-password")
+            let libA: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateLibraryRequest(title: "A", kind: "movies"))) { try $0.decoded() }
+            let libB: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "movies"))) { try $0.decoded() }
+            let item: Item = try await client.execute(
+                uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(CreateItemRequest(type: "movie", title: "Heat", sourceId: nil,
+                    sourceKey: "https://cdn/heat.mkv", container: "mkv", tmdbId: nil,
+                    libraryId: libA.id, parentId: nil, year: nil, extra: nil))) { try $0.decoded() }
+
+            // Bob can read libB only — not the item's library (libA).
+            let bob = try await createUser(client, admin: admin, username: "bob", password: "pw",
+                                           permissions: ["library.read:\(libB.id)"])
+            let bobToken = try await login(client, "bob", "pw")
+            let start = try jsonBody(PlaystateStartBody(position: 5))
+
+            try await client.execute(uri: "/v1/playstate/\(item.id)/start", method: .post,
+                headers: jsonHeaders(bearer: bobToken), body: start) { #expect($0.status == .forbidden) }
+            try await client.execute(uri: "/v1/playstate/\(item.id)", method: .get,
+                headers: jsonHeaders(bearer: bobToken)) { #expect($0.status == .forbidden) }
+
+            // Grant libA read → playstate now allowed.
+            try await client.execute(uri: "/v1/admin/users/\(bob.id)/permissions", method: .put,
+                headers: jsonHeaders(bearer: admin),
+                body: try jsonBody(SetPermissionsRequest(permissions: ["library.read:\(libA.id)"]))) { #expect($0.status == .ok) }
+            try await client.execute(uri: "/v1/playstate/\(item.id)/start", method: .post,
+                headers: jsonHeaders(bearer: bobToken), body: start) { #expect($0.status == .noContent) }
+        }
+    }
+
     @Test("a user can change their own password")
     func selfPasswordChange() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

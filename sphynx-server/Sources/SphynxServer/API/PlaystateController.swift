@@ -8,6 +8,9 @@ struct PlaystateController: Sendable {
     let playstate: PlaystateService
     /// Per-user item state — a successful stop bumps play count + last-played.
     let userState: UserStateService
+    /// Resolve an item's owning library so playstate is gated like the rest of the
+    /// item surface (a user must not touch state for items outside their libraries).
+    let catalog: Catalog
     /// Live updates: progress/stop publish a per-subject playstate event.
     let events: EventBus
 
@@ -22,7 +25,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func start(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try subjectAndItem(context)
+        let (userId, itemId) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateStartBody.self, context: context)
         try await playstate.start(userId: userId, itemId: itemId, position: body.position)
         await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
@@ -32,7 +35,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func progress(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try subjectAndItem(context)
+        let (userId, itemId) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateProgressBody.self, context: context)
         try await playstate.progress(userId: userId, itemId: itemId, position: body.position)
         await events.publish(.playstate(itemId: itemId, position: body.position, ts: Self.now()),
@@ -42,7 +45,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func stop(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try subjectAndItem(context)
+        let (userId, itemId) = try await subjectAndReadableItem(context)
         let body = try await request.decode(as: PlaystateStopBody.self, context: context)
         // A failed stop must not clobber a good resume point — handled in the service.
         try await playstate.stop(userId: userId, itemId: itemId, position: body.position, failed: body.failed)
@@ -63,7 +66,7 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func get(_ request: Request, context: SphynxRequestContext) async throws -> PlaystateResponse {
-        let (userId, itemId) = try subjectAndItem(context)
+        let (userId, itemId) = try await subjectAndReadableItem(context)
         if let state = try await playstate.get(userId: userId, itemId: itemId) {
             return state
         }
@@ -73,10 +76,19 @@ struct PlaystateController: Sendable {
 
     @Sendable
     func batch(_ request: Request, context: SphynxRequestContext) async throws -> PlaystateBatchResponse {
-        let userId = try subject(context)
+        let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: BatchQuery.self, context: context)
-        let itemIds = (query.items ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
-        let states = try await playstate.batch(userId: userId, itemIds: itemIds)
+        let requested = (query.items ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
+        // Only return state for items the caller may read (silently drop the rest,
+        // like the batch read already drops items with no stored state).
+        let byId = try await catalog.items(ids: requested)
+        var readable: [String] = []
+        for id in requested {
+            guard let record = byId[id] else { continue }
+            let libraryId = try await catalog.owningLibraryId(of: record)
+            if identity.canReadLibrary(libraryId) { readable.append(id) }
+        }
+        let states = try await playstate.batch(userId: identity.userId, itemIds: readable)
         return PlaystateBatchResponse(states: states)
     }
 
@@ -85,26 +97,30 @@ struct PlaystateController: Sendable {
     /// whether or not a row existed.
     @Sendable
     func clear(_ request: Request, context: SphynxRequestContext) async throws -> Response {
-        let (userId, itemId) = try subjectAndItem(context)
+        let (userId, itemId) = try await subjectAndReadableItem(context)
         try await playstate.clear(userId: userId, itemId: itemId)
         return Response(status: .noContent)
     }
 
     // MARK: Helpers
 
-    private func subject(_ context: SphynxRequestContext) throws -> String {
-        guard let userId = context.identity?.userId else {
-            throw SphynxError.unauthorized("Not authenticated")
-        }
-        return userId
-    }
-
-    private func subjectAndItem(_ context: SphynxRequestContext) throws -> (userId: String, itemId: String) {
-        let userId = try subject(context)
+    /// The subject + item id, **gated on library read**: the item must exist and
+    /// the caller must be able to read its owning library (admins bypass). Playstate
+    /// is row-scoped to the user, but a user must not read/write state for items
+    /// outside the libraries they can see — matching browse/resolve/markers.
+    private func subjectAndReadableItem(_ context: SphynxRequestContext) async throws -> (userId: String, itemId: String) {
+        let identity = try context.requireIdentity()
         guard let itemId = context.parameters.get("itemId") else {
             throw SphynxError.badRequest("Missing item id")
         }
-        return (userId, itemId)
+        guard let item = try await catalog.item(id: itemId) else {
+            throw SphynxError.notFound("No item '\(itemId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: item)
+        guard identity.canReadLibrary(libraryId) else {   // canReadLibrary admits admins
+            throw SphynxError.forbidden("You don't have permission for this item")
+        }
+        return (identity.userId, itemId)
     }
 }
 

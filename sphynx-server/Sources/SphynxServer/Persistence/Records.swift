@@ -175,9 +175,12 @@ struct TombstoneRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var itemId: String
     var deletedAt: Double
 
-    /// Projection into the protocol's `Tombstone` (RFC3339 deletion time).
+    /// Projection into the protocol's `Tombstone` (RFC3339 deletion time, with
+    /// fractional seconds to match the changes feed's `until`/`since` precision).
     func toProtocol() -> Tombstone {
-        Tombstone(id: itemId, deletedAt: ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: deletedAt)))
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return Tombstone(id: itemId, deletedAt: f.string(from: Date(timeIntervalSince1970: deletedAt)))
     }
 }
 

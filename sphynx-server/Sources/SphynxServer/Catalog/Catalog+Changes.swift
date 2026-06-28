@@ -12,24 +12,29 @@ extension Catalog {
     /// NULL.
     private static let changeTimeSQL = "MAX(updatedAt, COALESCE(enrichedAt, 0), COALESCE(markersUpdatedAt, 0))"
 
-    /// Items whose client-rendered data changed strictly after `since`, ordered by
-    /// that change time then id (a stable, resumable order). Fetches `limit + 1`
-    /// so the caller can tell whether another page exists.
-    func changedItems(since: Double, limit: Int, offset: Int) async throws -> [ItemRecord] {
+    /// Items whose client-rendered data changed in the window `(since, until]`,
+    /// ordered by that change time then id (a stable, resumable order). Fetches
+    /// `limit + 1` so the caller can tell whether another page exists.
+    ///
+    /// The **`until` ceiling is what makes pagination gap-free**: every page of one
+    /// `since` window shares the same `until` (carried in the cursor), so an item
+    /// that changes *after* the window opened can't shift into an already-passed
+    /// offset and be skipped while `since` advances past it.
+    func changedItems(since: Double, until: Double, limit: Int, offset: Int) async throws -> [ItemRecord] {
         try await db.writer.read { db in
             try ItemRecord
-                .filter(sql: "\(Self.changeTimeSQL) > ?", arguments: [since])
+                .filter(sql: "\(Self.changeTimeSQL) > ? AND \(Self.changeTimeSQL) <= ?", arguments: [since, until])
                 .order(sql: "\(Self.changeTimeSQL), id")
                 .limit(limit + 1, offset: offset)
                 .fetchAll(db)
         }
     }
 
-    /// Deletion tombstones recorded strictly after `since`, oldest first.
-    func tombstones(since: Double) async throws -> [TombstoneRecord] {
+    /// Deletion tombstones recorded in the window `(since, until]`, oldest first.
+    func tombstones(since: Double, until: Double) async throws -> [TombstoneRecord] {
         try await db.writer.read { db in
             try TombstoneRecord
-                .filter(Column("deletedAt") > since)
+                .filter(Column("deletedAt") > since && Column("deletedAt") <= until)
                 .order(Column("deletedAt"), Column("itemId"))
                 .fetchAll(db)
         }

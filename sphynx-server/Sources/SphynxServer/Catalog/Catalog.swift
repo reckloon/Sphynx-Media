@@ -418,9 +418,12 @@ struct Catalog: Sendable {
         }
     }
 
-    /// Remove series/season containers left with no children, bubbling up the
-    /// parent chain (deleting a season may empty its series). Containers carry an
-    /// empty `sourceKey`, so they're never playable on their own.
+    /// Remove series/season/collection containers left with no children, bubbling
+    /// up the parent chain (deleting a season may empty its series). Containers
+    /// carry an empty `sourceKey`, so they're never playable on their own — and a
+    /// `collection` has no `sourceId`, so a `deleteSource` cascade reaches it only
+    /// through this prune (seeded by its members' `parentId`), preventing an
+    /// orphaned, member-less box-set tile.
     func pruneEmptyContainers(seeds: Set<String>) async throws {
         var frontier = seeds
         while !frontier.isEmpty {
@@ -428,6 +431,7 @@ struct Catalog: Sendable {
             for containerId in frontier {
                 guard let container = try await item(id: containerId),
                       container.type == "series" || container.type == "season"
+                        || container.type == "collection"
                 else { continue }
                 if try await countChildren(parentId: containerId) == 0 {
                     if let parentId = container.parentId { next.insert(parentId) }
