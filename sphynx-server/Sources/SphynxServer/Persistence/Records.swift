@@ -84,7 +84,29 @@ struct SourceRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// Driver credentials (username, password, token, …). NEVER returned by the
     /// API and NEVER written to logs.
     var secretsJSON: String?
+    /// Routes this source's items to different libraries by content category
+    /// (`{ "movie": lib_x, "tv": lib_y }`). Absent categories fall back to
+    /// `libraryId`, so a single-library source behaves as before.
+    var libraryMapJSON: String?
     var createdAt: Double
+
+    /// Decoded content-category → library id map (empty if none / malformed).
+    func libraryMap() -> [String: String] {
+        Self.decodeStringMap(libraryMapJSON)
+    }
+
+    /// The library an item of the given category (`"movie"` | `"tv"`) routes to:
+    /// the per-category mapping if present, else the source's single `libraryId`.
+    func libraryId(for category: String) -> String? {
+        libraryMap()[category] ?? libraryId
+    }
+
+    /// Every library this source feeds (the single `libraryId` plus any mapped).
+    func feedsLibraries() -> Set<String> {
+        var libs = Set(libraryMap().values)
+        if let libraryId { libs.insert(libraryId) }
+        return libs
+    }
 
     /// Decoded request headers (empty if none / malformed). For the HTTP driver
     /// these may carry an `Authorization` token, so they're treated as secret —

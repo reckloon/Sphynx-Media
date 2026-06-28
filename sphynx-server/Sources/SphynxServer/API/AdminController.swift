@@ -181,6 +181,7 @@ struct AdminController: Sendable {
         if let libraryId = body.libraryId, try await catalog.library(id: libraryId) == nil {
             throw SphynxError.badRequest("No library '\(libraryId)'")
         }
+        try await requireLibrariesExist(body.libraryMap)
         let record = try await catalog.updateSource(
             id: sourceId,
             label: body.label,
@@ -189,9 +190,19 @@ struct AdminController: Sendable {
             manifestURL: body.manifestURL,
             libraryId: body.libraryId,
             config: body.config,
-            secrets: body.secrets
+            secrets: body.secrets,
+            libraryMap: body.libraryMap
         )
         return SourceResponse(from: record)
+    }
+
+    /// Validate that every library referenced by a source's type→library map
+    /// actually exists.
+    private func requireLibrariesExist(_ map: [String: String]?) async throws {
+        guard let map else { return }
+        for libraryId in Set(map.values) where try await catalog.library(id: libraryId) == nil {
+            throw SphynxError.badRequest("No library '\(libraryId)'")
+        }
     }
 
     /// Delete a source, cascading to its items + now-empty containers.
@@ -223,6 +234,7 @@ struct AdminController: Sendable {
         if let libraryId = body.libraryId, try await catalog.library(id: libraryId) == nil {
             throw SphynxError.badRequest("No library '\(libraryId)'")
         }
+        try await requireLibrariesExist(body.libraryMap)
         let record = try await catalog.createSource(
             label: body.label,
             driver: body.driver ?? "http",
@@ -231,7 +243,8 @@ struct AdminController: Sendable {
             libraryId: body.libraryId,
             manifestURL: body.manifestURL,
             config: body.config,
-            secrets: body.secrets
+            secrets: body.secrets,
+            libraryMap: body.libraryMap
         )
         return SourceResponse(from: record)
     }
@@ -473,6 +486,8 @@ struct UpdateSourceRequest: Codable, Sendable {
     var libraryId: String?
     var config: [String: String]?
     var secrets: [String: String]?
+    /// Content-category → library id (`{ "movie": "lib_x", "tv": "lib_y" }`).
+    var libraryMap: [String: String]?
 }
 
 struct SourcesResponse: Codable, Sendable, ResponseEncodable {
@@ -491,6 +506,10 @@ struct CreateSourceRequest: Codable, Sendable {
     /// Driver credentials (username, password, token, …). Stored but never
     /// returned or logged.
     var secrets: [String: String]?
+    /// Route items to libraries by content category instead of a single
+    /// `libraryId` (`{ "movie": "lib_x", "tv": "lib_y" }`). Unmapped categories
+    /// fall back to `libraryId`.
+    var libraryMap: [String: String]?
 }
 
 /// A source as exposed by the API — non-secret fields only. Credentials
@@ -500,6 +519,8 @@ struct SourceResponse: Codable, Sendable, ResponseEncodable {
     var label: String
     var driver: String
     var config: [String: String]?
+    var libraryId: String?
+    var libraryMap: [String: String]?
 
     init(from record: SourceRecord) {
         self.id = record.id
@@ -507,6 +528,9 @@ struct SourceResponse: Codable, Sendable, ResponseEncodable {
         self.driver = record.driver
         let config = record.config()
         self.config = config.isEmpty ? nil : config
+        self.libraryId = record.libraryId
+        let map = record.libraryMap()
+        self.libraryMap = map.isEmpty ? nil : map
     }
 }
 

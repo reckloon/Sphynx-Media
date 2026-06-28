@@ -22,6 +22,11 @@ struct Indexer: Sendable {
         let entries = try await driver.list()
         let now = Date().timeIntervalSince1970
 
+        // One walk, fan out by type: movies and TV route to their own libraries
+        // (falling back to the source's single library when unmapped).
+        let movieLib = source.libraryId(for: "movie")
+        let tvLib = source.libraryId(for: "tv")
+
         // Existing media items (episodes + movies) keyed by their stable
         // sourceKey. Containers (series/season, empty sourceKey) are excluded —
         // they're found via dedicated lookups so they don't collide on "".
@@ -52,7 +57,7 @@ struct Indexer: Sendable {
         func ensureSeries(_ title: String, year: Int?) async throws -> ItemRecord {
             let cacheKey = HeuristicIdentifier.normalize(title)
             if let cached = seriesCache[cacheKey] { return cached }
-            if var existing = try await catalog.seriesItem(libraryId: source.libraryId ?? "", title: title) {
+            if var existing = try await catalog.seriesItem(libraryId: tvLib ?? "", title: title) {
                 // Backfill a year from the show folder when the container lacks one.
                 if existing.year == nil, let year {
                     existing.year = year
@@ -64,7 +69,7 @@ struct Indexer: Sendable {
             }
             var record = try await catalog.createItem(
                 type: "series", title: title, sourceId: source.id, sourceKey: "",
-                container: nil, tmdbId: nil, libraryId: source.libraryId,
+                container: nil, tmdbId: nil, libraryId: tvLib,
                 parentId: nil, year: year, seriesTitle: title
             )
             if let tv, let tmdbId = try? await tv.identifySeries(title: title) {
@@ -88,7 +93,7 @@ struct Indexer: Sendable {
             }
             var record = try await catalog.createItem(
                 type: "season", title: "Season \(season)", sourceId: source.id, sourceKey: "",
-                container: nil, tmdbId: series.tmdbId, libraryId: source.libraryId,
+                container: nil, tmdbId: series.tmdbId, libraryId: tvLib,
                 parentId: series.id, year: nil,
                 seriesId: series.id, seriesTitle: series.seriesTitle ?? series.title,
                 seasonIndex: season
@@ -138,7 +143,7 @@ struct Indexer: Sendable {
                 } else {
                     var record = try await catalog.createItem(
                         type: "episode", title: episodeTitle, sourceId: source.id, sourceKey: entry.key,
-                        container: entry.container, tmdbId: series.tmdbId, libraryId: source.libraryId,
+                        container: entry.container, tmdbId: series.tmdbId, libraryId: tvLib,
                         parentId: season.id, year: entry.year,
                         seriesId: series.id, seriesTitle: series.seriesTitle ?? series.title,
                         seasonIndex: ep.season, episodeIndex: ep.episode
@@ -180,7 +185,7 @@ struct Indexer: Sendable {
                         type: entry.type ?? "movie",
                         title: title,
                         sourceId: source.id, sourceKey: entry.key, container: entry.container,
-                        tmdbId: nil, libraryId: source.libraryId, parentId: nil, year: year
+                        tmdbId: nil, libraryId: movieLib, parentId: nil, year: year
                     )
                     added += 1
                 }

@@ -43,14 +43,32 @@ struct Catalog: Sendable {
         return updated
     }
 
-    /// Delete a library and **cascade**: every item it holds (the whole tree) and
-    /// every source that feeds it. (Items carry their `libraryId`, so one delete
-    /// removes the full hierarchy.)
+    /// Delete a library and **cascade**: every item it holds (the whole tree), then
+    /// unbind it from any source that feeds it — deleting a source only if that
+    /// leaves it feeding no library at all (a source that also feeds another
+    /// library survives, with this library removed from its routing).
     func deleteLibrary(id: String) async throws {
         let existed: Bool = try await db.writer.write { db in
             guard try LibraryRecord.filter(Column("id") == id).fetchCount(db) > 0 else { return false }
+            // Items carry their resolved libraryId, so this removes the whole tree.
             try ItemRecord.filter(Column("libraryId") == id).deleteAll(db)
-            try SourceRecord.filter(Column("libraryId") == id).deleteAll(db)
+
+            for var source in try SourceRecord.fetchAll(db) {
+                var changed = false
+                if source.libraryId == id { source.libraryId = nil; changed = true }
+                let map = source.libraryMap()
+                let pruned = map.filter { $0.value != id }
+                if pruned.count != map.count {
+                    source.libraryMapJSON = pruned.isEmpty ? nil : Self.encodeStringMap(pruned)
+                    changed = true
+                }
+                guard changed else { continue }
+                if source.feedsLibraries().isEmpty {
+                    try SourceRecord.deleteOne(db, key: source.id)
+                } else {
+                    try source.update(db)
+                }
+            }
             _ = try LibraryRecord.deleteOne(db, key: id)
             return true
         }
@@ -67,7 +85,8 @@ struct Catalog: Sendable {
         libraryId: String?,
         manifestURL: String?,
         config: [String: String]? = nil,
-        secrets: [String: String]? = nil
+        secrets: [String: String]? = nil,
+        libraryMap: [String: String]? = nil
     ) async throws -> SourceRecord {
         let record = SourceRecord(
             id: Tokens.newID("src_"),
@@ -79,6 +98,7 @@ struct Catalog: Sendable {
             manifestURL: manifestURL,
             configJSON: Self.encodeStringMap(config),
             secretsJSON: Self.encodeStringMap(secrets),
+            libraryMapJSON: Self.encodeStringMap(libraryMap),
             createdAt: Date().timeIntervalSince1970
         )
         try await db.writer.write { db in try record.insert(db) }
@@ -109,7 +129,8 @@ struct Catalog: Sendable {
         manifestURL: String?,
         libraryId: String?,
         config: [String: String]?,
-        secrets: [String: String]?
+        secrets: [String: String]?,
+        libraryMap: [String: String]?
     ) async throws -> SourceRecord {
         let updated: SourceRecord? = try await db.writer.write { db in
             guard var s = try SourceRecord.filter(Column("id") == id).fetchOne(db) else { return nil }
@@ -120,6 +141,7 @@ struct Catalog: Sendable {
             if let libraryId { s.libraryId = libraryId }
             if let config { s.configJSON = Self.encodeStringMap(config) }
             if let secrets { s.secretsJSON = Self.encodeStringMap(secrets) }
+            if let libraryMap { s.libraryMapJSON = Self.encodeStringMap(libraryMap) }
             try s.update(db)
             return s
         }

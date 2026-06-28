@@ -251,6 +251,16 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m14_source_library_map") { db in
+            // Route a single source's items to different libraries by content type
+            // (e.g. movies → a Movies library, TV → a TV library) from ONE scan.
+            // JSON `{ "movie": lib_x, "tv": lib_y }`; absent keys fall back to the
+            // source's single `libraryId`.
+            try db.alter(table: "source") { t in
+                t.add(column: "libraryMapJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

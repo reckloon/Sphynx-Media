@@ -316,21 +316,30 @@ with the updated library.
 
 ### `DELETE /v1/admin/libraries/{libraryId}`
 
-**Cascade.** Deletes the library, every item it holds, and the sources that feed
-it. **204** on success.
+**Cascade.** Deletes the library and every item it holds, then **unbinds** it from
+any source that feeds it — a source that also feeds another library survives (with
+this library removed from its routing); a source left feeding no library at all is
+deleted. **204** on success.
 
 ### `POST /v1/admin/sources`
 
 **Body**
 ```json
 { "label": "My CDN", "driver": "http", "baseURL": "https://cdn.example",
-  "headers": { "Authorization": "…" }, "libraryId": "lib_…",
+  "headers": { "Authorization": "…" },
+  "libraryMap": { "movie": "lib_movies", "tv": "lib_tv" },
   "manifestURL": "https://cdn.example/manifest.json" }
 ```
-`driver` defaults to `http`. `libraryId` is the library this source feeds;
-`manifestURL` is where the indexer lists entries. **200** →
-`{ "id": "src_…", "label": "...", "driver": "http", "config": { … } }` — only
-non-secret fields are returned.
+`driver` defaults to `http`. `manifestURL` is where the indexer lists entries.
+
+A source feeds a library by content **category**: `libraryMap` routes each item
+to a library by type (`movie` / `tv`), so **one source + one scan** fills a Movies
+library and a TV library from the same folder — a single driver walk, items split
+by detected type (movies → `/movie`, TV → `/tv` enrichment). `libraryId` (single
+library) is still accepted and acts as the fallback for any unmapped category.
+
+**200** → `{ "id": "src_…", "label": "...", "driver": "http", "config": { … },
+"libraryId": …, "libraryMap": { … } }` — only non-secret fields are returned.
 
 Drivers other than HTTP configure through two open maps: **`config`** for
 non-secret, driver-specific settings, and **`secrets`** for credentials. Secrets
@@ -360,9 +369,9 @@ List all sources (non-secret fields only). **200** →
 ### `PATCH /v1/admin/sources/{sourceId}`
 
 Update a source. **Body** (any subset)
-`{ "label": "…", "baseURL": "…", "manifestURL": "…", "libraryId": "…", "headers": {…}, "config": {…}, "secrets": {…} }`
-— any map given replaces the stored one. **200** → the updated source (secrets
-withheld).
+`{ "label": "…", "baseURL": "…", "manifestURL": "…", "libraryId": "…", "libraryMap": {…}, "headers": {…}, "config": {…}, "secrets": {…} }`
+— any map given (`libraryMap`/`headers`/`config`/`secrets`) replaces the stored
+one. **200** → the updated source (secrets withheld).
 
 ### `DELETE /v1/admin/sources/{sourceId}`
 
