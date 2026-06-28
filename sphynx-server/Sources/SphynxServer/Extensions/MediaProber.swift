@@ -1,34 +1,10 @@
 import Foundation
 import Hummingbird
+import SphynxProtocol
 
-/// One stream inside a media container, as reported by `ffprobe`. This is the data
-/// the protocol's bare `Tracks` indices can't express on their own — language,
-/// codec, channel layout, and a human label per audio/subtitle track.
-struct MediaStream: Codable, Sendable, ResponseEncodable {
-    /// Container-relative stream index (matches `Tracks` indices).
-    var index: Int
-    /// `video` | `audio` | `subtitle` | `data` | … (ffprobe `codec_type`).
-    var kind: String
-    var codec: String?
-    /// ISO 639 language tag when tagged (e.g. `eng`, `spa`).
-    var language: String?
-    /// Human label (ffprobe `tags.title`, e.g. "Director's commentary").
-    var title: String?
-    /// Audio channel count (e.g. 2 = stereo, 6 = 5.1).
-    var channels: Int?
-    var isDefault: Bool?
-    var isForced: Bool?
-}
-
-/// A subtitle file sitting next to the media (a sidecar `.srt`/`.ass`/…), which the
-/// protocol has no field for today. Surfaced here so a client could offer it.
-struct ExternalSubtitle: Codable, Sendable, ResponseEncodable {
-    var url: String
-    /// Language guessed from the filename suffix (e.g. `Movie.en.srt` → `en`).
-    var language: String?
-    /// File extension without the dot (`srt`, `ass`, `vtt`, …).
-    var format: String
-}
+// `MediaStream` and `ExternalSubtitle` are the canonical protocol types
+// (`SphynxProtocol`) — the same shapes the resolve descriptor's `Tracks` carries,
+// so a probe result and `/resolve` speak one vocabulary.
 
 /// The full result of probing one item: its streams plus any sidecar subtitles.
 struct ProbeResult: Codable, Sendable, ResponseEncodable {

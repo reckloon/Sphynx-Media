@@ -198,6 +198,16 @@ struct StoredCast: Codable, Sendable {
     var placeholderURL: String?
 }
 
+/// A cached media-probe result persisted as one JSON blob (`item.probedTracksJSON`)
+/// and folded into the resolve descriptor's `tracks`. Reuses the protocol stream
+/// types so the stored shape and the wire shape are one vocabulary.
+struct StoredProbe: Codable, Sendable {
+    var streams: [MediaStream]
+    var externalSubtitles: [ExternalSubtitle]
+    /// When the probe ran (epoch seconds).
+    var probedAt: Double
+}
+
 /// Extended TMDB metadata persisted uniformly as one JSON blob (`item.extendedJSON`)
 /// and projected onto the canonical `Item` fields. Open by design — new keys can
 /// be added without a migration; older rows simply lack them.
@@ -306,6 +316,11 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// Extended TMDB metadata (tagline, studios, directors, externalIds, …),
     /// stored uniformly as one JSON blob and projected onto the `Item`.
     var extendedJSON: String?
+
+    /// Cached media-probe result (in-container streams + sidecar subtitles, from
+    /// the media-probe extension), stored as one JSON blob and folded into the
+    /// resolve descriptor's `tracks`. Absent until the item has been probed.
+    var probedTracksJSON: String? = nil
 
     /// Decoded extended metadata (nil if none / malformed).
     func extended() -> StoredExtended? {
@@ -453,6 +468,29 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     func storedMarkers() -> Markers? {
         guard let markersJSON, let data = markersJSON.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(Markers.self, from: data)
+    }
+
+    /// The cached probe result folded into a resolve `Tracks`, if the item has
+    /// been probed. Derives the selection hints (`preferredAudio` =
+    /// default/first audio; `preferredSubtitle` = forced/default subtitle) from
+    /// the stream dispositions, then attaches the full per-stream detail and any
+    /// sidecar subtitles. Returns nil when nothing was probed.
+    func storedTracks() -> Tracks? {
+        guard let probedTracksJSON, let data = probedTracksJSON.data(using: .utf8),
+              let probe = try? JSONDecoder().decode(StoredProbe.self, from: data) else { return nil }
+        let streams = probe.streams, subs = probe.externalSubtitles
+        guard !streams.isEmpty || !subs.isEmpty else { return nil }
+        let audio = streams.filter { $0.kind == "audio" }
+        let subtitle = streams.filter { $0.kind == "subtitle" }
+        let preferredAudio = (audio.first { $0.isDefault == true } ?? audio.first)?.index
+        let preferredSubtitle = (subtitle.first { $0.isForced == true }
+                                 ?? subtitle.first { $0.isDefault == true })?.index
+        return Tracks(
+            preferredAudio: preferredAudio,
+            preferredSubtitle: preferredSubtitle,
+            streams: streams.isEmpty ? nil : streams,
+            externalSubtitles: subs.isEmpty ? nil : subs
+        )
     }
 
     /// Markers + provenance for `GET /v1/items/<id>/markers`.

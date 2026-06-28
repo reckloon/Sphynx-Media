@@ -311,6 +311,15 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m19_item_probed_tracks") { db in
+            // Cached media-probe result (in-container streams + sidecar subtitles),
+            // stored uniformly as one JSON blob and folded into the resolve
+            // descriptor's `tracks`. Populated by the media-probe extension.
+            try db.alter(table: "item") { t in
+                t.add(column: "probedTracksJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

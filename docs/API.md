@@ -352,8 +352,22 @@ play time, never cached from browse.
   CDN URL), how many seconds it stays valid; the server passes the driver's value
   straight through and never persists it. The built-in `http`/`local` drivers
   return plain, non-expiring URLs, so `ttl` is absent. Absent = no expiry.
-- `tracks`, `markers`, `candidates` — optional; `tracks`/`candidates` absent in the
-  current build.
+- `tracks` — *optional.* Track selection hints plus, once the media has been probed,
+  the full per-track detail:
+  - `preferredAudio` / `preferredSubtitle` / `copyableAudio` — source-relative
+    **indices** (the always-available, cheap hint).
+  - `streams` — described in-container streams, each
+    `{ "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" }`
+    (`kind` is `audio` | `subtitle` | `video` | …). Lets a client render an
+    "Audio: English 5.1 / Subtitles: Spanish" picker without demuxing the file.
+  - `externalSubtitles` — sidecar subtitle files beside the media,
+    `{ "url", "language", "format" }`.
+
+  `streams`/`externalSubtitles` are **absent until the item has been probed** — the
+  built-in resolve path doesn't probe. Populate them by enabling the
+  [media-probe extension](#extensions--admin-only) and probing the item; the result
+  is cached on the item and folded in here on subsequent resolves.
+- `markers`, `candidates` — optional; `candidates` absent in the current build.
 
 **404** `not_found` (no such item) / `no_media_source` (item's source unavailable).
 
@@ -818,6 +832,9 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   to its direct location (as a player would), runs `ffprobe`, and returns
   `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ] }`.
   Returns **400** when the extension is disabled or `ffprobe` isn't available.
+  The result is **cached on the item**, so [`GET /v1/resolve/{id}`](#resolve) then
+  serves the same streams + external subtitles as its `tracks` — clients get the
+  rich detail without probing the container themselves.
 
 ---
 

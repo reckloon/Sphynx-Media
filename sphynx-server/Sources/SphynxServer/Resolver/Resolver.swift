@@ -40,6 +40,9 @@ struct Resolver: Sendable {
             container: location.container,
             ttl: location.ttl,
             terminal: location.terminal,
+            // Fold in cached per-track detail (language/codec/channels + sidecar
+            // subtitles) when the item has been probed; absent otherwise (§6).
+            tracks: item.storedTracks(),
             // Convenience: fold in any stored intro/credit markers (§6).
             markers: item.storedMarkers(),
             candidates: location.candidates

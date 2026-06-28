@@ -438,7 +438,7 @@ enum AdminWebController {
 
       <!-- Module: Media probe (optional) -->
       <div id="mod-media-probe" class="ext-mod" hidden>
-        <p class="hint" style="margin-top:0;">Inspect a title's audio, subtitle, and video tracks with ffmpeg's <code>ffprobe</code> — the language, codec, and channel detail the wire protocol's track indices can't carry on their own — plus any sidecar subtitle files next to a local file.</p>
+        <p class="hint" style="margin-top:0;">Inspect a title's audio, subtitle, and video tracks with ffmpeg's <code>ffprobe</code> — the language, codec, and channel detail the wire protocol's track indices can't carry on their own — plus any sidecar subtitle files next to a local file. Probing <strong>caches</strong> the result onto the item, so <code>/v1/resolve</code> then serves it as rich <code>tracks</code>.</p>
         <div class="mp-row">
           <label class="switch"><input type="checkbox" id="mp-enabled"> Enable media probe</label>
           <span id="mp-avail" class="hint" style="margin:0;"></span>

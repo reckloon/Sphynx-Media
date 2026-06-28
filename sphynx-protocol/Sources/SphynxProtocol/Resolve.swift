@@ -1,15 +1,84 @@
 import Foundation
 
-/// Source-relative track selection hints (§6). All indices are source-relative.
+/// One described stream inside a media container (§6) — the per-track
+/// language / codec / channel / label detail the bare selection indices can't
+/// carry on their own. Populated when the server has probed the media (e.g. via
+/// an ffprobe-backed extension); the field is simply absent otherwise, and
+/// `index` matches the source-relative `Tracks` selection hints.
+public struct MediaStream: Codable, Hashable, Sendable {
+    /// Container-relative stream index (matches the `Tracks` selection indices).
+    public var index: Int
+    /// `audio` | `subtitle` | `video` | `data` | … Open: clients ignore unknowns.
+    public var kind: String
+    public var codec: String?
+    /// ISO 639 language tag when present (e.g. `eng`, `spa`).
+    public var language: String?
+    /// Human label (e.g. "Director's commentary").
+    public var title: String?
+    /// Audio channel count (2 = stereo, 6 = 5.1).
+    public var channels: Int?
+    public var isDefault: Bool?
+    public var isForced: Bool?
+
+    public init(
+        index: Int, kind: String, codec: String? = nil, language: String? = nil,
+        title: String? = nil, channels: Int? = nil, isDefault: Bool? = nil, isForced: Bool? = nil
+    ) {
+        self.index = index
+        self.kind = kind
+        self.codec = codec
+        self.language = language
+        self.title = title
+        self.channels = channels
+        self.isDefault = isDefault
+        self.isForced = isForced
+    }
+}
+
+/// A sidecar subtitle file sitting beside the media (a `.srt`/`.ass`/… next to
+/// the video) — not an in-container stream, so the index-based hints can't point
+/// at it. The client fetches `url` directly, like any other location.
+public struct ExternalSubtitle: Codable, Hashable, Sendable {
+    public var url: String
+    /// Language guessed from the filename (e.g. `Movie.en.srt` → `en`).
+    public var language: String?
+    /// File extension without the dot (`srt`, `ass`, `vtt`, …).
+    public var format: String
+
+    public init(url: String, language: String? = nil, format: String) {
+        self.url = url
+        self.language = language
+        self.format = format
+    }
+}
+
+/// Track selection hints + (when probed) the full per-track detail (§6).
+///
+/// `preferredAudio` / `preferredSubtitle` are source-relative **indices** — the
+/// always-available, cheap hint. `streams` and `externalSubtitles` are the
+/// richer, optional layer a server fills in once it has probed the container, so
+/// a client can render an "Audio: English 5.1 / Subtitles: Spanish" picker
+/// without demuxing the file itself. Both are omitted when the server hasn't
+/// probed; a client keys off whichever is present.
 public struct Tracks: Codable, Hashable, Sendable {
     public var preferredAudio: Int?
     public var copyableAudio: Int?
     public var preferredSubtitle: Int?
+    /// Described in-container streams (audio / subtitle / video). Absent until
+    /// the server has probed the media; `index` matches the hints above.
+    public var streams: [MediaStream]?
+    /// External / sidecar subtitle files the in-container indices can't reference.
+    public var externalSubtitles: [ExternalSubtitle]?
 
-    public init(preferredAudio: Int? = nil, copyableAudio: Int? = nil, preferredSubtitle: Int? = nil) {
+    public init(
+        preferredAudio: Int? = nil, copyableAudio: Int? = nil, preferredSubtitle: Int? = nil,
+        streams: [MediaStream]? = nil, externalSubtitles: [ExternalSubtitle]? = nil
+    ) {
         self.preferredAudio = preferredAudio
         self.copyableAudio = copyableAudio
         self.preferredSubtitle = preferredSubtitle
+        self.streams = streams
+        self.externalSubtitles = externalSubtitles
     }
 }
 

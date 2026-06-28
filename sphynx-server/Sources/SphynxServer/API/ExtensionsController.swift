@@ -13,6 +13,7 @@ import Hummingbird
 ///
 /// All endpoints are admin-only and server-local (`/v1/admin/extensions/*`).
 struct ExtensionsController: Sendable {
+    let catalog: Catalog
     let resolver: Resolver
     let settings: SettingsStore
 
@@ -88,7 +89,19 @@ struct ExtensionsController: Sendable {
         // probe that (throws notFound / noMediaSource for bad or container items).
         let descriptor = try await resolver.resolve(itemId: itemId)
         let prober = FFprobeProber(ffprobePath: ffprobePath)
-        return try await prober.probe(url: descriptor.url, headers: descriptor.headers, itemId: itemId)
+        let result = try await prober.probe(url: descriptor.url, headers: descriptor.headers, itemId: itemId)
+
+        // Cache the result on the item so `/v1/resolve` can serve rich `tracks`
+        // (languages / codecs / channels + sidecar subtitles) without re-probing.
+        if var item = try await catalog.item(id: itemId) {
+            let stored = StoredProbe(streams: result.streams, externalSubtitles: result.externalSubtitles,
+                                     probedAt: Date().timeIntervalSince1970)
+            if let data = try? JSONEncoder().encode(stored) {
+                item.probedTracksJSON = String(data: data, encoding: .utf8)
+                try await catalog.updateItem(item)
+            }
+        }
+        return result
     }
 
     // MARK: Helpers

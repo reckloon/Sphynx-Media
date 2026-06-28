@@ -140,8 +140,12 @@ You'll see five tabs along the top:
 - **Libraries** — the shelves your media gets sorted onto (Movies, TV Shows, …).
 - **Sources** — *where* your media actually lives, and how to find it.
 - **Users** — accounts for each person who'll use a player app.
-- **Extensions** — a live activity dashboard, a database peek, and logs for when
-  you're curious or something's stuck.
+- **Extensions** — optional add-ons, each with its own controls: a live activity
+  dashboard, a database peek, and logs for when you're curious or something's stuck,
+  plus a **media probe** (uses [ffmpeg](https://ffmpeg.org/)'s `ffprobe`) that reads
+  each title's real audio/subtitle tracks — languages, codecs, channels, and any
+  subtitle files sitting next to the video — so your player can show a proper
+  "Audio: English 5.1 / Subtitles: Spanish" picker.
 
 That's the whole server. No config files to hand-edit, no JSON to memorize.
 

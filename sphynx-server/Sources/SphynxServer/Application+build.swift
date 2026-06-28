@@ -64,7 +64,7 @@ func buildRouter(
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
                           logStore: LogStore.shared).addRoutes(to: securedV1)
-    ExtensionsController(resolver: resolver, settings: settings).addRoutes(to: securedV1)
+    ExtensionsController(catalog: catalog, resolver: resolver, settings: settings).addRoutes(to: securedV1)
 
     return router
 }
