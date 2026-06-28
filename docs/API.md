@@ -1046,6 +1046,18 @@ access-controlled endpoint (e.g. `GET /v1/home/recent`, `GET /v1/items/{id}/mark
 rather than trusting the event as data. The stream is a transport for *liveness*,
 not a second source of truth.
 
+**Extending the stream.** `type` is an **open discriminator** and unknown `type`s and
+fields are ignorable, so the event set grows without any wire-version bump or new
+capability: a server adds a new event by emitting another `type` (and/or new fields),
+and existing clients simply skip what they don't recognise. Two rules keep additions
+safe: (1) every frame carries a stable `type` + `ts`, with nil fields omitted; and
+(2) the event stays a **nudge** — small payload, re-fetch the authoritative endpoint —
+so a client that doesn't yet handle it loses nothing. The only per-event decision is
+**audience**: scope it to the subject for personal data, or to library-readers for
+shared data, so delivery stays fail-closed like the REST surface. `capabilities.events`
+remains a single boolean ("is the stream available?") — it intentionally does **not**
+enumerate types, because clients never depend on a specific event existing.
+
 ---
 
 ## Admin (server-specific, not part of the wire protocol)

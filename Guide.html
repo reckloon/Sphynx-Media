@@ -677,6 +677,9 @@ data: {"type":"library","libraryId":"lib_tv","action":"scanned","ts":1719536500.
 <div class="callout note">
   <p><strong>Events are liveness, not a second source of truth.</strong> <code>markers</code> / <code>library</code> are <em>nudges</em>: on receipt a client re-fetches via the normal access-controlled endpoint (<code>/v1/home/recent</code>, <code>/v1/items/{id}/markers</code>) rather than trusting the event payload as data. This keeps the stream cheap and the access rules in exactly one place.</p>
 </div>
+<div class="callout tip">
+  <p><strong>Extending the stream.</strong> <code>type</code> is an <strong>open discriminator</strong> and unknown <code>type</code>s/fields are ignorable, so the event set grows with <strong>no wire-version bump and no new capability</strong> — a server just emits another <code>type</code> (or new fields) and older clients skip what they don't recognise. Keep two invariants: every frame carries a stable <code>type</code> + <code>ts</code> (nil fields omitted), and the event stays a <strong>nudge</strong> (small payload, re-fetch the authoritative endpoint) so a client that doesn't handle it yet loses nothing. The one per-event decision is <strong>audience</strong> — scope it to the subject for personal data or to library-readers for shared data, so delivery stays fail-closed. <code>capabilities.events</code> stays a single boolean and deliberately doesn't enumerate types, because clients never depend on a specific event existing.</p>
+</div>
 
 <h3 id="api-errors">Errors</h3>
 <p>Every non-2xx response uses this envelope:</p>
