@@ -467,12 +467,15 @@
   <tr><td><code>sort</code></td><td><code>added</code></td><td>A library's top level: <code>added</code> | <code>name</code> | <code>rating</code></td></tr>
   <tr><td><code>order</code></td><td><em>(by sort)</em></td><td><code>asc</code> | <code>desc</code> (default: name asc, added/rating desc)</td></tr>
   <tr><td><code>genre</code></td><td>—</td><td>Top level only: keep items carrying this genre</td></tr>
+  <tr><td><code>year</code></td><td>—</td><td>Top level only: keep items of this release year</td></tr>
   <tr><td><code>unwatched</code></td><td>—</td><td><code>true</code> ⇒ drop items the caller has marked watched</td></tr>
 </table>
+<p>The valid <code>sort</code> keys and filter params are advertised in <code>capabilities.browse</code> (<code>{ "sorts":[…], "filters":[…] }</code>), so a client builds its sort/filter UI from the contract instead of guessing.</p>
 <pre><code><span class="cmt">// 200</span>
 <span class="key">{ "items": [ { "id":"it_…", "type":"movie", "title":"…", "year":2008 } ],
-  "nextCursor": "b2Zmc2V0OjUw" }</span></code></pre>
-<p>An absent <code>nextCursor</code> means the end of the list. Items fold the caller's per-user state (<code>resumePosition</code>, <code>watched</code>, <code>playCount</code>, <code>isFavorite</code>, <code>lastPlayedAt</code>). <code>sort</code>/<code>genre</code> apply to a library's top level; children of an item keep their natural order.</p>
+  "nextCursor": "b2Zmc2V0OjUw",
+  "totalCount": 947, "pageSize": 50 }</span></code></pre>
+<p>An absent <code>nextCursor</code> means the end of the list. <code>totalCount</code> is the <strong>structural</strong> total under this parent matching <code>genre</code>/<code>year</code> — the full set the cursor paginates, so a client shows "1–50 of 947"; it does not account for the per-user <code>unwatched</code> post-filter. <code>pageSize</code> echoes the effective limit after the server's clamp (both are on <code>/v1/items</code>; the home feeds omit them). Items fold the caller's per-user state (<code>resumePosition</code>, <code>watched</code>, <code>playCount</code>, <code>isFavorite</code>, <code>lastPlayedAt</code>). <code>sort</code>/<code>genre</code>/<code>year</code> apply to a library's top level; children of an item keep their natural order.</p>
 
 <div class="ep"><span class="method badge put">PUT</span><span class="path">/v1/items/{itemId}/state</span><span class="badge auth">auth</span></div>
 <p>Set the caller's per-user state for an item. <strong>Body</strong> (any subset) <code>{ "watched":true, "isFavorite":true }</code> → <strong>200</strong> with the item, state folded in. <strong>403</strong> if the caller can't read the item's library. Play count + last-played are tracked from playback (a non-failed <code>stop</code> bumps them); <code>watched</code>/<code>isFavorite</code> are explicit here.</p>

@@ -129,18 +129,24 @@ struct BrowseController: Sendable {
         let ascending: Bool? = query.order.map { $0.lowercased() == "asc" }
         let records: [ItemRecord]
         let libraryId: String?
+        // The full set the cursor paginates over, for `totalCount` (structural —
+        // genre/year — not the per-user `unwatched` post-filter). nil ⇒ not computed.
+        let totalCount: Int?
         if try await catalog.library(id: parent) != nil {
             libraryId = parent
             records = try await catalog.topLevelItems(
                 libraryId: parent, limit: limit, offset: offset,
-                sort: sort, ascending: ascending, genre: query.genre
+                sort: sort, ascending: ascending, genre: query.genre, year: query.year
             )
+            totalCount = try await catalog.countTopLevelItems(libraryId: parent, genre: query.genre, year: query.year)
         } else if let parentItem = try await catalog.item(id: parent) {
             libraryId = try await catalog.owningLibraryId(of: parentItem)
             records = try await catalog.childItems(parentId: parent, limit: limit, offset: offset)
+            totalCount = try await catalog.countChildren(parentId: parent)
         } else {
             libraryId = nil
             records = []
+            totalCount = nil
         }
         guard identity.canReadLibrary(libraryId) else {
             throw SphynxError.forbidden("You don't have permission to browse this library")
@@ -158,7 +164,9 @@ struct BrowseController: Sendable {
         let items = try await foldUserData(page.map { $0.toProtocol(full: full) }, userId: identity.userId)
         return ItemsResponse(
             items: items,
-            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
+            nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil,
+            totalCount: totalCount,
+            pageSize: limit
         )
     }
 
@@ -269,6 +277,8 @@ struct ItemsQuery: Codable, Sendable {
     var order: String?
     /// Filter a library's top level to items carrying this genre.
     var genre: String?
+    /// Filter a library's top level to items of this release year.
+    var year: Int?
     /// Filter out items the user has marked watched.
     var unwatched: Bool?
 }

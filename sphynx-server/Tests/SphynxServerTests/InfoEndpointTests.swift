@@ -33,6 +33,11 @@ struct InfoEndpointTests {
                     #expect(fields.contains(present), "should advertise \(present)")
                 }
                 #expect(!fields.contains("criticRating"), "must not over-claim criticRating")
+                // Browse contract: the server advertises its sort keys + filters so
+                // a client builds typed sort/filter UI from the contract.
+                let browse = try #require(info.capabilities.browse)
+                #expect(browse.sorts == ["added", "name", "rating"])
+                #expect(Set(browse.filters) == ["genre", "year", "unwatched"])
             }
         }
     }

@@ -29,9 +29,21 @@ public struct LibrariesResponse: Codable, Hashable, Sendable {
 public struct ItemsResponse: Codable, Hashable, Sendable {
     public var items: [Item]
     public var nextCursor: String?
+    /// Total items under this parent matching the **structural** filters
+    /// (`genre`/`year`) — the full set the cursor paginates over — so a client can
+    /// show "1–N of `totalCount`". The per-user `unwatched` view-filter is applied
+    /// per page and is *not* reflected here. Omitted (nil) by endpoints that don't
+    /// compute it (the home feeds).
+    public var totalCount: Int?
+    /// The effective page size the server applied — the requested `limit` after the
+    /// server's own clamping — so a client paginates against the real size rather
+    /// than guessing the clamp. Omitted where not applicable.
+    public var pageSize: Int?
 
-    public init(items: [Item], nextCursor: String? = nil) {
+    public init(items: [Item], nextCursor: String? = nil, totalCount: Int? = nil, pageSize: Int? = nil) {
         self.items = items
         self.nextCursor = nextCursor
+        self.totalCount = totalCount
+        self.pageSize = pageSize
     }
 }

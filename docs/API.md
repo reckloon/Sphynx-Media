@@ -55,10 +55,14 @@ Confirm a URL is a Sphynx server and learn its capabilities.
                "endDate", "studios", "directors", "writers", "countries", "tags", "trailers",
                "externalIds", "resumePosition", "watched", "playCount", "isFavorite",
                "lastPlayedAt"],
+    "browse": { "sorts": ["added", "name", "rating"], "filters": ["genre", "year", "unwatched"] },
     "playstateReportInterval": 5
   }
 }
 ```
+**`browse`** advertises what `GET /v1/items` supports — the valid `sort` keys and
+filter params — so a client builds typed sort/filter affordances from the contract
+rather than probing. Absent ⇒ the client offers no typed sort/filter UI.
 `playstateReportInterval` (seconds) is the server's preferred client playback-report
 cadence: a client that reports progress periodically SHOULD `POST` to
 `/v1/playstate/{id}/progress` this often (default ~5s if absent). **Push-only** —
@@ -190,19 +194,29 @@ Children of a container. Query parameters:
 | `sort` | `added` | A library's top level: `added` \| `name` \| `rating` |
 | `order` | *(by sort)* | `asc` \| `desc` (default: name asc, added/rating desc) |
 | `genre` | — | Top level only: keep items carrying this genre |
+| `year` | — | Top level only: keep items of this release year |
 | `unwatched` | — | `true` ⇒ drop items the caller has marked watched |
 
-Items fold the caller's per-user state: `resumePosition`, `watched`, `playCount`,
-`isFavorite`, `lastPlayedAt` (see [Item shape](#item-shape)). `sort`/`genre` apply
-to a library's top level; children of an item (seasons/episodes) keep their
-natural order.
+The supported `sort` keys and filter params are advertised in
+[`capabilities.browse`](#discovery) (`{ "sorts": [...], "filters": [...] }`), so a
+client builds its sort/filter UI from the contract instead of guessing. Items fold
+the caller's per-user state: `resumePosition`, `watched`, `playCount`, `isFavorite`,
+`lastPlayedAt` (see [Item shape](#item-shape)). `sort`/`genre`/`year` apply to a
+library's top level; children of an item (seasons/episodes) keep their natural order.
 
 **200**
 ```json
 { "items": [ { "id": "it_…", "type": "movie", "title": "…", "year": 2008 } ],
-  "nextCursor": "b2Zmc2V0OjUw" }
+  "nextCursor": "b2Zmc2V0OjUw",
+  "totalCount": 947,
+  "pageSize": 50 }
 ```
-An absent `nextCursor` means the end of the list.
+An absent `nextCursor` means the end of the list. `totalCount` is the **structural**
+total under this parent matching `genre`/`year` — the full set the cursor paginates,
+so a client can show "1–50 of 947". It does **not** account for the per-user
+`unwatched` post-filter (which is applied per page). `pageSize` echoes the effective
+limit the server applied after its own clamping. Both are present on `/v1/items`;
+the home feeds omit them.
 
 ### `GET /v1/items/{itemId}?detail=full` — auth required
 

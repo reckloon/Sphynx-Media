@@ -29,6 +29,10 @@ struct InfoController: Sendable {
                 events: true,
                 metadata: policy.advertised,
                 fields: Self.supportedItemFields,
+                browse: BrowseCapabilities(
+                    sorts: ["added", "name", "rating"],
+                    filters: ["genre", "year", "unwatched"]
+                ),
                 playstateReportInterval: configuration.playstateReportInterval
             )
         )

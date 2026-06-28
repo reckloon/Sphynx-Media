@@ -38,6 +38,21 @@ public enum MetadataAccess: OpenEnum {
     public var allowsRead: Bool { self == .read || self == .readWrite }
 }
 
+/// What the server's `GET /v1/items` browse endpoint supports, so a client can
+/// build its sort/filter affordances from the advertised contract instead of
+/// probing. Absent ⇒ the client assumes nothing and offers no typed sort/filter UI.
+public struct BrowseCapabilities: Codable, Hashable, Sendable {
+    /// Supported `sort` keys for a library's top level (e.g. `["added","name","rating"]`).
+    public var sorts: [String]
+    /// Supported filter query parameters (e.g. `["genre","unwatched","year"]`).
+    public var filters: [String]
+
+    public init(sorts: [String] = [], filters: [String] = []) {
+        self.sorts = sorts
+        self.filters = filters
+    }
+}
+
 /// Capability advertisement from `GET /v1/info`.
 ///
 /// Per the protocol: "absent = unsupported". Missing booleans decode to `false`,
@@ -69,6 +84,10 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// coverage, and a client must not assume any field is present (it falls back
     /// to "render whatever actually arrives").
     public var fields: [String]
+    /// What the browse endpoint (`GET /v1/items`) supports — sort keys + filter
+    /// params. Absent ⇒ the client offers no typed sort/filter UI. See
+    /// `BrowseCapabilities`.
+    public var browse: BrowseCapabilities?
     /// Preferred client playback-report cadence, in **seconds**. A client that
     /// reports progress periodically SHOULD use this interval; absent ⇒ the client
     /// falls back to the protocol default (~5s). Push-only: the server stores what
@@ -82,6 +101,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         events: Bool = false,
         metadata: [String: MetadataAccess] = [:],
         fields: [String] = [],
+        browse: BrowseCapabilities? = nil,
         playstateReportInterval: Double? = nil
     ) {
         self.search = search
@@ -90,6 +110,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.events = events
         self.metadata = metadata
         self.fields = fields
+        self.browse = browse
         self.playstateReportInterval = playstateReportInterval
     }
 
@@ -101,6 +122,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
         self.fields = try container.decodeIfPresent([String].self, forKey: .fields) ?? []
+        self.browse = try container.decodeIfPresent(BrowseCapabilities.self, forKey: .browse)
         self.playstateReportInterval = try container.decodeIfPresent(Double.self, forKey: .playstateReportInterval)
     }
 
@@ -118,7 +140,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, events, metadata, fields, playstateReportInterval
+        case search, playstate, candidates, events, metadata, fields, browse, playstateReportInterval
     }
 }
 

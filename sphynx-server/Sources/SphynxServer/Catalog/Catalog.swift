@@ -330,37 +330,10 @@ struct Catalog: Sendable {
     /// "group everything" behavior (no extra query work).
     func topLevelItems(
         libraryId: String, limit: Int, offset: Int,
-        sort: ItemSort = .added, ascending: Bool? = nil, genre: String? = nil
+        sort: ItemSort = .added, ascending: Bool? = nil, genre: String? = nil, year: Int? = nil
     ) async throws -> [ItemRecord] {
         try await db.writer.read { db in
-            let threshold = try Int.fetchOne(
-                db, sql: "SELECT collectionThreshold FROM library WHERE id = ?", arguments: [libraryId]
-            ) ?? 1
-
-            var request: QueryInterfaceRequest<ItemRecord>
-            if threshold > 1 {
-                // Sub-threshold collections (too few present members to group). A
-                // collection's member count is the number of items parented to it.
-                let subThreshold = """
-                    SELECT c.id FROM item c
-                    WHERE c.libraryId = :lib AND c.type = 'collection'
-                      AND (SELECT COUNT(*) FROM item m WHERE m.parentId = c.id) < :thr
-                    """
-                // Top level = the usual roots minus hidden collection tiles, plus the
-                // orphaned members of those hidden collections.
-                request = ItemRecord
-                    .filter(Column("libraryId") == libraryId)
-                    .filter(sql: """
-                        (parentId IS NULL AND NOT (type = 'collection' AND id IN (\(subThreshold))))
-                        OR parentId IN (\(subThreshold))
-                        """, arguments: ["lib": libraryId, "thr": threshold])
-            } else {
-                request = ItemRecord.filter(Column("libraryId") == libraryId && Column("parentId") == nil)
-            }
-            if let genre, !genre.isEmpty {
-                // genresJSON is a JSON array of strings, e.g. ["Action","Drama"].
-                request = request.filter(sql: "genresJSON LIKE ?", arguments: ["%\"\(genre)\"%"])
-            }
+            var request = try Self.topLevelRequest(db, libraryId: libraryId, genre: genre, year: year)
             // name defaults ascending; added/rating default descending (newest /
             // highest first). `dir` is a fixed literal — never user input.
             let dir = (ascending ?? (sort == .name)) ? "ASC" : "DESC"
@@ -371,6 +344,56 @@ struct Catalog: Sendable {
             }
             return try request.limit(limit + 1, offset: offset).fetchAll(db)
         }
+    }
+
+    /// Count of a library's top level matching the structural filters (genre/year),
+    /// i.e. the full set `topLevelItems` paginates — for `ItemsResponse.totalCount`.
+    /// Independent of pagination and of the per-user `unwatched` view-filter.
+    func countTopLevelItems(libraryId: String, genre: String? = nil, year: Int? = nil) async throws -> Int {
+        try await db.writer.read { db in
+            try Self.topLevelRequest(db, libraryId: libraryId, genre: genre, year: year).fetchCount(db)
+        }
+    }
+
+    /// The top-level browse filter — collection threshold + optional genre/year —
+    /// without ordering or pagination. Shared by `topLevelItems` (adds sort + limit)
+    /// and `countTopLevelItems` (counts) so the two never diverge. Static so it has
+    /// no actor isolation and runs inside a database read closure.
+    private static func topLevelRequest(
+        _ db: Database, libraryId: String, genre: String?, year: Int?
+    ) throws -> QueryInterfaceRequest<ItemRecord> {
+        let threshold = try Int.fetchOne(
+            db, sql: "SELECT collectionThreshold FROM library WHERE id = ?", arguments: [libraryId]
+        ) ?? 1
+
+        var request: QueryInterfaceRequest<ItemRecord>
+        if threshold > 1 {
+            // Sub-threshold collections (too few present members to group). A
+            // collection's member count is the number of items parented to it.
+            let subThreshold = """
+                SELECT c.id FROM item c
+                WHERE c.libraryId = :lib AND c.type = 'collection'
+                  AND (SELECT COUNT(*) FROM item m WHERE m.parentId = c.id) < :thr
+                """
+            // Top level = the usual roots minus hidden collection tiles, plus the
+            // orphaned members of those hidden collections.
+            request = ItemRecord
+                .filter(Column("libraryId") == libraryId)
+                .filter(sql: """
+                    (parentId IS NULL AND NOT (type = 'collection' AND id IN (\(subThreshold))))
+                    OR parentId IN (\(subThreshold))
+                    """, arguments: ["lib": libraryId, "thr": threshold])
+        } else {
+            request = ItemRecord.filter(Column("libraryId") == libraryId && Column("parentId") == nil)
+        }
+        if let genre, !genre.isEmpty {
+            // genresJSON is a JSON array of strings, e.g. ["Action","Drama"].
+            request = request.filter(sql: "genresJSON LIKE ?", arguments: ["%\"\(genre)\"%"])
+        }
+        if let year {
+            request = request.filter(Column("year") == year)
+        }
+        return request
     }
 
     /// Top-level items across all libraries, newest first — the "Recently Added"

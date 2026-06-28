@@ -122,6 +122,29 @@ struct BrowseFlowTests {
         }
     }
 
+    @Test("totalCount + pageSize reflect the full set and the clamp, not the page")
+    func totalCountAndPageSize() async throws {
+        try await withScannedLibrary { client, token, libraryId, sourceId in
+            _ = try await client.execute(uri: "/v1/admin/sources/\(sourceId)/scan", method: .post, headers: jsonHeaders(bearer: token)) { $0 }
+
+            // A page smaller than the set: totalCount is the whole set (3), not the
+            // page (2); pageSize echoes the clamped limit the server applied.
+            let first: ItemsResponse = try await client.execute(
+                uri: "/v1/items?parent=\(libraryId)&limit=2", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(first.items.count == 2)
+            #expect(first.totalCount == 3)
+            #expect(first.pageSize == 2)
+
+            // The genre/year filter narrows totalCount: only Sintel (2010).
+            let byYear: ItemsResponse = try await client.execute(
+                uri: "/v1/items?parent=\(libraryId)&year=2010", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(byYear.items.map(\.title) == ["Sintel"])
+            #expect(byYear.totalCount == 1)
+        }
+    }
+
     @Test("re-scanning the same manifest is idempotent")
     func rescanIdempotent() async throws {
         try await withScannedLibrary { client, token, _, sourceId in
