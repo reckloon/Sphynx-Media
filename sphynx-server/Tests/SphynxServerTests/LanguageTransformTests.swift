@@ -88,6 +88,48 @@ struct LanguageTransformTests {
         }
     }
 
+    @Test("a foreign title normalised on scan is not reverted by a re-scan")
+    func foreignTitleSurvivesRescan() async throws {
+        let manifestURL = "stub://lang"
+        let manifestJSON = Data("""
+        { "items": [
+            { "key": "Бэтмен.1989.mkv", "title": "Бэтмен", "type": "movie", "container": "mkv", "year": 1989 }
+        ] }
+        """.utf8)
+        let app = try await buildApplication(
+            configuration: testConfiguration(),
+            httpFetcher: StubFetcher([manifestURL: manifestJSON]),
+            tmdbClient: stubTMDB
+        )
+        try await app.test(.router) { client in
+            let token = try await login(client)
+            let library: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(CreateLibraryRequest(title: "Movies", kind: "movies"))
+            ) { try $0.decoded() }
+            let source: SourceResponse = try await client.execute(
+                uri: "/v1/admin/sources", method: .post, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(CreateSourceRequest(label: "CDN", driver: "http", baseURL: "https://cdn.example", headers: nil, libraryId: library.id, manifestURL: manifestURL))
+            ) { try $0.decoded() }
+
+            func scanTitle() async throws -> String {
+                _ = try await client.execute(
+                    uri: "/v1/admin/sources/\(source.id)/scan", method: .post, headers: jsonHeaders(bearer: token)
+                ) { $0 }
+                let page: ItemsResponse = try await client.execute(
+                    uri: "/v1/items?parent=\(library.id)", method: .get, headers: jsonHeaders(bearer: token)
+                ) { try $0.decoded() }
+                return try #require(page.items.first).title
+            }
+
+            // First scan enriches and normalises the parsed "Бэтмен" to "Batman".
+            #expect(try await scanTitle() == "Batman")
+            // Re-scan: the manifest still says "Бэтмен", but the movie-group reconcile
+            // must not clobber the enriched display title back to the parsed name.
+            #expect(try await scanTitle() == "Batman")
+        }
+    }
+
     @Test("a manually-edited title is locked and survives re-enrichment")
     func editedTitleSurvives() async throws {
         let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)

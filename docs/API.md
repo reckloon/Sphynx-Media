@@ -1379,6 +1379,19 @@ resolved library (admins always pass), so a non-admin editor can use it — this
 what powers the **Library correction** section of the `/user` page as well as the
 admin **Items** tab. `limit` defaults to 250 (max 500).
 
+Two optional filters search the **whole catalog** instead of one parent's children
+(so `parent` becomes optional when either is given), spanning every library the
+caller can edit:
+
+- `search=<text>` — case-insensitive title substring match.
+- `needsAttention=true` — only items still missing metadata (unenriched), excluding
+  the extra kinds that never enrich (`trailer`/`featurette`/`deletedScene`/`behindTheScenes`).
+
+They combine. Example: `GET /v1/admin/items?needsAttention=true` lists everything
+that still needs identifying/enriching across all libraries; `?search=matrix` finds
+every title containing "matrix". This drives the search box and **Needs metadata**
+filter in the admin **Items** tab.
+
 ### `GET /v1/admin/items/{itemId}` — `metadata.edit`
 
 Read one item with its current **lock state**, for the correction UI. **200**

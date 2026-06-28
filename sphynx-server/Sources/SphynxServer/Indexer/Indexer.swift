@@ -98,7 +98,7 @@ struct Indexer: Sendable {
 
             var record: ItemRecord
             var changed = false
-            if let existing = try await catalog.seriesItem(libraryId: tvLib ?? "", title: title) {
+            if let existing = try await catalog.seriesItem(title: title) {
                 record = existing
                 if record.year == nil, let year { record.year = year; changed = true }
             } else {
@@ -177,7 +177,7 @@ struct Indexer: Sendable {
             let cacheKey = "\(HeuristicIdentifier.normalize(title))|\(year.map(String.init) ?? "")"
             if let cached = movieParentCache[cacheKey] { return cached }
             let record: ItemRecord
-            if let existing = try await catalog.movieItem(libraryId: movieLib ?? "", title: title, year: year) {
+            if let existing = try await catalog.movieItem(title: title, year: year) {
                 record = existing
             } else {
                 record = try await catalog.createItem(
@@ -338,7 +338,14 @@ struct Indexer: Sendable {
             if let canonical = matched.first {
                 var rec = canonical
                 let locked = rec.lockedFields()
-                let newTitle = locked.contains(LockableField.title) ? rec.title : group.title
+                // The display title belongs to enrichment once the item is identified:
+                // it normalizes a foreign-named release to TMDB's canonical name (e.g.
+                // "Тачки 2" → "Cars 2"). Re-stamping the raw parsed `group.title` here
+                // would clobber that on every re-scan, and enrichment then skips the
+                // already-enriched row — so the canonical name only sticks if we leave an
+                // enriched title alone. Stamp the parsed title only on a fresh, unlocked,
+                // not-yet-enriched row.
+                let newTitle = (locked.contains(LockableField.title) || rec.enrichedAt != nil) ? rec.title : group.title
                 let newYear = locked.contains(LockableField.year) ? rec.year : (group.year ?? rec.year)
                 let newType = entryType ?? rec.type
                 // Compare versions structurally (not by JSON string): the encoder's

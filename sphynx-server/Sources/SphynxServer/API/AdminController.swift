@@ -123,12 +123,29 @@ struct AdminController: Sendable {
         return Response(status: .noContent)
     }
 
+    /// The video-only library kinds the reference server manages, each with a
+    /// fixed display name. The protocol's `LibraryKind` stays deliberately wider
+    /// (homeVideos, musicVideos, boxSets, …); the server intentionally exposes
+    /// just these three — it serves no audio — as on/off toggles in the admin
+    /// UI, one library per kind with a fixed name.
+    static let serverLibraryKinds: [(kind: String, title: String)] = [
+        ("movies", "Movies"),
+        ("tvShows", "TV Shows"),
+        ("collection", "Collections"),
+    ]
+
     @Sendable
     func createLibrary(_ request: Request, context: SphynxRequestContext) async throws -> LibraryResponse {
         try requireAdmin(context)
         let body = try await request.decode(as: CreateLibraryRequest.self, context: context)
-        guard !body.title.isEmpty else { throw SphynxError.badRequest("title is required") }
-        let record = try await catalog.createLibrary(title: body.title, kind: body.kind ?? "other")
+        guard let canon = Self.serverLibraryKinds.first(where: { $0.kind == body.kind }) else {
+            throw SphynxError.badRequest("Unsupported library kind. Allowed: movies, tvShows, collection.")
+        }
+        // One library per kind: these are fixed-name on/off toggles, not free-form.
+        guard try await catalog.libraries().allSatisfy({ $0.kind != canon.kind }) else {
+            throw SphynxError.badRequest("A \(canon.title) library already exists.")
+        }
+        let record = try await catalog.createLibrary(title: canon.title, kind: canon.kind)
         await notifyLibrariesChanged([record.id], action: "added")
         return LibraryResponse(record)
     }
@@ -445,10 +462,33 @@ struct AdminController: Sendable {
     func listItems(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemsResponse {
         let identity = try context.requireIdentity()
         let query = try request.uri.decodeQuery(as: AdminItemsQuery.self, context: context)
+        let limit = min(max(query.limit ?? 250, 1), 500)
+
+        // Catalog-wide search / "needs metadata" filter: spans every library the
+        // caller can edit, so you can find a title (or everything still unenriched)
+        // without first drilling into a library.
+        let searchTerm = query.search?.trimmingCharacters(in: .whitespaces)
+        let needsAttention = query.needsAttention == true
+        if (searchTerm?.isEmpty == false) || needsAttention {
+            let records = try await catalog.searchItems(
+                titleQuery: searchTerm, unenrichedOnly: needsAttention, limit: limit)
+            // Admins edit everywhere; otherwise keep only items in editable libraries.
+            let editsEverywhere = identity.has(Permissions.metadataEdit)
+            var allowed: [ItemRecord] = []
+            for record in records {
+                if editsEverywhere {
+                    allowed.append(record)
+                } else {
+                    let lib = try await catalog.owningLibraryId(of: record)
+                    if identity.has(Permissions.metadataEdit, inLibrary: lib) { allowed.append(record) }
+                }
+            }
+            return AdminItemsResponse(items: allowed.map { $0.toProtocol(full: true) })
+        }
+
         guard let parent = query.parent, !parent.isEmpty else {
             throw SphynxError.badRequest("query parameter 'parent' is required")
         }
-        let limit = min(max(query.limit ?? 250, 1), 500)
         let records: [ItemRecord]
         let libraryId: String?
         if try await catalog.library(id: parent) != nil {
@@ -569,7 +609,33 @@ struct AdminController: Sendable {
         guard let refreshed = try await catalog.item(id: itemId) else {
             throw SphynxError.serverError("Item vanished after enrichment")
         }
+        // Re-pointing a SERIES must reach its children: each season/episode carries
+        // the show's TMDB id plus a (season, episode) index, so it only re-enriches
+        // against the new show once that stored id is updated. Without this, "Fix"
+        // corrected the series tile but left every season and episode pinned to the
+        // old show's metadata.
+        if refreshed.type == "series" {
+            try await cascadeSeriesIdentity(of: refreshed)
+        }
         return refreshed.toProtocol(full: true)
+    }
+
+    /// Push a re-identified series' identity down onto its seasons and episodes,
+    /// then force-re-enrich each so its overview/images/title come from the new
+    /// show. Seasons are the series' direct children; episodes are fetched across
+    /// all seasons. The backdrop (hero art) is inherited from the show.
+    private func cascadeSeriesIdentity(of series: ItemRecord) async throws {
+        let enrichment = try requireEnrichment()
+        var children = try await catalog.childItems(parentId: series.id, limit: 10_000, offset: 0)
+            .filter { $0.type == "season" }
+        children += try await catalog.episodes(seriesId: series.id)
+        for var child in children {
+            child.tmdbId = series.tmdbId
+            child.seriesTitle = series.seriesTitle ?? series.title
+            child.backdropImage = series.backdropImage
+            try await catalog.updateItem(child)
+            await enrichment.process(child, force: true)
+        }
     }
 
     /// Force re-identification + enrichment of one item. Part of metadata
@@ -627,7 +693,9 @@ struct AdminController: Sendable {
 // MARK: - Admin DTOs (server-specific, not part of the wire protocol)
 
 struct CreateLibraryRequest: Codable, Sendable {
-    var title: String
+    // Title is derived server-side from `kind` (fixed names), so callers only
+    // need to send the kind. Kept optional/decodable for backward compatibility.
+    var title: String?
     var kind: String?
 }
 
@@ -830,6 +898,12 @@ struct ResetPasswordRequest: Codable, Sendable {
 struct AdminItemsQuery: Codable, Sendable {
     var parent: String?
     var limit: Int?
+    /// Catalog-wide title search (substring, case-insensitive). When set, results
+    /// span every library the caller can edit rather than one parent's children.
+    var search: String?
+    /// Surface only items that still need metadata (unenriched, excluding extras
+    /// that never enrich). Combinable with `search`.
+    var needsAttention: Bool?
 }
 
 /// The raw (ungrouped) children for the item-correction browser.

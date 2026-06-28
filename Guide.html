@@ -1038,6 +1038,10 @@ AUTH=<span class="str">"Authorization: Bearer $TOKEN"</span></code></pre>
        "manifestURL":"https://cdn.example/manifest.json" }'</span>
 <span class="cmt"># → { "id": "src_…", "label": "My CDN", "driver": "http", "config": { … } }</span></code></pre>
 
+<div class="callout tip">
+  <p><strong>In the web admin you don't paste a library id.</strong> Turn on the fixed <strong>Movies</strong> / <strong>TV Shows</strong> libraries, then on each source just tick the content types it holds — Sphynx routes movies and episodes to the matching enabled library for you. At the API this is the <code>libraryMap</code> <code>{ "movie":"lib_…", "tv":"lib_…" }</code> (a source can feed both at once), or a single <code>libraryId</code> as shown above.</p>
+</div>
+
 <p>The manifest is a simple document; <code>key</code> is resolved into a direct URL (relative to <code>baseURL</code>, or absolute):</p>
 <pre><code><span class="key">{ "items": [
     { "key": "BigBuckBunny_320x180.mp4", "title": "Big Buck Bunny", "type": "movie", "year": 2008 },
@@ -1217,6 +1221,7 @@ curl -s <span class="str">"localhost:9410/v1/items?parent=lib_…"</span> -H <sp
   <li><strong>Absolute single-digit episodes</strong> with no season folder and no group tag are intentionally left as movies, to avoid hijacking a movie that ends in a small number. Put such anime in a <code>Season 1</code> folder if you rely on absolute numbering.</li>
   <li><strong>Date episodes</strong> use a synthetic <code>MMDD</code> episode ordinal; the underlying air date is preserved as the value, but it is not a broadcaster's official episode number.</li>
   <li>Identification feeds a TMDB search whose confidence is scored on title + year agreement, so a correct year materially improves the match — and the cleaner your folders, the better the result.</li>
+  <li><strong>Release numbering can run ahead of TMDB.</strong> When a release splits a two-part finale across files (<code>S06E21</code> + <code>S06E22</code>, or a <code>… (2)</code> part file) or numbers a special TMDB lists elsewhere, the file's episode number can exceed what that season actually has on TMDB. Such an episode stays fully <em>indexed and playable</em> but unenriched — it keeps its filename title and gets no art/overview, because there is no matching TMDB episode to copy. Surface these in the admin <strong>Items</strong> view (type in the search box, or tick <em>Needs metadata</em> to list everything still missing data), then edit and lock the fields by hand — or rename the files to match TMDB's numbering.</li>
 </ul>
 <div class="callout tip">
   <p><strong>The single best habit:</strong> name the per-title folder <code>Title (Year)</code> and put episodes under <code>Season N</code>. The parser will then succeed regardless of how messy — or how foreign — the individual filenames are.</p>

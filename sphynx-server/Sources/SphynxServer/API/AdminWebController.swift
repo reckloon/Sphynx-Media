@@ -51,6 +51,10 @@ enum AdminWebController {
   textarea { resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
   input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  .scanrow { display:flex; gap:22px; align-items:center; margin-top:4px; }
+  .scanopt { display:flex; align-items:center; gap:7px; margin:0; color:var(--fg); font-size:13.5px; cursor:pointer; }
+  .scanopt input { margin:0; }
+  .scanopt input:disabled + *, .scanopt:has(input:disabled) { color:var(--muted); cursor:not-allowed; }
   .hint { font-size:12px; color:var(--muted); margin-top:6px; }
   button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#0b1020; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
   button.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); }
@@ -234,25 +238,16 @@ enum AdminWebController {
       <!-- ============ LIBRARIES (own their storage sources) ============ -->
       <section id="tab-libraries">
         <h2>Libraries</h2>
-        <p class="hint" style="margin-top:0;">A library is what apps browse. Connect storage sources below and map each to a library; <strong>Scan</strong> imports its titles.</p>
+        <p class="hint" style="margin-top:0;">A library is what apps browse. Sphynx serves <strong>video only</strong>, so it offers three fixed library types — flip on the ones you want. Then connect storage sources below, <strong>tick the content types each one holds</strong>, and <strong>Scan</strong> to import titles. Turning a library <strong>off deletes it and everything in it</strong>.</p>
         <div id="lib-list"></div>
-        <div class="addbox">
-          <div class="group-title">Add a library</div>
-          <div class="row">
-            <div><label for="lib-title">Title</label><input id="lib-title" placeholder="Movies"></div>
-            <div><label for="lib-kind">Kind</label>
-              <select id="lib-kind"><option>movies</option><option>tvShows</option><option>homeVideos</option><option>musicVideos</option><option>boxSets</option><option>collection</option><option>other</option></select></div>
-          </div>
-          <button id="lib-add-btn">Add library</button>
-          <div id="lib-msg" class="msg"></div>
-        </div>
+        <div id="lib-msg" class="msg"></div>
 
         <div class="addbox">
           <div class="bar" style="margin-bottom:8px;">
             <div class="group-title" style="margin:0;">Storage sources</div>
             <button id="scan-all-btn" class="mini secondary">Scan all now</button>
           </div>
-          <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, map it to a library, then scan. You can add several sources — any mix of drivers — to the same library, and a single source can feed a Movies and a TV library at once. (The <strong>Local</strong> driver is for testing on this machine only; Sphynx doesn't serve files — use SMB/WebDAV/HTTP to stream to other devices.)</p>
+          <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, tick whether it holds Movies, TV Shows, or both, then scan. You can add several sources — any mix of drivers — and a single source can feed both the Movies and TV libraries at once. (The <strong>Local</strong> driver is for testing on this machine only; Sphynx doesn't serve files — use SMB/WebDAV/HTTP to stream to other devices.)</p>
           <div class="subtabs" id="stor-subtabs">
             <button class="subtab active" data-drv="local">Local</button>
             <button class="subtab" data-drv="http">HTTP</button>
@@ -271,9 +266,10 @@ enum AdminWebController {
               <p class="hint">An absolute path the server can read, e.g. <code>/srv/media</code>.</p>
               <p class="hint">⚠️ <strong>Local is for testing on this machine only — Sphynx doesn't serve the files.</strong> They resolve to a <code>file://</code> path that only plays on the server host. To stream to phones, TVs, or other devices, run an SMB share, WebDAV, or an HTTP file server over your folder and add it with that driver instead.</p>
               <p class="hint">💡 <strong><code>.strm</code> files work in Local mode</strong> and are the exception to the warning above: a <code>.strm</code> file's contents are a URL, so it resolves to that URL (not a <code>file://</code> path) and <em>does</em> stream to other devices. Name them after the real media — <code>Movie.mkv.strm</code> indexes as an <code>mkv</code> — and put one URL per file.</p>
-              <div class="row">
-                <div><label for="local-lib-movie">Movies library</label><select id="local-lib-movie" class="lib-movie"></select></div>
-                <div><label for="local-lib-tv">TV library</label><select id="local-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="local-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="local-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="local-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="local-refresh" type="number" min="0" value="0">
               <button data-add="local">Add source</button><div id="local-msg" class="msg"></div>
@@ -288,9 +284,10 @@ enum AdminWebController {
               <label for="http-baseurl">Base media URL</label><input id="http-baseurl" placeholder="https://cdn.example">
               <label for="http-manifest">Manifest URL <span class="muted">(JSON listing)</span></label><input id="http-manifest" placeholder="https://cdn.example/manifest.json">
               <label for="http-auth">Authorization header <span class="muted">(optional)</span></label><input id="http-auth" placeholder="Bearer …">
-              <div class="row">
-                <div><label for="http-lib-movie">Movies library</label><select id="http-lib-movie" class="lib-movie"></select></div>
-                <div><label for="http-lib-tv">TV library</label><select id="http-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="http-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="http-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="http-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="http-refresh" type="number" min="0" value="0">
               <button data-add="http">Add source</button><div id="http-msg" class="msg"></div>
@@ -308,9 +305,10 @@ enum AdminWebController {
                 <div><label for="webdav-password">Password</label><input id="webdav-password" type="password" autocomplete="new-password"></div>
               </div>
               <p class="hint">Leave the username blank and put a bearer token in the password field to authenticate with a token instead.</p>
-              <div class="row">
-                <div><label for="webdav-lib-movie">Movies library</label><select id="webdav-lib-movie" class="lib-movie"></select></div>
-                <div><label for="webdav-lib-tv">TV library</label><select id="webdav-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="webdav-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="webdav-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="webdav-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="webdav-refresh" type="number" min="0" value="0">
               <button data-add="webdav">Add source</button><div id="webdav-msg" class="msg"></div>
@@ -331,9 +329,10 @@ enum AdminWebController {
                 <div><label for="smb-username">Username</label><input id="smb-username" autocomplete="off"></div>
                 <div><label for="smb-password">Password</label><input id="smb-password" type="password" autocomplete="new-password"></div>
               </div>
-              <div class="row">
-                <div><label for="smb-lib-movie">Movies library</label><select id="smb-lib-movie" class="lib-movie"></select></div>
-                <div><label for="smb-lib-tv">TV library</label><select id="smb-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="smb-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="smb-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="smb-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="smb-refresh" type="number" min="0" value="0">
               <button data-add="smb">Add source</button><div id="smb-msg" class="msg"></div>
@@ -354,9 +353,10 @@ enum AdminWebController {
                 <div><label for="ftp-username">Username</label><input id="ftp-username" autocomplete="off"></div>
                 <div><label for="ftp-password">Password</label><input id="ftp-password" type="password" autocomplete="new-password"></div>
               </div>
-              <div class="row">
-                <div><label for="ftp-lib-movie">Movies library</label><select id="ftp-lib-movie" class="lib-movie"></select></div>
-                <div><label for="ftp-lib-tv">TV library</label><select id="ftp-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="ftp-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="ftp-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="ftp-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="ftp-refresh" type="number" min="0" value="0">
               <button data-add="ftp">Add source</button><div id="ftp-msg" class="msg"></div>
@@ -373,9 +373,10 @@ enum AdminWebController {
               <label for="torbox-categories">Categories <span class="muted">(optional)</span></label><input id="torbox-categories" placeholder="torrents,usenet,webdl">
               <p class="hint">Which buckets to index — any of <code>torrents</code>, <code>usenet</code>, <code>webdl</code>. Blank indexes all three.</p>
               <label for="torbox-linkttl">Link freshness seconds <span class="muted">(optional)</span></label><input id="torbox-linkttl" type="number" min="0" placeholder="3600">
-              <div class="row">
-                <div><label for="torbox-lib-movie">Movies library</label><select id="torbox-lib-movie" class="lib-movie"></select></div>
-                <div><label for="torbox-lib-tv">TV library</label><select id="torbox-lib-tv" class="lib-tv"></select></div>
+              <label>Scan this source for</label>
+              <div class="row scanrow">
+                <label class="scanopt"><input type="checkbox" id="torbox-scan-movie" class="lib-movie-cb" checked> Movies</label>
+                <label class="scanopt"><input type="checkbox" id="torbox-scan-tv" class="lib-tv-cb" checked> TV Shows</label>
               </div>
               <label for="torbox-refresh">Auto-refresh every (minutes, 0 = manual)</label><input id="torbox-refresh" type="number" min="0" value="0">
               <p class="hint">TorBox allows 300 requests/min per token; even frequent refreshes stay well under it.</p>
@@ -405,13 +406,15 @@ enum AdminWebController {
       <!-- ============ ITEMS (admin metadata correction) ============ -->
       <section id="tab-items" hidden>
         <h2>Item correction</h2>
-        <p class="hint" style="margin-top:0;">Browse a library, open a title, and fix its metadata. Any field you edit is <strong>locked</strong> 🔒 so a re-scan or refresh won't overwrite it. Re-identify points the title at the right TMDB id.</p>
+        <p class="hint" style="margin-top:0;">Search every title, filter to the ones still missing metadata, or browse a library. Open a title and fix its metadata — any field you edit is <strong>locked</strong> 🔒 so a re-scan or refresh won't overwrite it. Re-identify points the title at the right TMDB id.</p>
         <div class="toolbar">
-          <label style="margin:0;">Library</label>
-          <select id="it-lib" style="width:auto; min-width:180px;"></select>
+          <input id="it-search" placeholder="Search all titles…" style="flex:1; min-width:160px;">
+          <label class="scanopt" style="margin:0;" title="Show only items still missing TMDB metadata (excludes extras that never enrich)"><input type="checkbox" id="it-needs"> Needs metadata</label>
+          <span class="meta">or browse</span>
+          <select id="it-lib" style="width:auto; min-width:150px;"></select>
         </div>
         <div id="it-crumbs" class="crumbs"></div>
-        <div id="it-list"><div class="empty">Pick a library to browse its titles.</div></div>
+        <div id="it-list"><div class="empty">Search, tick <strong>Needs metadata</strong>, or pick a library to begin.</div></div>
 
         <div id="it-editor" class="addbox" hidden>
           <div class="group-title">Editing <span id="it-ed-title" class="muted"></span></div>
@@ -743,39 +746,76 @@ enum AdminWebController {
       libraries = d.libraries || []; renderLibraries(); refreshLibPickers();
     });
   }
+  var SERVER_LIB_TYPES = [
+    { kind: 'movies', title: 'Movies' },
+    { kind: 'tvShows', title: 'TV Shows' },
+    { kind: 'collection', title: 'Collections' }
+  ];
   function renderLibraries() {
     if (!$('#lib-list')) return;
-    $('#lib-list').innerHTML = libraries.length ? libraries.map(function (l) {
-      var c = libCounts[l.id];
-      var counts = c ? '<span class="meta">' + c.indexed + ' items · ' + c.enriched + ' enriched</span>' : '';
-      return '<div class="item"><span><strong>' + esc(l.title) + '</strong> <span class="meta">' + esc(l.kind) + '</span> ' + counts + '</span>' +
-        '<span class="acts"><label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. To turn box sets off, set this higher than any collection (e.g. 999) so nothing ever groups.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies <span class="meta" style="opacity:.75">(high number = off)</span></label> <button class="mini" data-scan-lib="' + esc(l.id) + '" title="Re-scan every source feeding this library">Refresh</button> <button class="mini danger" data-del-lib="' + esc(l.id) + '">Delete</button></span></div>';
-    }).join('') : '<div class="empty">No libraries yet. Add one below.</div>';
+    $('#lib-list').innerHTML = SERVER_LIB_TYPES.map(function (t) {
+      var l = libraries.filter(function (x) { return x.kind === t.kind; })[0];
+      var on = !!l;
+      var c = on ? libCounts[l.id] : null;
+      var counts = c ? '<span class="meta">' + c.indexed + ' items · ' + c.enriched + ' enriched</span>'
+        : (on ? '<span class="meta">empty</span>' : '<span class="meta">off</span>');
+      var acts = '';
+      if (on && t.kind === 'movies') {
+        acts += '<label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. Set higher than any collection (e.g. 999) to never group.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies</label> ';
+      }
+      if (on) {
+        acts += '<button class="mini" data-scan-lib="' + esc(l.id) + '" title="Re-scan every source feeding this library">Refresh</button> ';
+      }
+      acts += '<label class="meta" title="Toggle this library on or off. Turning it off deletes the library and everything in it."><input type="checkbox" data-lib-toggle="' + t.kind + '"' + (on ? ' data-lib-id="' + esc(l.id) + '" checked' : '') + '> ' + (on ? 'On' : 'Off') + '</label>';
+      return '<div class="item"><span><strong>' + esc(t.title) + '</strong> ' + counts + '</span><span class="acts">' + acts + '</span></div>';
+    }).join('');
   }
   function refreshLibPickers() {
-    var opts = '<option value="">— none —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join('');
-    Array.prototype.forEach.call(document.querySelectorAll('.lib-movie, .lib-tv'), function (sel) { var cur = sel.value; sel.innerHTML = opts; sel.value = cur; });
+    // Enable a source's content-type checkbox only when that library type is on;
+    // disable (and clear) it otherwise so you can't route into a library that
+    // doesn't exist.
+    var movieOn = libraries.some(function (l) { return l.kind === 'movies'; });
+    var tvOn = libraries.some(function (l) { return l.kind === 'tvShows'; });
+    Array.prototype.forEach.call(document.querySelectorAll('.lib-movie-cb'), function (cb) {
+      cb.disabled = !movieOn; if (!movieOn) cb.checked = false;
+      cb.parentNode.title = movieOn ? '' : 'Turn on the Movies library first';
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.lib-tv-cb'), function (cb) {
+      cb.disabled = !tvOn; if (!tvOn) cb.checked = false;
+      cb.parentNode.title = tvOn ? '' : 'Turn on the TV Shows library first';
+    });
     var itLib = $('#it-lib'); if (itLib) { var cur = itLib.value; itLib.innerHTML = '<option value="">— pick —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join(''); itLib.value = cur; }
   }
-  function addLibrary() {
+  function toggleLibrary(kind, on, id, checkbox) {
     msg('lib-msg', '');
-    var title = $('#lib-title').value;
-    if (!title) { msg('lib-msg', 'Title is required.'); return; }
-    api('/v1/admin/libraries', 'POST', { title: title, kind: $('#lib-kind').value }).then(function (res) {
-      if (res.status === 401) { logout(); return; }
-      if (!res.ok) { msg('lib-msg', 'Could not add library.'); return; }
-      $('#lib-title').value = ''; msg('lib-msg', 'Added.', true); loadLibraries();
-    });
+    if (on) {
+      api('/v1/admin/libraries', 'POST', { kind: kind }).then(function (res) {
+        if (res.status === 401) { logout(); return; }
+        if (!res.ok) { msg('lib-msg', 'Could not enable that library.'); if (checkbox) checkbox.checked = false; return; }
+        loadLibraries();
+      }).catch(function () { if (checkbox) checkbox.checked = false; });
+    } else {
+      var t = (SERVER_LIB_TYPES.filter(function (x) { return x.kind === kind; })[0] || {}).title || 'this';
+      if (!confirm('Turn off the ' + t + ' library? This deletes the library and every item in it.')) { if (checkbox) checkbox.checked = true; return; }
+      api('/v1/admin/libraries/' + id, 'DELETE').then(function (res) {
+        if (res.status === 401) { logout(); return; }
+        loadLibraries(); loadSources();
+      });
+    }
   }
 
   // ---- storage sources (per-driver) ----
   var STORAGE_DRIVERS = ['local', 'http', 'webdav', 'smb', 'ftp', 'torbox'];
   var storActive = 'local';
   function libraryMapFor(driver) {
+    // Libraries are fixed on/off types now: a source ticks the content types it
+    // holds and routes to whichever of those libraries is enabled.
     var map = {};
-    var mv = $('#' + driver + '-lib-movie'), tv = $('#' + driver + '-lib-tv');
-    if (mv && mv.value) map.movie = mv.value;
-    if (tv && tv.value) map.tv = tv.value;
+    var movieLib = libraries.filter(function (l) { return l.kind === 'movies'; })[0];
+    var tvLib = libraries.filter(function (l) { return l.kind === 'tvShows'; })[0];
+    var mv = $('#' + driver + '-scan-movie'), tv = $('#' + driver + '-scan-tv');
+    if (mv && mv.checked && movieLib) map.movie = movieLib.id;
+    if (tv && tv.checked && tvLib) map.tv = tvLib.id;
     return Object.keys(map).length ? map : null;
   }
   function buildSourceBody(driver) {
@@ -849,10 +889,10 @@ enum AdminWebController {
       }).catch(function () { msg('lib-msg', 'Refresh failed.'); });
       return;
     }
-    var dl = e.target.getAttribute('data-del-lib');
-    if (dl) { if (confirm('Delete this library and its items?')) api('/v1/admin/libraries/' + dl, 'DELETE').then(function () { loadLibraries(); loadSources(); }); }
   };
   $('#lib-list').onchange = function (e) {
+    var tk = e.target.getAttribute('data-lib-toggle');
+    if (tk !== null) { toggleLibrary(tk, e.target.checked, e.target.getAttribute('data-lib-id'), e.target); return; }
     var id = e.target.getAttribute('data-thr-lib'); if (!id) return;
     var v = parseInt(e.target.value, 10); if (isNaN(v) || v < 0) v = 0;
     api('/v1/admin/libraries/' + id, 'PATCH', { collectionThreshold: v }).then(function () { loadLibraries(); });
@@ -949,7 +989,31 @@ enum AdminWebController {
   var itEditing = null;
   var itOriginal = {};  // loaded field values, so Save only locks what changed
   function enterItems() { refreshLibPickers(); }
-  $('#it-lib').onchange = function () { itNav = []; var id = $('#it-lib').value; if (id) { itNav.push({ id: id, title: $('#it-lib').selectedOptions[0].textContent }); loadItemList(); } else { $('#it-list').innerHTML = '<div class="empty">Pick a library to browse its titles.</div>'; $('#it-crumbs').innerHTML = ''; } };
+  var EMPTY_ITEMS = '<div class="empty">Search, tick <strong>Needs metadata</strong>, or pick a library to begin.</div>';
+  $('#it-lib').onchange = function () {
+    itNav = []; closeEditor();
+    var id = $('#it-lib').value;
+    if (id) { $('#it-search').value = ''; $('#it-needs').checked = false; itNav.push({ id: id, title: $('#it-lib').selectedOptions[0].textContent }); loadItemList(); }
+    else { $('#it-list').innerHTML = EMPTY_ITEMS; $('#it-crumbs').innerHTML = ''; }
+  };
+  // Catalog-wide search + "needs metadata" filter (no library drill-down needed).
+  var itSearchT = null;
+  function runItemSearch() {
+    var term = $('#it-search').value.trim();
+    var needs = $('#it-needs').checked;
+    if (!term && !needs) { itNav = []; $('#it-crumbs').innerHTML = ''; $('#it-list').innerHTML = EMPTY_ITEMS; return; }
+    itNav = []; closeEditor(); $('#it-lib').value = '';
+    var qs = '/v1/admin/items?limit=500';
+    if (term) qs += '&search=' + encodeURIComponent(term);
+    if (needs) qs += '&needsAttention=true';
+    $('#it-crumbs').innerHTML = '<span class="meta">' + (needs ? 'Items needing metadata' : 'Search results') + (term ? ' for “' + esc(term) + '”' : '') + '</span>';
+    api(qs, 'GET').then(function (res) { return res.ok ? res.json() : { items: [] }; }).then(function (d) {
+      var items = d.items || [];
+      $('#it-list').innerHTML = items.length ? items.map(itemRow).join('') : '<div class="empty">No matching titles.</div>';
+    });
+  }
+  $('#it-search').oninput = function () { clearTimeout(itSearchT); itSearchT = setTimeout(runItemSearch, 250); };
+  $('#it-needs').onchange = runItemSearch;
   // Renders the raw, ungrouped catalog hierarchy (a 1-to-1 view of the indexed
   // source tree) — collections are openable folders, movies appear individually.
   function itemRow(it) {
@@ -1225,7 +1289,6 @@ enum AdminWebController {
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
   $('#scan-all-btn').onclick = scanAllSources;
-  $('#lib-add-btn').onclick = addLibrary;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
   $('#mp-probe-btn').onclick = runProbe;

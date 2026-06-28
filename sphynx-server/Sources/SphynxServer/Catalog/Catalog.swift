@@ -262,11 +262,18 @@ struct Catalog: Sendable {
         }
     }
 
-    /// Find a series container in a library by exact title (for indexer dedup).
-    func seriesItem(libraryId: String, title: String) async throws -> ItemRecord? {
+    /// Find a series container by its parsed name (for indexer dedup). Matches on
+    /// `seriesTitle` — the stable name the parser derives from the filename — NOT the
+    /// display `title`, which enrichment rewrites to TMDB's canonical name. When the
+    /// parsed name differs from the canonical one (a foreign-language or abbreviated
+    /// folder, e.g. "Тед Лассо" → "Ted Lasso"), a `title` match would miss the
+    /// already-enriched row every re-scan and recreate the whole subtree. Also
+    /// library-agnostic: an unmapped source stores a NULL `libraryId`, so scoping the
+    /// match to a library (`libraryId = ''`) would never match those rows either.
+    func seriesItem(title: String) async throws -> ItemRecord? {
         try await db.writer.read { db in
             try ItemRecord
-                .filter(Column("libraryId") == libraryId && Column("type") == "series" && Column("title") == title)
+                .filter(Column("type") == "series" && Column("seriesTitle") == title)
                 .fetchOne(db)
         }
     }
@@ -452,6 +459,29 @@ struct Catalog: Sendable {
     func itemsBySource(sourceId: String) async throws -> [ItemRecord] {
         try await db.writer.read { db in
             try ItemRecord.filter(Column("sourceId") == sourceId).fetchAll(db)
+        }
+    }
+
+    /// Catalog-wide search for the admin correction browser: an optional
+    /// case-insensitive title substring and/or "needs metadata" filter (unenriched,
+    /// excluding the extra kinds that never enrich). Ordered for a stable, readable
+    /// list. The caller is responsible for permission-filtering by owning library.
+    func searchItems(titleQuery: String?, unenrichedOnly: Bool, limit: Int) async throws -> [ItemRecord] {
+        try await db.writer.read { db in
+            var request = ItemRecord.all()
+            if let q = titleQuery, !q.isEmpty {
+                request = request.filter(sql: "title LIKE ? COLLATE NOCASE", arguments: ["%\(q)%"])
+            }
+            if unenrichedOnly {
+                let neverEnrich = ["trailer", "featurette", "deletedScene", "behindTheScenes"]
+                request = request
+                    .filter(Column("enrichedAt") == nil)
+                    .filter(!neverEnrich.contains(Column("type")))
+            }
+            return try request
+                .order(Column("type"), Column("sortTitle"), Column("title"), Column("id"))
+                .limit(limit)
+                .fetchAll(db)
         }
     }
 

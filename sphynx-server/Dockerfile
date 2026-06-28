@@ -46,6 +46,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-0 ca
 WORKDIR /app
 RUN useradd --create-home --shell /usr/sbin/nologin sphynx
 COPY --from=build /staging /app
+# Pre-create the data dir owned by the runtime user. When a FRESH (empty) named
+# volume is mounted here, Docker copies this directory's contents AND ownership
+# into the volume — so `docker compose up` / `-v sphynx-data:/data` boots
+# writable as the non-root `sphynx` user with no manual chown. Without this the
+# server crashes on first boot: the volume defaults to root-owned and the
+# non-root process hits "SQLite error 14: unable to open database file".
+# (Bind mounts do NOT get this copy behaviour — host must own the dir as 1001.)
+RUN mkdir -p /data && chown sphynx:sphynx /data
 USER sphynx
 EXPOSE 9410
 ENV SPHYNX_HOST=0.0.0.0 SPHYNX_PORT=9410

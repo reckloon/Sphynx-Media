@@ -15,10 +15,10 @@ struct ChangesFlowTests {
         ) { try $0.decoded(TokenResponse.self).accessToken }
     }
 
-    private func createLibrary(_ client: any TestClientProtocol, admin: String, title: String) async throws -> String {
+    private func createLibrary(_ client: any TestClientProtocol, admin: String, title: String, kind: String = "movies") async throws -> String {
         try await client.execute(
             uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
-            body: try jsonBody(CreateLibraryRequest(title: title, kind: "movies"))
+            body: try jsonBody(CreateLibraryRequest(title: title, kind: kind))
         ) { #expect($0.status == .ok); return try $0.decoded(LibraryResponse.self).id }
     }
 
@@ -138,7 +138,7 @@ struct ChangesFlowTests {
         try await app.test(.router) { client in
             let admin = try await login(client, "admin", "test-password")
             let libA = try await createLibrary(client, admin: admin, title: "Lib A")
-            let libB = try await createLibrary(client, admin: admin, title: "Lib B")
+            let libB = try await createLibrary(client, admin: admin, title: "Lib B", kind: "tvShows")
             let inA = try await createItem(client, admin: admin, title: "In A", libraryId: libA)
             let inB = try await createItem(client, admin: admin, title: "In B", libraryId: libB)
 

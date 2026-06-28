@@ -104,6 +104,47 @@ struct CorrectionBrowseTests {
         }
     }
 
+    @Test("admin items search spans libraries; needs-attention excludes extras")
+    func searchAndNeedsAttention() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let auth = jsonHeaders(bearer: try await adminToken(client))
+            let lib: LibraryResponse = try await client.execute(
+                uri: "/v1/admin/libraries", method: .post, headers: auth,
+                body: try jsonBody(CreateLibraryRequest(title: "Movies", kind: "movies"))
+            ) { try $0.decoded() }
+            for (title, tmdb) in [("The Matrix", "603"), ("Matrix Reloaded", "604"), ("Inception", "27205")] {
+                _ = try await client.execute(
+                    uri: "/v1/admin/items", method: .post, headers: auth,
+                    body: try jsonBody(CreateItemRequest(type: "movie", title: title, sourceId: nil,
+                        sourceKey: "https://x/\(tmdb).mp4", container: "mp4", tmdbId: tmdb, libraryId: lib.id))
+                ) { #expect($0.status == .ok) }
+            }
+            // An extra (never enriches) — must be hidden from "needs metadata".
+            _ = try await client.execute(
+                uri: "/v1/admin/items", method: .post, headers: auth,
+                body: try jsonBody(CreateItemRequest(type: "deletedScene", title: "Deleted Bit", sourceId: nil,
+                    sourceKey: "https://x/del.mp4", container: "mp4", tmdbId: nil, libraryId: lib.id))
+            ) { #expect($0.status == .ok) }
+
+            // Catalog-wide title search — no parent needed.
+            let found: AdminItemsResponse = try await client.execute(
+                uri: "/v1/admin/items?search=matrix", method: .get, headers: auth
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            let foundTitles = Set(found.items.map(\.title))
+            #expect(foundTitles == ["The Matrix", "Matrix Reloaded"])
+
+            // Needs-metadata: the manually-created movies are unenriched, the extra is excluded.
+            let needs: AdminItemsResponse = try await client.execute(
+                uri: "/v1/admin/items?needsAttention=true", method: .get, headers: auth
+            ) { try $0.decoded() }
+            let needTitles = Set(needs.items.map(\.title))
+            #expect(needTitles.contains("Inception"))
+            #expect(needTitles.contains("The Matrix"))
+            #expect(!needTitles.contains("Deleted Bit"))
+        }
+    }
+
     @Test("DB browser filters by tmdbId and by name")
     func dbSearch() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

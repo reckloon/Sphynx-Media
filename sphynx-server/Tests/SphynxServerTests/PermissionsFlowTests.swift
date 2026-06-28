@@ -173,7 +173,7 @@ struct PermissionsFlowTests {
                 body: try jsonBody(CreateLibraryRequest(title: "A", kind: "movies"))) { try $0.decoded() }
             let libB: LibraryResponse = try await client.execute(
                 uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "movies"))) { try $0.decoded() }
+                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "tvShows"))) { try $0.decoded() }
             let item: Item = try await client.execute(
                 uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
                 body: try jsonBody(CreateItemRequest(type: "movie", title: "Heat", sourceId: nil,
@@ -212,7 +212,7 @@ struct PermissionsFlowTests {
                 body: try jsonBody(CreateLibraryRequest(title: "A", kind: "movies"))) { try $0.decoded() }
             let libB: LibraryResponse = try await client.execute(
                 uri: "/v1/admin/libraries", method: .post, headers: jsonHeaders(bearer: admin),
-                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "movies"))) { try $0.decoded() }
+                body: try jsonBody(CreateLibraryRequest(title: "B", kind: "tvShows"))) { try $0.decoded() }
             let item: Item = try await client.execute(
                 uri: "/v1/admin/items", method: .post, headers: jsonHeaders(bearer: admin),
                 body: try jsonBody(CreateItemRequest(type: "movie", title: "Heat", sourceId: nil,

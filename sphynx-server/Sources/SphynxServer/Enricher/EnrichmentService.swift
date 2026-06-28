@@ -126,6 +126,11 @@ struct EnrichmentService: Sendable {
                 let details = try await tv.season(tmdbId: seriesId, season: season)
                 guard let meta = details.episodes.first(where: { $0.episodeNumber == episode }) else { return .skipped }
                 let locked = updated.lockedFields()
+                // Refresh the episode title from TMDB so a re-identified show's
+                // episodes pick up their new names (honoring a manual title lock).
+                if !locked.contains(LockableField.title), let name = meta.name, !name.isEmpty {
+                    updated.title = name
+                }
                 if !locked.contains(LockableField.overview) { updated.overview = meta.overview }
                 if !locked.contains(LockableField.runtime) { updated.runtime = meta.runtimeMinutes.map { Double($0) * 60 } }
                 if !locked.contains(LockableField.images) {

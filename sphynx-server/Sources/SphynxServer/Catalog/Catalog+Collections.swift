@@ -48,6 +48,9 @@ extension Catalog {
             if let placeholderURL, existing.placeholderURL != placeholderURL {
                 existing.placeholderURL = placeholderURL; changed = true
             }
+            // A collection's displayable metadata (title + art) all comes from TMDB,
+            // so it counts as enriched — stamp it (also heals rows created before this).
+            if existing.enrichedAt == nil { existing.enrichedAt = Date().timeIntervalSince1970; changed = true }
             if changed {
                 existing.updatedAt = Date().timeIntervalSince1970
                 let toUpdate = existing
@@ -57,7 +60,7 @@ extension Catalog {
         }
 
         let now = Date().timeIntervalSince1970
-        let record = ItemRecord(
+        var record = ItemRecord(
             id: Tokens.newID("it_"),
             type: "collection",
             title: title,
@@ -76,7 +79,10 @@ extension Catalog {
             placeholderURL: placeholderURL,
             identityPinned: false
         )
-        try await db.writer.write { db in try record.insert(db) }
+        // Title + art come from TMDB, so the box-set tile is enriched on creation.
+        record.enrichedAt = now
+        let toInsert = record
+        try await db.writer.write { db in try toInsert.insert(db) }
         return record
     }
 }
