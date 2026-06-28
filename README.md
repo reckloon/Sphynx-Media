@@ -144,10 +144,12 @@ Below it you'll see five tabs:
   *and* the storage sources that feed them (where your files live + a **Scan**
   button). One clean connection form per driver: local, http, webdav, smb, ftp, torbox.
 - **Users** — accounts for each person who'll use a player app, with a permission
-  editor (global or per-library) and per-user password resets.
-- **Items** — fix a title's metadata by hand: edit its name, year, poster, etc.
-  Anything you change is **locked** so a re-scan won't overwrite it. You can also
-  re-point a title at the right TMDB id.
+  editor (global or per-library), per-user password resets, and the option to let a
+  trusted non-admin fix metadata (grant them the "edit metadata" permission).
+- **Items** — a file-style browser of your library (folders for shows and
+  collections, posters, an "up" button) for fixing a title's metadata by hand: edit
+  its name, year, poster, etc. Anything you change is **locked** so a re-scan won't
+  overwrite it. You can also re-point a title at the right TMDB id.
 - **Settings** — your server's name and behavior (covered [below](#settings-without-the-terminal)).
 - **Extensions** — optional add-ons:
   - **Diagnostics** — a database peek and logs for when something's stuck.
@@ -158,7 +160,8 @@ Below it you'll see five tabs:
 
 There's also a separate **http://localhost:9410/user** page where each of your
 users can sign in and manage their own profile — display name, profile picture,
-password, and a one-click "reset my watch history everywhere."
+password, and a one-click "reset my watch history everywhere." Users you've granted
+the "edit metadata" permission also get a **Library correction** panel there.
 
 That's the whole server. No config files to hand-edit, no JSON to memorize.
 

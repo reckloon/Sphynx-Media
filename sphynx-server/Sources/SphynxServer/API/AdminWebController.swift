@@ -568,15 +568,26 @@ enum AdminWebController {
     t.onclick = function () { showTab(t.dataset.tab); };
   });
 
-  // ---- persistent dashboard (coverage + status), polled regardless of tab ----
-  var dashTimers = [];
-  function stopDash() { dashTimers.forEach(clearInterval); dashTimers = []; }
-  function startDash() {
+  // ---- persistent dashboard (coverage + status), adaptive polling ----
+  // One self-scheduling loop: fast while the server is scanning/enriching so the
+  // dashboard and library counts update in near-realtime, relaxed when idle, and
+  // nearly paused when the tab is hidden — so it costs nothing when no one is
+  // looking and never runs at all unless the admin panel is open.
+  var dashTimer = null, dashPhase = 'idle';
+  function stopDash() { if (dashTimer) { clearTimeout(dashTimer); dashTimer = null; } }
+  function scheduleDash() {
     stopDash();
-    loadStatus(); loadOverview();
-    dashTimers.push(setInterval(loadStatus, 2000));
-    dashTimers.push(setInterval(loadOverview, 5000));
+    var ms = document.hidden ? 20000 : (dashPhase !== 'idle' ? 1000 : 6000);
+    dashTimer = setTimeout(tickDash, ms);
   }
+  function tickDash() {
+    if (!token) return;
+    if (document.hidden) { scheduleDash(); return; }
+    Promise.all([loadStatus(), loadOverview()]).then(scheduleDash, scheduleDash);
+  }
+  function startDash() { stopDash(); tickDash(); }
+  // Catch up instantly when the tab regains focus.
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && token) startDash(); });
   function fmtMs(ms) { if (ms == null) return ''; return ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's'; }
   function fmtDur(s) { s = Math.floor(s); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + x + 's'; }
   function jobRow(j) {
@@ -584,8 +595,9 @@ enum AdminWebController {
     return '<div class="item"><span><span class="chip ' + esc(j.kind) + '">' + esc(j.kind) + '</span> ' + esc(j.title) + '</span>' + right + '</div>';
   }
   function loadStatus() {
-    api('/v1/admin/status', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (s) {
+    return api('/v1/admin/status', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (s) {
       if (!s) return;
+      dashPhase = s.phase;
       var live = s.phase !== 'idle';
       $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
       $('#act-uptime').textContent = 'uptime ' + fmtDur(s.uptimeSeconds) + ' · ' + s.processed + ' processed';
@@ -598,7 +610,7 @@ enum AdminWebController {
     }).catch(function () {});
   }
   function loadOverview() {
-    api('/v1/admin/overview', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (o) {
+    return api('/v1/admin/overview', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (o) {
       if (!o) return;
       $('#cov-source').textContent = o.inSource; $('#cov-indexed').textContent = o.indexed; $('#cov-enriched').textContent = o.enriched;
       var base = Math.max(o.inSource, o.indexed, 1);
@@ -608,6 +620,14 @@ enum AdminWebController {
       $('#cov-seg-enr').style.width = enrPct + '%';
       $('#cov-pct-idx').textContent = idxPct + '%';
       $('#cov-pct-enr').textContent = (o.indexed ? Math.round(o.enriched / o.indexed * 100) : 0) + '%';
+      // Keep the per-library counts live straight from the overview we just
+      // fetched (no extra request), so the Libraries tab tracks a scan in realtime.
+      // If the set of libraries changed, do a full resync to pick up new ones.
+      libCounts = {}; (o.libraries || []).forEach(function (l) { libCounts[l.id] = l; });
+      if (!$('#tab-libraries').hidden) {
+        if ((o.libraries || []).length !== libraries.length) loadLibraries();
+        else renderLibraries();
+      }
     }).catch(function () {});
   }
 

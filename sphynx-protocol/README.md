@@ -56,3 +56,23 @@ resolve (`ResolveDescriptor`, tracks, candidates), playstate, bi-directional mar
 (`MarkerContribution`, `MarkersInfo`), the error envelope, and the open-enum
 machinery. The test suite round-trips every type and proves unknown payloads decode
 without throwing.
+
+### Permissions on the wire
+
+`MeResponse.permissions` is an **open set of string keys** describing what the
+signed-in user may do. Well-known keys:
+
+| Key | Meaning |
+|---|---|
+| `library.read` | Browse libraries and resolve/play their items |
+| `metadata.markers.write` | Contribute intro/credit markers (`PUT /v1/items/{id}/markers`) |
+| `metadata.images.write` | Contribute artwork *(reserved — no endpoint yet)* |
+| `metadata.edit` | Read/edit item metadata and lock fields (admin correction surface) |
+
+Any key may be **scoped to a single library** with a `:<libraryId>` suffix
+(`library.read:lib_abc`). A client should treat the set as opaque and
+forward-compatible — match the keys it understands, ignore the rest, and never
+reject an unknown key. The keys gate server features; clients use them only to
+decide which affordances to show (e.g. show a "fix metadata" button when the user
+holds `metadata.edit`). `MeResponse.metadata` is the narrower per-field
+contribute view (server policy ∩ the user's write permissions).
