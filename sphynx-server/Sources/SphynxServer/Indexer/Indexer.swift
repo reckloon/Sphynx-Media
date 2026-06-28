@@ -57,26 +57,30 @@ struct Indexer: Sendable {
         func ensureSeries(_ title: String, year: Int?) async throws -> ItemRecord {
             let cacheKey = HeuristicIdentifier.normalize(title)
             if let cached = seriesCache[cacheKey] { return cached }
-            if var existing = try await catalog.seriesItem(libraryId: tvLib ?? "", title: title) {
-                // Backfill a year from the show folder when the container lacks one.
-                if existing.year == nil, let year {
-                    existing.year = year
-                    existing.updatedAt = now
-                    try await catalog.updateItem(existing)
-                }
-                seriesCache[cacheKey] = existing
-                return existing
+
+            var record: ItemRecord
+            var changed = false
+            if let existing = try await catalog.seriesItem(libraryId: tvLib ?? "", title: title) {
+                record = existing
+                if record.year == nil, let year { record.year = year; changed = true }
+            } else {
+                record = try await catalog.createItem(
+                    type: "series", title: title, sourceId: source.id, sourceKey: "",
+                    container: nil, tmdbId: nil, libraryId: tvLib,
+                    parentId: nil, year: year, seriesTitle: title
+                )
             }
-            var record = try await catalog.createItem(
-                type: "series", title: title, sourceId: source.id, sourceKey: "",
-                container: nil, tmdbId: nil, libraryId: tvLib,
-                parentId: nil, year: year, seriesTitle: title
-            )
-            if let tv, let tmdbId = try? await tv.identifySeries(title: title) {
+            // Identify + enrich when not yet identified — this also heals a series
+            // first scanned before TMDB was configured (re-scan fills it in).
+            if record.tmdbId == nil, let tv,
+               let tmdbId = try? await tv.identifySeries(title: record.seriesTitle ?? title) {
                 record.tmdbId = String(tmdbId)
                 if let fields = try? await tv.seriesFields(tmdbId: tmdbId) {
                     apply(fields, to: &record, now: now)
                 }
+                changed = true
+            }
+            if changed {
                 record.updatedAt = now
                 try await catalog.updateItem(record)
             }
@@ -87,18 +91,27 @@ struct Indexer: Sendable {
         func ensureSeason(series: ItemRecord, season: Int) async throws -> ItemRecord {
             let cacheKey = "\(series.id)|\(season)"
             if let cached = seasonCache[cacheKey] { return cached }
+
+            var record: ItemRecord
             if let existing = try await catalog.seasonItem(seriesItemId: series.id, seasonNumber: season) {
-                seasonCache[cacheKey] = existing
-                return existing
+                record = existing
+            } else {
+                record = try await catalog.createItem(
+                    type: "season", title: "Season \(season)", sourceId: source.id, sourceKey: "",
+                    container: nil, tmdbId: series.tmdbId, libraryId: tvLib,
+                    parentId: series.id, year: nil,
+                    seriesId: series.id, seriesTitle: series.seriesTitle ?? series.title,
+                    seasonIndex: season
+                )
             }
-            var record = try await catalog.createItem(
-                type: "season", title: "Season \(season)", sourceId: source.id, sourceKey: "",
-                container: nil, tmdbId: series.tmdbId, libraryId: tvLib,
-                parentId: series.id, year: nil,
-                seriesId: series.id, seriesTitle: series.seriesTitle ?? series.title,
-                seasonIndex: season
-            )
-            if let tmdbId = series.tmdbId.flatMap(Int.init), let details = await cachedSeason(tmdbId: tmdbId, season: season) {
+            // Fetch (and cache) the season details whenever the series is
+            // identified, so the episode loop can read them even when the season
+            // row is already enriched. Enrich the season row only when it needs it
+            // (heals a season created before TMDB / before the series had an id).
+            if let tmdbId = series.tmdbId.flatMap(Int.init),
+               let details = await cachedSeason(tmdbId: tmdbId, season: season),
+               record.primaryImage == nil {
+                record.tmdbId = series.tmdbId
                 record.primaryImage = TMDBImage.url(details.posterPath, size: "w500")
                 record.thumbImage = TMDBImage.url(details.posterPath, size: "w342")
                 record.placeholderURL = TMDBImage.url(details.posterPath, size: "w92")
@@ -130,15 +143,40 @@ struct Indexer: Sendable {
                 }
                 let episodeTitle = entry.title ?? episodeMeta?.name ?? ep.episodeTitle ?? "Episode \(ep.episode)"
 
+                // Apply episode enrichment from TMDB (also heals an episode first
+                // scanned before TMDB / before the series had an id). `primary` is
+                // the still (already landscape); `backdrop` carries the show's wide
+                // art for a hero image on the episode screen.
+                func applyEpisode(_ record: inout ItemRecord, _ meta: TMDBEpisode) {
+                    record.tmdbId = series.tmdbId
+                    if record.title.hasPrefix("Episode "), let name = meta.name, !name.isEmpty {
+                        record.title = name
+                    }
+                    record.overview = meta.overview
+                    record.runtime = meta.runtimeMinutes.map { Double($0) * 60 }
+                    record.primaryImage = TMDBImage.url(meta.stillPath, size: "w780")
+                    record.thumbImage = TMDBImage.url(meta.stillPath, size: "w300")
+                    record.backdropImage = series.backdropImage
+                    record.placeholderURL = TMDBImage.url(meta.stillPath, size: "w92")
+                    record.enrichedAt = now
+                }
+
                 if let current = existingByKey.removeValue(forKey: entry.key) {
-                    // Keep the episode's tree links correct; otherwise leave as-is.
-                    if current.parentId != season.id || current.seasonIndex != ep.season || current.episodeIndex != ep.episode {
-                        var record = current
+                    var record = current
+                    var changed = false
+                    if record.parentId != season.id || record.seasonIndex != ep.season || record.episodeIndex != ep.episode {
                         record.parentId = season.id
                         record.seriesId = series.id
                         record.seriesTitle = series.seriesTitle ?? series.title
                         record.seasonIndex = ep.season
                         record.episodeIndex = ep.episode
+                        changed = true
+                    }
+                    if record.primaryImage == nil, let episodeMeta {
+                        applyEpisode(&record, episodeMeta)
+                        changed = true
+                    }
+                    if changed {
                         record.updatedAt = now
                         try await catalog.updateItem(record)
                         updated += 1
@@ -152,16 +190,7 @@ struct Indexer: Sendable {
                         seasonIndex: ep.season, episodeIndex: ep.episode
                     )
                     if let episodeMeta {
-                        record.overview = episodeMeta.overview
-                        record.runtime = episodeMeta.runtimeMinutes.map { Double($0) * 60 }
-                        // Episode `primary` is the still (already 16:9 / landscape);
-                        // `backdrop` carries the show's wide art for clients that
-                        // want a hero image on the episode screen.
-                        record.primaryImage = TMDBImage.url(episodeMeta.stillPath, size: "w780")
-                        record.thumbImage = TMDBImage.url(episodeMeta.stillPath, size: "w300")
-                        record.backdropImage = series.backdropImage
-                        record.placeholderURL = TMDBImage.url(episodeMeta.stillPath, size: "w92")
-                        record.enrichedAt = now
+                        applyEpisode(&record, episodeMeta)
                         record.updatedAt = now
                         try await catalog.updateItem(record)
                     }
