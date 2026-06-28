@@ -289,6 +289,18 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m17_tombstones") { db in
+            // Deletion tombstones for the incremental changes feed: when an item
+            // row is removed, its id + deletion time are recorded here so a client
+            // polling `GET /v1/changes` can drop it without re-listing the library.
+            // Indexed on `deletedAt` for the `since`-windowed query.
+            try db.create(table: "tombstone") { t in
+                t.primaryKey("itemId", .text)
+                t.column("deletedAt", .double).notNull()
+            }
+            try db.create(indexOn: "tombstone", columns: ["deletedAt"])
+        }
+
         return migrator
     }
 }

@@ -22,3 +22,4 @@ extension HomeResponse: @retroactive ResponseEncodable {}
 extension PlaystateResponse: @retroactive ResponseEncodable {}
 extension PlaystateBatchResponse: @retroactive ResponseEncodable {}
 extension MarkersInfo: @retroactive ResponseEncodable {}
+extension ChangesResponse: @retroactive ResponseEncodable {}

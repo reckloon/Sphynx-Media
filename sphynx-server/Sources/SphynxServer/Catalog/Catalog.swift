@@ -48,10 +48,17 @@ struct Catalog: Sendable {
     /// leaves it feeding no library at all (a source that also feeds another
     /// library survives, with this library removed from its routing).
     func deleteLibrary(id: String) async throws {
+        let now = Date().timeIntervalSince1970
         let existed: Bool = try await db.writer.write { db in
             guard try LibraryRecord.filter(Column("id") == id).fetchCount(db) > 0 else { return false }
             // Items carry their resolved libraryId, so this removes the whole tree.
+            // Capture the exact removed ids first so each gets a tombstone.
+            let removedIds = try ItemRecord
+                .filter(Column("libraryId") == id)
+                .select(Column("id"), as: String.self)
+                .fetchAll(db)
             try ItemRecord.filter(Column("libraryId") == id).deleteAll(db)
+            try Self.recordTombstones(removedIds, at: now, in: db)
 
             for var source in try SourceRecord.fetchAll(db) {
                 var changed = false
@@ -154,9 +161,12 @@ struct Catalog: Sendable {
     func deleteSource(id: String) async throws {
         let items = try await itemsBySource(sourceId: id)
         let parentIds = Set(items.compactMap(\.parentId))
+        let removedIds = items.map(\.id)
+        let now = Date().timeIntervalSince1970
         let existed: Bool = try await db.writer.write { db in
             guard try SourceRecord.filter(Column("id") == id).fetchCount(db) > 0 else { return false }
             try ItemRecord.filter(Column("sourceId") == id).deleteAll(db)
+            try Self.recordTombstones(removedIds, at: now, in: db)
             _ = try SourceRecord.deleteOne(db, key: id)
             return true
         }
@@ -210,7 +220,20 @@ struct Catalog: Sendable {
             extraJSON: extraJSON
         )
         try await db.writer.write { db in try record.insert(db) }
+        // No tombstone to clear: `createItem` always mints a brand-new id
+        // (`Tokens.newID`), so a re-added item never reuses a deleted id and can't
+        // collide with an existing tombstone. Tombstones are keyed by the (unique,
+        // never-reused) item id and simply accumulate for the changes feed.
         return record
+    }
+
+    /// Upsert deletion tombstones for the given item ids within a write
+    /// transaction (one row per id, `deletedAt = now`). Records exactly the ids
+    /// passed — callers compute the precise set of rows actually removed.
+    static func recordTombstones(_ ids: some Collection<String>, at now: Double, in db: Database) throws {
+        for id in ids {
+            try TombstoneRecord(itemId: id, deletedAt: now).upsert(db)
+        }
     }
 
     /// Find a series container in a library by exact title (for indexer dedup).
@@ -356,7 +379,13 @@ struct Catalog: Sendable {
     }
 
     func deleteItem(id: String) async throws {
-        try await db.writer.write { db in _ = try ItemRecord.deleteOne(db, key: id) }
+        let now = Date().timeIntervalSince1970
+        try await db.writer.write { db in
+            // Record a tombstone only when a row was actually removed.
+            if try ItemRecord.deleteOne(db, key: id) {
+                try Self.recordTombstones([id], at: now, in: db)
+            }
+        }
     }
 
     /// Delete an item and **cascade**: its whole subtree (a series takes its
@@ -378,8 +407,11 @@ struct Catalog: Sendable {
             frontier = children.map(\.id)
         }
         let ids = toDelete
+        let now = Date().timeIntervalSince1970
         try await db.writer.write { db in
             _ = try ItemRecord.filter(ids.contains(Column("id"))).deleteAll(db)
+            // One tombstone per removed id (self + descendants).
+            try Self.recordTombstones(ids, at: now, in: db)
         }
         if let parentId = item.parentId {
             try await pruneEmptyContainers(seeds: [parentId])
