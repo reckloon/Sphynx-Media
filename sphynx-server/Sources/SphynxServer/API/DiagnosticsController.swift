@@ -45,6 +45,7 @@ struct DiagnosticsController: Sendable {
         let sources = try await catalog.sources()
         let libCounts = try await catalog.itemCountsByLibrary()
         let srcCounts = try await catalog.itemCountsBySource()
+        let typeCounts = try await catalog.itemCountsByType()
         let overall = try await catalog.itemCountsOverall()
 
         // Most recent scan per source (recentScans is newest-first).
@@ -65,6 +66,18 @@ struct DiagnosticsController: Sendable {
                                   inSource: scan?.scanned, lastScanAt: scan?.at,
                                   indexed: c.total, enriched: c.enriched)
         }
+        // Break the catalog down by content category, in a stable display order
+        // (containers → leaf media → extras); any unknown type sorts to the end.
+        let typeOrder = ["collection", "movie", "series", "season", "episode",
+                         "trailer", "featurette", "deletedScene", "behindTheScenes"]
+        let typeViews = typeCounts
+            .map { TypeOverview(type: $0.key, indexed: $0.value.total, enriched: $0.value.enriched) }
+            .sorted { a, b in
+                let ia = typeOrder.firstIndex(of: a.type) ?? typeOrder.count
+                let ib = typeOrder.firstIndex(of: b.type) ?? typeOrder.count
+                return ia != ib ? ia < ib : a.type < b.type
+            }
+
         // Items the sources reported on their last scan (only counts scanned sources).
         let inSourceTotal = lastScan.values.reduce(0) { $0 + $1.scanned }
         return OverviewResponse(
@@ -72,7 +85,8 @@ struct DiagnosticsController: Sendable {
             indexed: overall.total,
             enriched: overall.enriched,
             libraries: libraryViews,
-            sources: sourceViews
+            sources: sourceViews,
+            byType: typeViews
         )
     }
 
@@ -261,6 +275,18 @@ struct SourceOverview: Codable, Sendable {
     var enriched: Int
 }
 
+/// One content category's share of the catalog (grouped by item `type`), so the
+/// dashboard can break the indexed/enriched totals down by kind.
+struct TypeOverview: Codable, Sendable {
+    /// The item type: `collection` / `movie` / `series` / `season` / `episode` or
+    /// an extras kind (`trailer`, `featurette`, `deletedScene`, `behindTheScenes`).
+    var type: String
+    /// Items of this type in the catalog.
+    var indexed: Int
+    /// Of those, how many have fetched metadata (extras never enrich).
+    var enriched: Int
+}
+
 /// Catalog coverage snapshot for the always-visible dashboard panel.
 struct OverviewResponse: Codable, Sendable, ResponseEncodable {
     /// Items the sources reported on their last scan (scanned sources only).
@@ -271,6 +297,8 @@ struct OverviewResponse: Codable, Sendable, ResponseEncodable {
     var enriched: Int
     var libraries: [LibraryOverview]
     var sources: [SourceOverview]
+    /// Indexed/enriched broken down by content category, in display order.
+    var byType: [TypeOverview]
 }
 
 extension ActivitySnapshot: ResponseEncodable {}

@@ -1324,17 +1324,27 @@ They are server-specific (not part of the wire protocol).
   and recent counters).
 - **`GET /v1/admin/overview`** → catalog coverage for the always-visible dashboard
   panel: items **in source** (from the last scan) vs **indexed** (in the DB) vs
-  **enriched**, both as overall totals and broken down per library and per source:
+  **enriched**, both as overall totals and broken down per library, per source, and
+  per content category (`byType`):
   ```json
   { "inSource": 120, "indexed": 118, "enriched": 90,
     "libraries": [ { "id": "lib_…", "title": "Movies", "kind": "movies",
                      "indexed": 60, "enriched": 55 } ],
     "sources":   [ { "id": "src_…", "label": "NAS", "driver": "smb",
                      "libraryId": "lib_…", "lastScannedAt": 1.7e9,
-                     "inSource": 60, "lastScanAt": "…", "indexed": 58, "enriched": 50 } ] }
+                     "inSource": 60, "lastScanAt": "…", "indexed": 58, "enriched": 50 } ],
+    "byType":    [ { "type": "movie", "indexed": 60, "enriched": 55 },
+                   { "type": "episode", "indexed": 50, "enriched": 35 },
+                   { "type": "trailer", "indexed": 8, "enriched": 0 } ] }
   ```
   `inSource` / `lastScanAt` reflect the most recent scan this process has observed
-  (omitted for a source not scanned since startup).
+  (omitted for a source not scanned since startup). `byType` groups every item by
+  its `type` — `collection` / `movie` / `series` / `season` / `episode` and the
+  extras kinds (`trailer`, `featurette`, `deletedScene`, `behindTheScenes`) — in a
+  stable display order (containers → leaf media → extras). It is **exhaustive**:
+  the per-type `indexed`/`enriched` counts sum to the catalog totals, which makes
+  the enriched gap self-explanatory (extras index but never enrich, so a category
+  like `trailer` is `0`-enriched by design, not a failure).
 - **`GET /v1/admin/logs?after=<seq>&limit=<n>&level=<level>`** → recent diagnostics
   log lines: `{ "lines": [ … ], "latestSeq": <n> }`. `after` pages by sequence
   (default-ish `limit` 200, max 1000); `level` filters by log level.
