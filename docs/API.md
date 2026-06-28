@@ -773,6 +773,32 @@ They are server-specific (not part of the wire protocol).
   The table name is whitelisted against the real schema (no SQL injection) and
   secret columns (credentials) are redacted. `limit` max 200.
 
+### Extensions — admin-only
+
+Extensions are optional, self-contained server capabilities outside the wire
+protocol, each with its own config. The web admin "Extensions" tab renders one
+module per entry. Server-specific — a client never needs these.
+
+- **`GET /v1/admin/extensions`** → the registry the UI renders:
+  `{ "extensions": [ { "id", "name", "description", "kind", "enabled", "available", "configurable" } ] }`.
+  `kind` is `builtin` (always on, e.g. `diagnostics`) or `optional` (toggleable);
+  `available` reflects whether prerequisites are met (e.g. `ffprobe` installed).
+
+**Media probe** (`id: media-probe`) — inspects a title's tracks with ffmpeg's
+`ffprobe`, surfacing the language / codec / channel detail the protocol's bare
+`tracks` indices can't carry, plus sidecar subtitle files. Opt-in (disabled by
+default); shelling out only happens when enabled and `ffprobe` is found.
+
+- **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version" }`.
+  `ffprobePath` is the admin-set path (blank ⇒ auto-discovered); `resolvedPath` is
+  the path actually in use.
+- **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"? }` →
+  the updated config. Persisted; applied live (no restart).
+- **`GET /v1/admin/extensions/media-probe/probe?itemId=<id>`** → resolves the item
+  to its direct location (as a player would), runs `ffprobe`, and returns
+  `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ] }`.
+  Returns **400** when the extension is disabled or `ffprobe` isn't available.
+
 ---
 
 ## Errors

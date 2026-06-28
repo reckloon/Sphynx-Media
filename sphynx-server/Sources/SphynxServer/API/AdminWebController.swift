@@ -104,6 +104,17 @@ enum AdminWebController {
   .logline .lvl { display:inline-block; min-width:62px; font-weight:600; }
   .lvl-info { color:var(--accent); } .lvl-notice { color:var(--ok); } .lvl-warning { color:#e8c468; }
   .lvl-error, .lvl-critical { color:var(--err); } .lvl-debug, .lvl-trace { color:var(--muted); }
+  .chip.audio { color:var(--ok); } .chip.subtitle { color:#c89bf0; } .chip.video { color:var(--accent); }
+  /* extensions: modules */
+  .subtabs { display:flex; gap:6px; margin:0 0 16px; }
+  .subtab { margin:0; padding:7px 14px; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:9px; font-weight:500; cursor:pointer; font:inherit; }
+  .subtab.active { background:var(--sub); color:var(--fg); border-color:var(--accent); }
+  .ext-mod { padding-top:2px; }
+  .mp-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:6px 0 14px; }
+  .switch { display:inline-flex; align-items:center; gap:8px; color:var(--fg); font-size:14px; cursor:pointer; margin:0; }
+  .switch input { width:auto; }
+  .ok-badge { color:var(--ok); font-weight:500; }
+  .off-badge { color:var(--err); font-weight:500; }
 </style>
 </head>
 <body>
@@ -128,9 +139,7 @@ enum AdminWebController {
         <button class="tab" data-tab="libraries">Libraries</button>
         <button class="tab" data-tab="sources">Sources</button>
         <button class="tab" data-tab="users">Users</button>
-        <button class="tab" data-tab="activity">Activity</button>
-        <button class="tab" data-tab="database">Database</button>
-        <button class="tab" data-tab="logs">Logs</button>
+        <button class="tab" data-tab="extensions">Extensions</button>
       </div>
       <button id="logout-btn" class="secondary" style="margin:0;">Sign out</button>
     </div>
@@ -242,62 +251,94 @@ enum AdminWebController {
       </div>
     </section>
 
-    <section id="tab-activity" hidden>
-      <div class="bar" style="margin-bottom:14px;">
-        <span id="act-phase" class="phase"><span class="dot"></span> Idle</span>
-        <span class="hint" id="act-uptime" style="margin:0;"></span>
-      </div>
-      <div class="stats">
-        <div class="stat"><div class="n" id="act-active">0</div><div class="l">Active</div></div>
-        <div class="stat"><div class="n" id="act-queued">0</div><div class="l">Queued</div></div>
-        <div class="stat"><div class="n" id="act-enriched">0</div><div class="l">Enriched</div></div>
-        <div class="stat"><div class="n" id="act-skipped">0</div><div class="l">Skipped</div></div>
-        <div class="stat warn"><div class="n" id="act-failed">0</div><div class="l">Failed</div></div>
-      </div>
-      <div class="group-title">In progress</div>
-      <div id="act-jobs"><div class="empty">Nothing processing right now.</div></div>
-      <div class="group-title">Recently finished</div>
-      <div id="act-recent"><div class="empty">No recent jobs.</div></div>
-      <div class="group-title">Recent scans</div>
-      <div id="act-scans"><div class="empty">No scans yet.</div></div>
-    </section>
+    <section id="tab-extensions" hidden>
+      <p class="hint" style="margin-top:0;">Optional, self-contained capabilities outside the wire protocol. Each module has its own controls.</p>
+      <div class="tablist" id="ext-nav"><div class="empty">Loading extensions…</div></div>
 
-    <section id="tab-database" hidden>
-      <h2>Database</h2>
-      <p class="hint" style="margin-top:0;">Read-only. Sensitive columns (password &amp; token hashes, source secrets, request headers) are redacted 🔒.</p>
-      <div class="tablist" id="db-tables"><div class="empty">Loading tables…</div></div>
-      <div id="db-view" hidden>
-        <div class="toolbar">
-          <strong id="db-title"></strong>
-          <span class="hint" id="db-count" style="margin:0;"></span>
-          <span class="spacer"></span>
-          <button class="mini secondary" id="db-refresh">Refresh</button>
+      <!-- Module: Diagnostics (built-in) -->
+      <div id="mod-diagnostics" class="ext-mod" hidden>
+        <div class="subtabs" id="diag-subtabs">
+          <button class="subtab active" data-sub="activity">Activity</button>
+          <button class="subtab" data-sub="database">Database</button>
+          <button class="subtab" data-sub="logs">Logs</button>
         </div>
-        <div class="tablebox"><table class="db"><thead id="db-head"></thead><tbody id="db-body"></tbody></table></div>
-        <div class="pager">
-          <button class="mini secondary" id="db-prev">‹ Prev</button>
-          <span id="db-range"></span>
-          <button class="mini secondary" id="db-next">Next ›</button>
-        </div>
-      </div>
-    </section>
 
-    <section id="tab-logs" hidden>
-      <h2>Logs</h2>
-      <div class="toolbar">
-        <label style="margin:0;">Level</label>
-        <select id="log-level" style="width:auto;">
-          <option value="">all</option>
-          <option value="trace">trace</option><option value="debug">debug</option>
-          <option value="info" selected>info</option><option value="notice">notice</option>
-          <option value="warning">warning</option><option value="error">error</option><option value="critical">critical</option>
-        </select>
-        <button class="mini secondary" id="log-pause">Pause</button>
-        <button class="mini secondary" id="log-clear">Clear view</button>
-        <span class="spacer"></span>
-        <span class="hint" id="log-status" style="margin:0;"></span>
+        <div id="sub-activity">
+          <div class="bar" style="margin-bottom:14px;">
+            <span id="act-phase" class="phase"><span class="dot"></span> Idle</span>
+            <span class="hint" id="act-uptime" style="margin:0;"></span>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="n" id="act-active">0</div><div class="l">Active</div></div>
+            <div class="stat"><div class="n" id="act-queued">0</div><div class="l">Queued</div></div>
+            <div class="stat"><div class="n" id="act-enriched">0</div><div class="l">Enriched</div></div>
+            <div class="stat"><div class="n" id="act-skipped">0</div><div class="l">Skipped</div></div>
+            <div class="stat warn"><div class="n" id="act-failed">0</div><div class="l">Failed</div></div>
+          </div>
+          <div class="group-title">In progress</div>
+          <div id="act-jobs"><div class="empty">Nothing processing right now.</div></div>
+          <div class="group-title">Recently finished</div>
+          <div id="act-recent"><div class="empty">No recent jobs.</div></div>
+          <div class="group-title">Recent scans</div>
+          <div id="act-scans"><div class="empty">No scans yet.</div></div>
+        </div>
+
+        <div id="sub-database" hidden>
+          <p class="hint" style="margin-top:0;">Read-only. Sensitive columns (password &amp; token hashes, source secrets, request headers) are redacted 🔒.</p>
+          <div class="tablist" id="db-tables"><div class="empty">Loading tables…</div></div>
+          <div id="db-view" hidden>
+            <div class="toolbar">
+              <strong id="db-title"></strong>
+              <span class="hint" id="db-count" style="margin:0;"></span>
+              <span class="spacer"></span>
+              <button class="mini secondary" id="db-refresh">Refresh</button>
+            </div>
+            <div class="tablebox"><table class="db"><thead id="db-head"></thead><tbody id="db-body"></tbody></table></div>
+            <div class="pager">
+              <button class="mini secondary" id="db-prev">‹ Prev</button>
+              <span id="db-range"></span>
+              <button class="mini secondary" id="db-next">Next ›</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="sub-logs" hidden>
+          <div class="toolbar">
+            <label style="margin:0;">Level</label>
+            <select id="log-level" style="width:auto;">
+              <option value="">all</option>
+              <option value="trace">trace</option><option value="debug">debug</option>
+              <option value="info" selected>info</option><option value="notice">notice</option>
+              <option value="warning">warning</option><option value="error">error</option><option value="critical">critical</option>
+            </select>
+            <button class="mini secondary" id="log-pause">Pause</button>
+            <button class="mini secondary" id="log-clear">Clear view</button>
+            <span class="spacer"></span>
+            <span class="hint" id="log-status" style="margin:0;"></span>
+          </div>
+          <div class="logbox" id="log-box"><div class="empty">Waiting for logs…</div></div>
+        </div>
       </div>
-      <div class="logbox" id="log-box"><div class="empty">Waiting for logs…</div></div>
+
+      <!-- Module: Media probe (optional) -->
+      <div id="mod-media-probe" class="ext-mod" hidden>
+        <p class="hint" style="margin-top:0;">Inspect a title's audio, subtitle, and video tracks with ffmpeg's <code>ffprobe</code> — the language, codec, and channel detail the wire protocol's track indices can't carry on their own — plus any sidecar subtitle files next to a local file.</p>
+        <div class="mp-row">
+          <label class="switch"><input type="checkbox" id="mp-enabled"> Enable media probe</label>
+          <span id="mp-avail" class="hint" style="margin:0;"></span>
+        </div>
+        <label for="mp-path">ffprobe path <span class="muted">(blank = auto-discover on PATH)</span></label>
+        <input id="mp-path" placeholder="/usr/local/bin/ffprobe">
+        <button id="mp-save">Save</button>
+        <div class="addbox">
+          <div class="group-title">Probe a title</div>
+          <label for="mp-item">Item id</label>
+          <input id="mp-item" placeholder="it_…">
+          <button id="mp-probe-btn">Probe</button>
+          <div id="mp-msg" class="msg"></div>
+          <div id="mp-result"></div>
+        </div>
+      </div>
     </section>
   </div>
 </div>
@@ -331,19 +372,17 @@ enum AdminWebController {
   }
 
   // ---- tabs ----
-  var TABS = ['settings', 'libraries', 'sources', 'users', 'activity', 'database', 'logs'];
+  var TABS = ['settings', 'libraries', 'sources', 'users', 'extensions'];
   var poll = null;
   function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
   function startPoll(fn, ms) { stopPoll(); fn(); poll = setInterval(fn, ms); }
   function showTab(name) {
-    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
+    document.querySelectorAll('.tabs .tab').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
     TABS.forEach(function (n) { $('#tab-' + n).hidden = (n !== name); });
     stopPoll();
-    if (name === 'activity') startPoll(loadStatus, 1500);
-    else if (name === 'logs') { logState.after = 0; $('#log-box').innerHTML = ''; startPoll(loadLogs, 2000); }
-    else if (name === 'database') loadDbTables();
+    if (name === 'extensions') enterExtensions();
   }
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs .tab'), function (t) {
     t.onclick = function () { showTab(t.dataset.tab); };
   });
 
@@ -597,6 +636,86 @@ enum AdminWebController {
   $('#log-pause').onclick = function () { logState.paused = !logState.paused; $('#log-pause').textContent = logState.paused ? 'Resume' : 'Pause'; };
   $('#log-clear').onclick = function () { $('#log-box').innerHTML = '<div class="empty">cleared</div>'; };
 
+  // ---- extensions host (each extension is a self-contained module) ----
+  var extState = { active: null };
+  function enterExtensions() {
+    api('/v1/admin/extensions', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (d) {
+      if (!d) return;
+      $('#ext-nav').innerHTML = d.extensions.map(function (x) {
+        var tags = '';
+        if (x.kind === 'optional' && !x.enabled) tags += ' <span class="meta">off</span>';
+        if (!x.available) tags += ' <span class="meta">unavailable</span>';
+        return '<button class="tab' + (extState.active === x.id ? ' active' : '') + '" data-mod="' + esc(x.id) + '" title="' + esc(x.description) + '">' + esc(x.name) + tags + '</button>';
+      }).join('');
+      activateModule(extState.active || (d.extensions[0] && d.extensions[0].id));
+    });
+  }
+  function activateModule(id) {
+    if (!id) return;
+    extState.active = id;
+    stopPoll();
+    Array.prototype.forEach.call(document.querySelectorAll('#ext-nav .tab'), function (b) { b.classList.toggle('active', b.dataset.mod === id); });
+    document.querySelectorAll('.ext-mod').forEach(function (m) { m.hidden = (m.id !== 'mod-' + id); });
+    if (id === 'diagnostics') showSub(diagState.sub);
+    else if (id === 'media-probe') loadProbeConfig();
+  }
+  $('#ext-nav').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.mod) activateModule(b.dataset.mod); };
+
+  // ---- module: diagnostics (activity / database / logs sub-views) ----
+  var diagState = { sub: 'activity' };
+  function showSub(name) {
+    diagState.sub = name;
+    stopPoll();
+    Array.prototype.forEach.call(document.querySelectorAll('#diag-subtabs .subtab'), function (b) { b.classList.toggle('active', b.dataset.sub === name); });
+    ['activity', 'database', 'logs'].forEach(function (n) { $('#sub-' + n).hidden = (n !== name); });
+    if (name === 'activity') startPoll(loadStatus, 1500);
+    else if (name === 'logs') { logState.after = 0; $('#log-box').innerHTML = ''; startPoll(loadLogs, 2000); }
+    else if (name === 'database') loadDbTables();
+  }
+  $('#diag-subtabs').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.sub) showSub(b.dataset.sub); };
+
+  // ---- module: media probe (ffprobe) ----
+  function loadProbeConfig() {
+    api('/v1/admin/extensions/media-probe', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
+      if (!c) return;
+      $('#mp-enabled').checked = c.enabled;
+      $('#mp-path').value = c.ffprobePath || '';
+      var badge = c.available ? '<span class="ok-badge">' + esc(c.version || 'ffprobe found') + '</span>' : '<span class="off-badge">ffprobe not found</span>';
+      $('#mp-avail').innerHTML = badge + (c.resolvedPath ? ' <span class="meta">' + esc(c.resolvedPath) + '</span>' : '');
+    });
+  }
+  function saveProbeConfig() {
+    msg('mp-msg', '');
+    api('/v1/admin/extensions/media-probe', 'PATCH', { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value }).then(function (res) {
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { msg('mp-msg', 'Save failed.'); return; }
+      msg('mp-msg', 'Saved.', true); loadProbeConfig(); enterExtensions();
+    }).catch(function () { msg('mp-msg', 'Could not reach the server.'); });
+  }
+  function runProbe() {
+    var id = $('#mp-item').value.trim();
+    if (!id) { msg('mp-msg', 'Enter an item id.'); return; }
+    msg('mp-msg', 'Probing…'); $('#mp-result').innerHTML = '';
+    api('/v1/admin/extensions/media-probe/probe?itemId=' + encodeURIComponent(id), 'GET').then(function (res) {
+      return res.json().then(function (b) { return { ok: res.ok, body: b }; }).catch(function () { return { ok: res.ok, body: null }; });
+    }).then(function (r) {
+      if (!r.ok) { msg('mp-msg', (r.body && r.body.error && r.body.error.message) || 'Probe failed.'); return; }
+      msg('mp-msg', ''); renderProbe(r.body);
+    }).catch(function () { msg('mp-msg', 'Probe failed.'); });
+  }
+  function renderProbe(p) {
+    var rows = p.streams.map(function (s) {
+      var extra = [s.channels ? s.channels + 'ch' : '', s.isDefault ? 'default' : '', s.isForced ? 'forced' : ''].filter(Boolean).join(' · ');
+      return '<tr><td>' + s.index + '</td><td><span class="chip ' + esc(s.kind) + '">' + esc(s.kind) + '</span></td><td>' + esc(s.codec || '—') + '</td><td>' + esc(s.language || '—') + '</td><td>' + esc(s.title || '') + '</td><td class="meta">' + esc(extra) + '</td></tr>';
+    }).join('');
+    var subs = p.externalSubtitles.length ? '<div class="group-title">External subtitles</div>' + p.externalSubtitles.map(function (x) {
+      return '<div class="item"><span>' + esc(x.url) + '</span><span class="meta">' + esc(x.language || '') + ' · ' + esc(x.format) + '</span></div>';
+    }).join('') : '';
+    $('#mp-result').innerHTML =
+      '<div class="toolbar" style="margin-top:14px;"><strong>' + p.streams.length + ' streams</strong><span class="meta">' + esc(p.prober) + (p.durationSeconds ? ' · ' + Math.round(p.durationSeconds) + 's' : '') + '</span></div>' +
+      '<div class="tablebox"><table class="db"><thead><tr><th>#</th><th>kind</th><th>codec</th><th>lang</th><th>title</th><th></th></tr></thead><tbody>' + (rows || '<tr><td class="null">no streams</td></tr>') + '</tbody></table></div>' + subs;
+  }
+
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
@@ -604,6 +723,9 @@ enum AdminWebController {
   $('#src-add-btn').onclick = addSource;
   $('#usr-add-btn').onclick = addUser;
   $('#src-driver').onchange = driverBlocks;
+  $('#mp-save').onclick = saveProbeConfig;
+  $('#mp-probe-btn').onclick = runProbe;
+  $('#mp-item').addEventListener('keydown', function (e) { if (e.key === 'Enter') runProbe(); });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   if (token) enter();
 </script>
