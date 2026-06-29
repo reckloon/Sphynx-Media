@@ -33,6 +33,13 @@ struct EnrichmentService: Sendable {
     private func runProcess(_ item: ItemRecord, force: Bool) async -> DiagnosticsCenter.JobResult {
         let now = Date().timeIntervalSince1970
 
+        // Collections are containers, never identified/enriched on their own: a
+        // TMDB-discovered one is populated from its movies' `belongs_to_collection`,
+        // and a manual one carries no TMDB id at all. Without this guard a manual
+        // collection would be mis-identified as a movie, and a stale auto collection
+        // would re-fetch its (collection-id) against the movie endpoint.
+        if item.type == "collection" { return .alreadyComplete }
+
         // Already identified + still fresh: nothing to re-fetch. Reported distinctly
         // from `.skipped` (which means unidentifiable) so the Activity tab can show
         // "already complete" rather than a misleading "skipped".

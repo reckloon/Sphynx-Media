@@ -19,6 +19,10 @@ enum Permissions {
     /// Edit item metadata (title/overview/images/…), lock fields against
     /// auto-refresh, and re-identify / re-enrich an item from TMDB.
     static let metadataEdit = "metadata.edit"
+    /// Create and curate **manual collections** (box sets): make a collection in a
+    /// library and add/remove movies or series, rename it, or delete it. Distinct
+    /// from `metadata.edit` so collection curation can be delegated on its own.
+    static let collectionsEdit = "collections.edit"
     /// Trigger a scan/refresh of a source or library (re-index its content).
     /// Source *configuration and credentials* remain admin-only — this grants only
     /// the "go look again" action.
@@ -27,7 +31,7 @@ enum Permissions {
     /// Every well-known key. Used as the admin's effective set in `/v1/auth/me`
     /// and to validate (but not restrict) admin-assigned permissions.
     static let wellKnown: [String] = [
-        libraryRead, markersWrite, imagesWrite, metadataEdit, catalogScan,
+        libraryRead, markersWrite, imagesWrite, metadataEdit, collectionsEdit, catalogScan,
     ]
 
     /// The default permissions a freshly created user receives: enough to browse
@@ -74,6 +78,10 @@ enum Permissions {
         PermissionCapability(
             key: metadataEdit, label: "Edit metadata",
             description: "Edit item metadata, lock fields, and re-identify/re-enrich a title. Scopable per library or per item.",
+            scopable: true, reserved: false),
+        PermissionCapability(
+            key: collectionsEdit, label: "Manage collections",
+            description: "Create manual collections (box sets) and add/remove movies or series, rename, or delete them. Scopable per library.",
             scopable: true, reserved: false),
         PermissionCapability(
             key: catalogScan, label: "Scan / refresh",
