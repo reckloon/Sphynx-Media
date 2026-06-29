@@ -37,6 +37,17 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
     `GET /v1/home/decade?start=`. Empty rows (a genre or decade with nothing in the
     library) are omitted automatically.
 
+- **Profile-picker sign-in on `/user`** (opt-in). A Jellyfin-style "who's
+  watching" chooser: the page shows everyone's avatar and name, you tap a face to
+  pick the account (no username typing), then enter a password or sign in with a
+  passkey. Backed by a new pre-auth endpoint `GET /v1/auth/directory` (plus
+  `…/directory/{id}/avatar` for the pictures), gated by a new `signInUserList`
+  setting — **off by default**, since it lists accounts before sign-in. Enable it
+  in **Settings → "Show a profile picker on the sign-in page"** (or seed
+  `SPHYNX_SIGN_IN_USER_LIST=true`). When off, the page falls back to manual
+  username entry exactly as before. This also wires up **passwordless passkey
+  sign-in** in the web UI (previously only passkey *enrollment* existed there).
+
 ### Changed
 
 - **The home "Recently Added" row now respects the collection minimum.** A

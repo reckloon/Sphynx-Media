@@ -205,6 +205,7 @@ struct AdminController: Sendable {
         if let v = body.playstateRetention { updates[SettingKey.playstateRetention.rawValue] = String(max(0, v)) }
         if let v = body.maintenanceInterval { updates[SettingKey.maintenanceInterval.rawValue] = String(v) }
         if let v = body.avatarMaxBytes { updates[SettingKey.avatarMaxBytes.rawValue] = String(max(0, v)) }
+        if let v = body.signInUserList { updates[SettingKey.signInUserList.rawValue] = String(v) }
         // Passkey Relying Party. The RP id is a bare registrable domain — reject a
         // scheme/port/path so a misconfiguration fails loudly instead of silently
         // breaking every ceremony. Empty disables passkeys.
@@ -936,6 +937,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
     var playstateRetention: Double
     var maintenanceInterval: Double
     var avatarMaxBytes: Int
+    var signInUserList: Bool
     var passkeyRelyingPartyID: String
     var passkeyRelyingPartyName: String
     var passkeyRelyingPartyOrigin: String
@@ -952,6 +954,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
         self.playstateRetention = c.playstateRetention
         self.maintenanceInterval = c.maintenanceInterval
         self.avatarMaxBytes = c.avatarMaxBytes
+        self.signInUserList = c.signInUserList
         self.passkeyRelyingPartyID = c.passkeyRelyingPartyID
         self.passkeyRelyingPartyName = c.passkeyRelyingPartyName
         self.passkeyRelyingPartyOrigin = c.passkeyRelyingPartyOrigin
@@ -971,6 +974,7 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var playstateRetention: Double?
     var maintenanceInterval: Double?
     var avatarMaxBytes: Int?
+    var signInUserList: Bool?
     var passkeyRelyingPartyID: String?
     var passkeyRelyingPartyName: String?
     var passkeyRelyingPartyOrigin: String?

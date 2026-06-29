@@ -76,7 +76,7 @@ func buildRouter(
         db: auth.db, auth: auth, publicBaseURL: configuration.publicBaseURL))
 
     // Public surface: discovery + auth + the static web admin page.
-    let authController = AuthController(auth: auth, policy: policy)
+    let authController = AuthController(auth: auth, policy: policy, signInUserList: configuration.signInUserList)
     let publicV1 = router.group("v1")
     InfoController(configuration: configuration, policy: policy).addRoutes(to: publicV1)
     authController.addRoutes(to: publicV1)

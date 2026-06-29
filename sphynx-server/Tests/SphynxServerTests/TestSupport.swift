@@ -10,7 +10,8 @@ import Testing
 func testConfiguration(
     adminPassword: String = "test-password",
     markersAccess: String = "readwrite",
-    markersStaleAfter: Double = 604_800
+    markersStaleAfter: Double = 604_800,
+    signInUserList: Bool = false
 ) -> ServerConfiguration {
     ServerConfiguration(
         hostname: "127.0.0.1",
@@ -32,7 +33,8 @@ func testConfiguration(
         markersAccess: markersAccess,
         markersStaleAfter: markersStaleAfter,
         playstateRetention: 31_536_000,
-        maintenanceInterval: 0  // background pass off in tests
+        maintenanceInterval: 0,  // background pass off in tests
+        signInUserList: signInUserList
     )
 }
 
