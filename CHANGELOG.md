@@ -22,6 +22,21 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   enough members, and below that its titles show individually. Deleting a collection
   keeps its titles and just removes the grouping.
 
+- **Configurable home screen.** The home feed (`GET /v1/home`) is no longer three
+  fixed rows — it is now driven by a layout of ordered shelves. Two new shelf
+  kinds, `genre` and `releaseDecade`, let a row be "Action" or "the 1980s"
+  (the parameter rides in `Shelf.id`, e.g. `genre:Action` / `decade:1980`; both
+  are open-enum additions, so older clients degrade gracefully).
+  - **Admin → Home tab** sets the *default* layout every user sees, with a
+    one-click starter set of popular genres and decades (`GET`/`PUT /v1/admin/home`,
+    genres from `GET /v1/admin/genres`).
+  - **/user → Home screen rows** lets each user build their own layout by genre and
+    decade; it replaces the default for them, with a **Reset to default** button
+    (`GET`/`PUT`/`DELETE /v1/home/config`).
+  - Genre/decade rows are paginated via `GET /v1/home/genre?name=` and
+    `GET /v1/home/decade?start=`. Empty rows (a genre or decade with nothing in the
+    library) are omitted automatically.
+
 ### Changed
 
 - **The home "Recently Added" row now respects the collection minimum.** A
