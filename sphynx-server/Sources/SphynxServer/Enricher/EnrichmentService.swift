@@ -33,9 +33,11 @@ struct EnrichmentService: Sendable {
     private func runProcess(_ item: ItemRecord, force: Bool) async -> DiagnosticsCenter.JobResult {
         let now = Date().timeIntervalSince1970
 
-        // Skip fresh, already-identified items unless forced.
+        // Already identified + still fresh: nothing to re-fetch. Reported distinctly
+        // from `.skipped` (which means unidentifiable) so the Activity tab can show
+        // "already complete" rather than a misleading "skipped".
         if !force, let enrichedAt = item.enrichedAt, item.tmdbId != nil, now - enrichedAt < ttl {
-            return .skipped
+            return .alreadyComplete
         }
 
         // TV items use the TV endpoints, not the movie endpoint.

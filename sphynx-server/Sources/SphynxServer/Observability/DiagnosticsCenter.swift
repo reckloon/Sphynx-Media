@@ -13,9 +13,10 @@ actor DiagnosticsCenter {
 
     /// How a single parse/enrich attempt resolved.
     enum JobResult: String, Sendable {
-        case enriched   // identified + metadata written
-        case skipped    // fresh already, or unidentifiable — nothing to do
-        case failed     // an error was caught (see the log for detail)
+        case enriched         // identified + metadata written
+        case alreadyComplete  // already identified + still fresh — re-fetch correctly skipped
+        case skipped          // unidentifiable (no TMDB match) — left as a skeleton
+        case failed           // an error was caught (see the log for detail)
     }
 
     private struct ActiveJob {
@@ -34,6 +35,7 @@ actor DiagnosticsCenter {
     // Lifetime counters.
     private var processed = 0
     private var enriched = 0
+    private var alreadyComplete = 0
     private var skipped = 0
     private var failed = 0
 
@@ -68,6 +70,7 @@ actor DiagnosticsCenter {
         processed += 1
         switch result {
         case .enriched: enriched += 1
+        case .alreadyComplete: alreadyComplete += 1
         case .skipped: skipped += 1
         case .failed: failed += 1
         }
@@ -118,6 +121,7 @@ actor DiagnosticsCenter {
             queued: queued,
             processed: processed,
             enriched: enriched,
+            alreadyComplete: alreadyComplete,
             skipped: skipped,
             failed: failed,
             uptimeSeconds: now.timeIntervalSince(startedAt),
@@ -159,6 +163,7 @@ struct ActivitySnapshot: Codable, Sendable {
     var queued: Int
     var processed: Int
     var enriched: Int
+    var alreadyComplete: Int
     var skipped: Int
     var failed: Int
     var uptimeSeconds: Double

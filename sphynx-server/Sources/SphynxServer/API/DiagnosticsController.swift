@@ -78,8 +78,10 @@ struct DiagnosticsController: Sendable {
                 return ia != ib ? ia < ib : a.type < b.type
             }
 
-        // Items the sources reported on their last scan (only counts scanned sources).
-        let inSourceTotal = lastScan.values.reduce(0) { $0 + $1.scanned }
+        // Items the sources reported on their last scan. Sum over CURRENT sources
+        // only (via sourceViews) — the diagnostics scan history also retains scans
+        // from deleted/recreated sources, and counting those double-counts inSource.
+        let inSourceTotal = sourceViews.reduce(0) { $0 + ($1.inSource ?? 0) }
         return OverviewResponse(
             inSource: inSourceTotal,
             indexed: overall.total,

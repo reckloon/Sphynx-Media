@@ -110,7 +110,7 @@ enum AdminWebController {
   .bd-bar > span { display:block; height:100%; background:var(--ok); }
   .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
   .chip.movie { color:var(--accent); } .chip.tv { color:var(--tv); } .chip.audio { color:var(--ok); } .chip.subtitle { color:var(--tv); } .chip.video { color:var(--accent); }
-  .res-enriched { color:var(--ok); } .res-skipped { color:var(--muted); } .res-failed { color:var(--err); }
+  .res-enriched { color:var(--ok); } .res-alreadyComplete { color:var(--ok); opacity:.6; } .res-skipped { color:var(--muted); } .res-failed { color:var(--err); }
   /* ---- avatars ---- */
   .avatar { width:30px; height:30px; border-radius:50%; object-fit:cover; background:var(--sub); border:1px solid var(--line); flex:0 0 auto; }
   .avatar.ph { display:inline-flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; font-weight:600; }
@@ -621,8 +621,10 @@ enum AdminWebController {
   document.addEventListener('visibilitychange', function () { if (!document.hidden && token) startDash(); });
   function fmtMs(ms) { if (ms == null) return ''; return ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's'; }
   function fmtDur(s) { s = Math.floor(s); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + x + 's'; }
+  var RESULT_LABELS = { enriched: 'enriched', alreadyComplete: 'already complete', skipped: 'skipped (unidentified)', failed: 'failed' };
   function jobRow(j) {
-    var right = j.result ? '<span class="meta res-' + esc(j.result) + '">' + esc(j.result) + ' · ' + fmtMs(j.durationMs) + '</span>' : '<span class="meta">' + fmtMs(j.durationMs) + '</span>';
+    var label = j.result ? (RESULT_LABELS[j.result] || j.result) : '';
+    var right = j.result ? '<span class="meta res-' + esc(j.result) + '">' + esc(label) + ' · ' + fmtMs(j.durationMs) + '</span>' : '<span class="meta">' + fmtMs(j.durationMs) + '</span>';
     return '<div class="item"><span><span class="chip ' + esc(j.kind) + '">' + esc(j.kind) + '</span> ' + esc(j.title) + '</span>' + right + '</div>';
   }
   function loadStatus() {
