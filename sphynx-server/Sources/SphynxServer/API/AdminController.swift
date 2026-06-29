@@ -25,6 +25,9 @@ struct AdminController: Sendable {
     /// Live updates: scans + library edits publish library-scoped `library` events
     /// nudging clients to refresh "recently added" / library views.
     let events: EventBus
+    /// Live metadata-language holder, updated when the admin changes the language so
+    /// a re-enrich applies it without a restart. Nil in tests / when TMDB is off.
+    var languageProvider: MetadataLanguageProvider? = nil
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let admin = group.group("admin")
@@ -237,6 +240,11 @@ struct AdminController: Sendable {
             updates[SettingKey.webAuthRedirectAllowlist.rawValue] = v.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         try await settings.set(updates)
+        // Apply a language change to the live enrichment client immediately, so a
+        // "Reset enrichment" picks up the new language without a server restart.
+        if let lang = updates[SettingKey.metadataLanguage.rawValue], !lang.isEmpty {
+            await languageProvider?.update(lang)
+        }
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
     }

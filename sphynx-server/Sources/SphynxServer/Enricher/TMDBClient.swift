@@ -135,15 +135,30 @@ enum TMDBImage {
     }
 }
 
+/// Holds the current metadata language and lets it change **live**. An admin's
+/// language change updates this in place, so the next enrichment (e.g. a "Reset
+/// enrichment" pass) uses the new language without a server restart — the detail
+/// endpoints read `current()` per request.
+actor MetadataLanguageProvider {
+    private var value: String
+    init(_ value: String) { self.value = value.isEmpty ? "en-US" : value }
+    func current() -> String { value }
+    func update(_ newValue: String) {
+        let trimmed = newValue.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { value = trimmed }
+    }
+}
+
 /// Live TMDB v3 client. Reuses the shared `HTTPFetching` (so it's cross-platform
 /// and unit-testable) and authenticates with the v3 `api_key` query parameter.
 struct TMDBHTTPClient: TMDBClient {
     let apiKey: String
-    /// Metadata language as an ISO `language-COUNTRY` tag (`en-US`, `ru-RU`, …).
-    /// Sent on the *detail* endpoints, so titles, overviews, and episode names come
-    /// back in the server's declared language. Search stays language-neutral —
-    /// TMDB matches a query against all translations regardless.
-    var language: String = "en-US"
+    /// Metadata language as an ISO `language-COUNTRY` tag (`en-US`, `ru-RU`, …),
+    /// read **live** per request. Sent on the *detail* endpoints, so titles,
+    /// overviews, and episode names come back in the server's current language —
+    /// changing the setting + re-enriching applies it with no restart. Search stays
+    /// language-neutral — TMDB matches a query against all translations regardless.
+    let language: MetadataLanguageProvider
     let fetcher: any HTTPFetching
     private let apiBase = "https://api.themoviedb.org/3"
 
@@ -166,7 +181,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/movie/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "language", value: await language.current()),
             URLQueryItem(name: "append_to_response", value: "credits,videos,keywords,images,release_dates"),
             // Logos for the title-logo image carry no language on backdrops; ask
             // for English + null-language so a clearlogo is available.
@@ -262,7 +277,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/tv/\(id)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "language", value: await language.current()),
             URLQueryItem(name: "append_to_response", value: "credits,content_ratings,images"),
             // Title-logo art carries no language on backdrops; ask for English +
             // null-language so a clearlogo (and textless banner) is available —
@@ -303,7 +318,7 @@ struct TMDBHTTPClient: TMDBClient {
         var components = URLComponents(string: "\(apiBase)/tv/\(tvId)/season/\(season)")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "language", value: await language.current()),
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawSeasonDetails.self, from: data)

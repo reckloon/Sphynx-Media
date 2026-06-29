@@ -1178,11 +1178,23 @@ enum AdminWebController {
     api('/v1/admin/sources', 'GET').then(function (res) { return res.ok ? res.json() : { sources: [] }; }).then(function (d) {
       var srcs = d.sources || [];
       // Consolidated, always-visible list of every source (any driver).
+      var movieLib = libraries.filter(function (l) { return l.kind === 'movies'; })[0];
+      var tvLib = libraries.filter(function (l) { return l.kind === 'tvShows'; })[0];
       $('#all-sources').innerHTML = srcs.length ? srcs.map(function (s) {
         var rm = (s.refreshInterval > 0) ? 'auto-refresh every ' + Math.round(s.refreshInterval / 60) + ' min' : 'manual scan only';
-        return '<div class="item" data-src-row="' + esc(s.id) + '"><span class="it-row"><span class="chip">' + esc(s.driver) + '</span> <strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + '</span> <span class="meta src-scan" hidden><span class="dot scanning pulse"></span> scanning…</span></span>' +
-          '<span class="acts"><button class="mini" data-scan-src="' + esc(s.id) + '" title="Import the latest from this source only: add new titles, update changed ones, remove deleted ones.">Scan</button>' +
-          '<button class="mini danger" data-del-src="' + esc(s.id) + '" title="Remove this source and every item it imported into the library.">Delete</button></span></div>';
+        var lm = s.libraryMap || {};
+        var feeds = []; if (lm.movie) feeds.push('Movies'); if (lm.tv) feeds.push('TV');
+        var feedsTxt = feeds.length ? ' · feeds ' + feeds.join(' + ') : (s.libraryId ? '' : ' · feeds nothing');
+        var editor = '<div class="addbox src-edit" data-src-edit="' + esc(s.id) + '" hidden style="margin:4px 0 10px;">'
+          + '<span class="meta">Feeds which libraries? </span>'
+          + '<label class="meta"' + (movieLib ? '' : ' title="Turn on the Movies library first"') + '><input type="checkbox" data-se-movie="' + esc(s.id) + '"' + (lm.movie ? ' checked' : '') + (movieLib ? '' : ' disabled') + '> Movies</label> '
+          + '<label class="meta"' + (tvLib ? '' : ' title="Turn on the TV Shows library first"') + '><input type="checkbox" data-se-tv="' + esc(s.id) + '"' + (lm.tv ? ' checked' : '') + (tvLib ? '' : ' disabled') + '> TV Shows</label> '
+          + '<button class="mini" data-se-save="' + esc(s.id) + '">Save mapping</button> '
+          + '<span class="msg" data-se-msg="' + esc(s.id) + '" style="min-height:0;display:inline;"></span></div>';
+        return '<div class="item" data-src-row="' + esc(s.id) + '"><span class="it-row"><span class="chip">' + esc(s.driver) + '</span> <strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + feedsTxt + '</span> <span class="meta src-scan" hidden><span class="dot scanning pulse"></span> scanning…</span></span>' +
+          '<span class="acts"><button class="mini secondary" data-edit-src="' + esc(s.id) + '" title="Change which libraries this source feeds (Movies / TV Shows) — e.g. to re-enable Movies after re-adding the library.">Edit</button>' +
+          '<button class="mini" data-scan-src="' + esc(s.id) + '" title="Import the latest from this source only: add new titles, update changed ones, remove deleted ones.">Scan</button>' +
+          '<button class="mini danger" data-del-src="' + esc(s.id) + '" title="Remove this source and every item it imported into the library.">Delete</button></span></div>' + editor;
       }).join('') : '<div class="empty">No sources yet — add one below.</div>';
       STORAGE_DRIVERS.forEach(function (driver) {
         var list = $('#src-list-' + driver); if (!list) return;
@@ -1233,11 +1245,28 @@ enum AdminWebController {
   }
   $('#tab-libraries').onclick = function (e) {
     var add = e.target.getAttribute('data-add'); if (add) { addSource(add); return; }
+    var editSrc = e.target.getAttribute('data-edit-src'); if (editSrc) { var ed = document.querySelector('[data-src-edit="' + editSrc + '"]'); if (ed) ed.hidden = !ed.hidden; return; }
+    var seSave = e.target.getAttribute('data-se-save'); if (seSave) { saveSourceMapping(seSave); return; }
     var scanSrc = e.target.getAttribute('data-scan-src'); if (scanSrc) { scanSourceById(scanSrc); return; }
     var del = e.target.getAttribute('data-del-src'), scan = e.target.getAttribute('data-scan');
     if (del) { if (confirm('Delete this source and every item it imported?')) api('/v1/admin/sources/' + del, 'DELETE').then(function () { loadSources(); loadLibraries(); loadOverview(); }); return; }
     if (scan) { scanSource(storActive, scan); return; }
   };
+  function saveSourceMapping(id) {
+    var setMsg = function (t, ok) { var m = document.querySelector('[data-se-msg="' + id + '"]'); if (m) { m.textContent = t; m.className = 'msg' + (ok ? ' ok' : ''); } };
+    var mv = document.querySelector('[data-se-movie="' + id + '"]'), tv = document.querySelector('[data-se-tv="' + id + '"]');
+    var movieLib = libraries.filter(function (l) { return l.kind === 'movies'; })[0];
+    var tvLib = libraries.filter(function (l) { return l.kind === 'tvShows'; })[0];
+    var map = {};
+    if (mv && mv.checked && movieLib) map.movie = movieLib.id;
+    if (tv && tv.checked && tvLib) map.tv = tvLib.id;
+    setMsg('Saving…');
+    api('/v1/admin/sources/' + id, 'PATCH', { libraryMap: map }).then(function (res) {
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { res.json().then(function (e) { setMsg((e && e.error && e.error.message) || 'Save failed.'); }).catch(function () { setMsg('Save failed.'); }); return; }
+      setMsg('Saved — Scan this source to import into the new library.', true); loadSources(); loadLibraries();
+    }).catch(function () { setMsg('Could not reach the server.'); });
+  }
   $('#lib-list').onchange = function (e) {
     var tk = e.target.getAttribute('data-lib-toggle');
     if (tk !== null) { toggleLibrary(tk, e.target.checked, e.target.getAttribute('data-lib-id'), e.target); return; }

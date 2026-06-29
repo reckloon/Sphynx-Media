@@ -44,6 +44,7 @@ func buildRouter(
     resolver: Resolver,
     indexer: Indexer,
     enrichment: EnrichmentService?,
+    languageProvider: MetadataLanguageProvider? = nil,
     playstate: PlaystateService,
     userState: UserStateService,
     policy: AccessPolicy,
@@ -117,7 +118,8 @@ func buildRouter(
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter, events: events).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
                     settings: settings, homeConfig: homeConfig,
-                    configuration: configuration, events: events).addRoutes(to: securedV1)
+                    configuration: configuration, events: events,
+                    languageProvider: languageProvider).addRoutes(to: securedV1)
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
                           logStore: LogStore.shared, schedule: scheduleCenter,
@@ -169,6 +171,11 @@ func buildApplication(
     )
 
     let catalog = Catalog(db: database)
+    // Sweep any items orphaned by an earlier library deletion (extras carry a nil
+    // libraryId, so a pre-fix library delete left them stranded with no parent).
+    if let orphans = try? await catalog.pruneOrphans(), orphans > 0 {
+        logger.info("Pruned \(orphans) orphaned item(s) on startup")
+    }
     let fetcher = httpFetcher ?? URLSessionFetcher()
     let drivers = DriverFactory(fetcher: fetcher)
     let resolver = Resolver(catalog: catalog, drivers: drivers)
@@ -187,8 +194,11 @@ func buildApplication(
 
     // Identification + enrichment are available only when TMDB is configured
     // (an injected client for tests, or a real client from the API key).
+    // Live metadata-language holder: an admin's language change updates it so a
+    // re-enrich picks up the new language without a restart.
+    let languageProvider = MetadataLanguageProvider(configuration.metadataLanguage)
     let tmdb: (any TMDBClient)? = tmdbClient
-        ?? (tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: tmdbAPIKey, language: configuration.metadataLanguage, fetcher: fetcher))
+        ?? (tmdbAPIKey.isEmpty ? nil : TMDBHTTPClient(apiKey: tmdbAPIKey, language: languageProvider, fetcher: fetcher))
     let enrichment: EnrichmentService? = tmdb.map { client in
         EnrichmentService(
             catalog: catalog,
@@ -240,6 +250,7 @@ func buildApplication(
         resolver: resolver,
         indexer: indexer,
         enrichment: enrichment,
+        languageProvider: languageProvider,
         playstate: playstate,
         userState: userState,
         policy: policy,

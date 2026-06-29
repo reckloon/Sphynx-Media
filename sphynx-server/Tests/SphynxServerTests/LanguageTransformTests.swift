@@ -35,7 +35,7 @@ struct LanguageTransformTests {
     @Test("the TMDB client sends the configured language on detail requests")
     func detailRequestsCarryLanguage() async throws {
         let fetcher = CapturingFetcher(Data(#"{"id":268,"title":"Бэтмен"}"#.utf8))
-        let client = TMDBHTTPClient(apiKey: "KEY", language: "ru-RU", fetcher: fetcher)
+        let client = TMDBHTTPClient(apiKey: "KEY", language: MetadataLanguageProvider("ru-RU"), fetcher: fetcher)
 
         let details = try await client.movieDetails(id: 268)
         #expect(details.title == "Бэтмен")   // the language's localized title comes back

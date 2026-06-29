@@ -84,6 +84,9 @@ struct Catalog: Sendable {
             return true
         }
         guard existed else { throw SphynxError.notFound("No library '\(id)'") }
+        // Extras carry `libraryId` nil (they nest under a movie/show via parentId), so
+        // the libraryId-scoped delete above leaves them stranded — sweep them now.
+        try await pruneOrphans()
     }
 
     // MARK: Sources
@@ -664,5 +667,32 @@ struct Catalog: Sendable {
             }
             frontier = next
         }
+    }
+
+    /// Delete items whose `parentId` points at an item that no longer exists — e.g.
+    /// **extras** (which carry `libraryId` nil and nest under a movie/show via
+    /// `parentId`) left stranded when their parent was removed with a library.
+    /// Repeats until stable (removing an orphan can orphan its children), tombstoning
+    /// each removed id so clients drop them too. Returns the number removed.
+    @discardableResult
+    func pruneOrphans() async throws -> Int {
+        let now = Date().timeIntervalSince1970
+        var total = 0
+        while true {
+            let removed: [String] = try await db.writer.write { db in
+                let ids = try String.fetchAll(db, sql: """
+                    SELECT c.id FROM item c
+                    WHERE c.parentId IS NOT NULL
+                      AND NOT EXISTS (SELECT 1 FROM item p WHERE p.id = c.parentId)
+                    """)
+                guard !ids.isEmpty else { return [] }
+                try ItemRecord.filter(ids.contains(Column("id"))).deleteAll(db)
+                try Self.recordTombstones(ids, at: now, in: db)
+                return ids
+            }
+            if removed.isEmpty { break }
+            total += removed.count
+        }
+        return total
     }
 }

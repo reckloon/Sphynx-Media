@@ -10,7 +10,27 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Re-map a source to different libraries after creating it.** Each source in
+  **Libraries → Storage sources** gets an **Edit** button to change which libraries it
+  feeds (Movies / TV Shows) — so after deleting and re-adding the Movies library you
+  can point an existing source back at it (`PATCH /v1/admin/sources/{id}` already
+  supported this; the UI now exposes it). Re-scan to import into the re-mapped library.
+
+### Fixed
+
+- **A metadata-language change now applies without a restart.** The TMDB client baked
+  the language in at boot, so changing it and re-enriching kept the old language. The
+  language is now read **live**, so saving a new language and clicking **Reset
+  enrichment** re-fetches titles/overviews/posters in the new language. (Watch history
+  is preserved — items are re-enriched in place, not purged.)
+
+- **Deleting a library no longer strands its extras/featurettes.** Bonus content nests
+  under a movie/show via `parentId` and carries `libraryId` nil, so a library deletion
+  (scoped by `libraryId`) left those rows behind — still counted, with no library or
+  source. `deleteLibrary` now sweeps the orphaned descendants, and a startup pass
+  (`pruneOrphans`) clears any already stranded by an earlier delete.
 
 ## [0.2.0] — 2026-06-29
 
