@@ -4,7 +4,7 @@
 
 **The catalog brain for your movie & TV collection — every poster, every season, every screen.**
 
-📖 **[The complete guide →](https://reckloon.github.io/Sphynx-Media/)** &nbsp;·&nbsp; [Every API endpoint](docs/API.md) &nbsp;·&nbsp; [Changelog](CHANGELOG.md)
+**[The complete guide →](https://reckloon.github.io/Sphynx-Media/)** &nbsp;·&nbsp; [Every API endpoint](docs/API.md) &nbsp;·&nbsp; [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -21,20 +21,20 @@ heat. It happily runs on a Raspberry Pi or a $5 VPS.
 
 What you get out of the box:
 
-- 🎬 **Gorgeous libraries, automatically.** Point it at your files, press **Scan**,
+- **Gorgeous libraries, automatically.** Point it at your files, press **Scan**,
   and TMDB fills in posters, cast, episode art, and descriptions — for movies, TV,
   box sets, and extras.
-- 🔐 **Passwordless sign-in with passkeys.** Face ID, Touch ID, Windows Hello, or a
+- **Passwordless sign-in with passkeys.** Face ID, Touch ID, Windows Hello, or a
   hardware key. No password to type, none to leak.
-- 📺 **Sign in a TV by scanning a QR code** and approving on your phone — the same
+- **Sign in a TV by scanning a QR code** and approving on your phone — the same
   "scan, Face ID, done" flow you wish everything had.
-- 🗂️ **Plug into anything.** Local disk, HTTP/CDN, **SMB**, **WebDAV**, **FTP**, or
+- **Plug into anything.** Local disk, HTTP/CDN, **SMB**, **WebDAV**, **FTP**, or
   **TorBox** debrid — mix as many sources as you like onto one shelf.
-- 👪 **Real accounts for real households.** Per-person watch history and resume,
+- **Real accounts for real households.** Per-person watch history and resume,
   plus fine-grained permissions you can scope to a single library.
-- ⚡ **Featherweight & private.** No transcoding, no phone-home, no cloud account.
+- **Featherweight & private.** No transcoding, no phone-home, no cloud account.
   100% open source (MIT).
-- 🧩 **An open standard.** Any player can speak to it. Today there's a polished
+- **An open standard.** Any player can speak to it. Today there's a polished
   Apple client called **Ocelot**; tomorrow, anything.
 
 Everything below is done in a **web panel** — no config files, no JSON, no terminal
@@ -175,7 +175,7 @@ VPS, a Raspberry Pi, or an Apple Silicon Mac.
 ### 3. Open the control panel
 
 Go to **http://localhost:9410/admin** and sign in as `admin` with the password you
-set. If the panel loads, **you have a working Sphynx server.** 🎉
+set. If the panel loads, **you have a working Sphynx server.**
 
 > Prefer the terminal? `curl http://localhost:9410/v1/info` returns your server's
 > name as JSON — same confirmation, no browser.
@@ -227,7 +227,7 @@ bottom: **Scan this source for** (tick *Movies*, *TV Shows*, or both) and
 Pick your driver:
 
 <details open>
-<summary><b>📁 Local</b> — a folder on the server's own disk</summary>
+<summary><b>Local</b> — a folder on the server's own disk</summary>
 
 - **Name** — any label you'll recognize ("My disk").
 - **Folder path on the server** — e.g. `/srv/media`.
@@ -239,7 +239,7 @@ SMB/WebDAV/HTTP server in front of it and use that driver instead. (Exception:
 </details>
 
 <details>
-<summary><b>🌐 HTTP</b> — media at web URLs / a CDN</summary>
+<summary><b>HTTP</b> — media at web URLs / a CDN</summary>
 
 - **Name** — a label.
 - **Base media URL** *(optional)* — prefix for relative entries, e.g. `https://cdn.example`.
@@ -251,7 +251,7 @@ SMB/WebDAV/HTTP server in front of it and use that driver instead. (Exception:
 </details>
 
 <details>
-<summary><b>🗄️ WebDAV</b> — Nextcloud and other WebDAV servers</summary>
+<summary><b>WebDAV</b> — Nextcloud and other WebDAV servers</summary>
 
 - **Name** — a label.
 - **WebDAV URL** — e.g. `https://nas.example/remote.php/dav/files/me/Media`.
@@ -260,7 +260,7 @@ SMB/WebDAV/HTTP server in front of it and use that driver instead. (Exception:
 </details>
 
 <details>
-<summary><b>🖧 SMB</b> — Windows shares / Samba on your NAS</summary>
+<summary><b>SMB</b> — Windows shares / Samba on your NAS</summary>
 
 - **Name** — a label.
 - **Server / host** — e.g. `nas.local`.
@@ -271,7 +271,7 @@ SMB/WebDAV/HTTP server in front of it and use that driver instead. (Exception:
 </details>
 
 <details>
-<summary><b>📡 FTP</b> — an FTP server</summary>
+<summary><b>FTP</b> — an FTP server</summary>
 
 - **Name** — a label.
 - **Server / host** — e.g. `ftp.example`.
@@ -282,7 +282,7 @@ SMB/WebDAV/HTTP server in front of it and use that driver instead. (Exception:
 </details>
 
 <details>
-<summary><b>☁️ TorBox</b> — stream your TorBox debrid cloud</summary>
+<summary><b>TorBox</b> — stream your TorBox debrid cloud</summary>
 
 - **Name** — a label.
 - **API key** — from [torbox.app/settings](https://torbox.app/settings).
@@ -400,7 +400,7 @@ library to browse into shows and collections, then click **Fix** on any title.
 
 - **Edit any field** — Title, Overview, Year, Runtime, Community rating, Content
   rating, Genres, Poster URL, Backdrop URL.
-- **Save & lock edited fields** — your changes get a 🔒, so a future re-scan **never
+- **Save & lock edited fields** — your changes are locked, so a future re-scan **never
   overwrites them**. (Changed your mind? **Unlock all**.)
 - **Re-enrich** — pull fresh data from TMDB for this title.
 - **Re-identify** — pinned to the wrong movie? Paste the correct **TMDB id** and
