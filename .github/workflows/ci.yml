@@ -96,9 +96,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write          # contents:write so the job can create the GitHub Release
       packages: write
     steps:
+      - uses: actions/checkout@v4   # needed to read CHANGELOG.md for the release notes
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -129,6 +130,31 @@ jobs:
             $(printf 'ghcr.io/reckloon/sphynx-server@sha256:%s ' *)
       - name: Inspect the published image
         run: docker buildx imagetools inspect ghcr.io/reckloon/sphynx-server:${{ steps.meta.outputs.version }}
+      # A pushed tag is just a git pointer; this turns it into a GitHub *Release*
+      # (the Releases page entry + "Latest" badge), with notes lifted from the
+      # matching CHANGELOG.md section. Idempotent so a re-run updates in place.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version='${{ steps.meta.outputs.version }}'
+          tag="$GITHUB_REF_NAME"
+          notes="$RUNNER_TEMP/relnotes.md"
+          # Pull just this version's section: from its "## [x.y.z]" heading to the
+          # next "## [" heading. Fall back to auto-generated notes if absent.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" {f=1; next}
+            f && /^## \[/ {exit}
+            f {print}
+          ' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then
+            printf 'Release %s.\n' "$tag" > "$notes"
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "v${version}" --notes-file "$notes" --latest
+          else
+            gh release create "$tag" --title "v${version}" --notes-file "$notes" --latest
+          fi
 
   linux:
     name: Linux (swift test)
