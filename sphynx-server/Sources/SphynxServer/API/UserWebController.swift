@@ -762,6 +762,7 @@ enum UserWebController {
   $('#reset-history-btn').onclick = resetHistory;
   $('#logout-all-btn').onclick = logoutEverywhere;
   $('#pk-add-btn').onclick = addPasskey;
+  bindUserHome();   // wire the home-layout add/remove/reorder/save handlers (once)
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   if (token) enter(); else loadDirectory();
 </script>
