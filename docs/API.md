@@ -1774,6 +1774,52 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   detail carries the embedded `chapters` — all without re-probing. (TMDB has no
   chapter data; `ffprobe -show_chapters` is the only source.)
 
+**Low-res images** (`id: placeholders`) — controls the low-res `placeholder` form
+the server emits on every item's images (the blur-up stand-in a client paints
+before full artwork loads; see [Item shape](#item-shape) and `Placeholder`). One
+knob, `mode`:
+
+- `blurhash` **(default)** — a [BlurHash](https://blurha.sh) string
+  (`placeholder.blurHash`) the client decodes locally. Hashes are **generated and
+  cached during enrichment** (the server fetches the poster, decodes it, and
+  BlurHash-encodes it), so a title fills in on its next (re-)enrich; until a hash
+  exists the item transparently falls back to the `url` form. Only the **poster**
+  carries a hash — the other image roles (backdrop / thumb / logo / banner) resolve
+  to `url` under this mode.
+- `url` — a tiny pre-sized image URL (`placeholder.url`). Always available; nothing
+  to generate.
+- `off` — no `placeholder` is sent at all (clients render a plain background).
+
+**`url` vs `blurhash` — trade-offs.** Both let a client show *something* in a tile
+before the full poster arrives; they differ in how that stand-in is delivered:
+
+| | `url` | `blurhash` *(default)* |
+|---|---|---|
+| **What the client gets** | A link to a tiny (~w92) image | A ~30-char string it decodes to a gradient |
+| **Extra network request** | Yes — one more image fetch per tile | **None** — the hash rides in the item JSON |
+| **First paint** | After the tiny image loads (network-bound) | **Instant** — painted from the string, offline-friendly |
+| **Looks like** | A pixelated thumbnail of the real art | A soft blur of the real art's colors |
+| **Server cost** | None (just a URL) | One-time fetch+decode+encode per poster at enrich time; cached after |
+| **Storage** | None | ~30 bytes per item (`placeholderBlurHash`) |
+| **Freshness** | Always matches current art | Regenerated on re-enrich; a just-changed poster serves `url` until then |
+| **Bandwidth** | Higher (an image per tile, esp. on big grids) | Lower (no placeholder requests) |
+
+Rule of thumb: **`blurhash`** for the smoothest, lowest-bandwidth experience
+(recommended, and the default); **`url`** if you'd rather show a recognizable
+thumbnail or want to avoid the enrich-time image fetches entirely; **`off`** to send
+nothing.
+
+The mode is read **live**, so switching it re-shapes serving immediately (no
+restart, no re-enrich) — `off` and `url` apply at once; `blurhash` serves whatever
+hashes have already been generated (the rest fill in as items are re-enriched). The
+registry entry's `enabled` is `true` unless the mode is `off`. The setting governs
+the **client wire API**; the admin item editor still shows/sets the underlying URL
+placeholder regardless.
+
+- **`GET /v1/admin/extensions/placeholders`** → `{ "mode" }` (`url` | `blurhash` | `off`).
+- **`PATCH /v1/admin/extensions/placeholders`** `{ "mode"? }` → the updated config.
+  Persisted; applied live. An unrecognised `mode` is **400**.
+
 ---
 
 ## Errors
@@ -1912,7 +1958,8 @@ blur-up and lay out *each* image independently — not just the poster:
 ```
 
 Each `ImageInfo` carries `url`, an optional `placeholder` (same one-of as the
-top-level one — the reference server sends the `url` form), and an optional
+top-level one — its form follows the [low-res-images extension](#extensions--admin-only)
+mode), and an optional
 `aspect` (width ÷ height: ~`0.667` portrait, ~`1.778` landscape). `width`/`height`
 are reserved (absent unless the server knows exact dimensions). The map is **open**
 — clients tolerate role keys they don't recognise. The flat role fields remain the
@@ -1933,11 +1980,12 @@ without comparing every field. It **excludes** per-user playstate
 `detail=skeleton` and `detail=full`, in list and single-item responses.
 
 `placeholder` is a self-describing one-of that may carry **any** low-res form. The
-**reference server emits the `url` form** — a small pre-sized image link — so it
-stores and processes no image bytes; the protocol equally allows
-`{ "blurHash": "…" }` or a future form. **Clients should support both `blurHash`
-and `url`** (decode a BlurHash locally; load a `url` image), using whichever the
-server sent, and fall back to a plain background for forms they don't recognize.
+form the reference server emits is set by the [low-res-images extension](#extensions--admin-only):
+`blurHash` (the default — a [BlurHash](https://blurha.sh) generated and cached at
+enrich time), `url` (a small pre-sized image link, storing no image bytes), or
+omitted entirely (`off`). **Clients should support both `blurHash` and `url`**
+(decode a BlurHash locally; load a `url` image), using whichever the server sent, and
+fall back to a plain background for forms they don't recognize.
 
 ### Open metadata (`extra`)
 

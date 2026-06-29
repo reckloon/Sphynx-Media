@@ -445,6 +445,30 @@ Once enabled, probed track info rides along when a player resolves a title.
 
 ---
 
+## Choose how tiles blur up (Low-res images)
+
+Apps paint a cheap low-res stand-in while a poster loads so the grid never flashes
+empty. **Extensions → Low-res images** picks the form Sphynx sends:
+
+- **BlurHash** *(default)* — a compact hash the app paints *instantly*, with no extra
+  request, as a soft blur of the poster's colors. Sphynx generates these while it
+  enriches titles, so existing items fill in on their next refresh (until then they
+  fall back to the URL form automatically).
+- **Image URL** — a tiny poster link the app loads and blurs. Looks like a pixelated
+  thumbnail, but it's one more image request per tile.
+- **Off** — send nothing; apps just show a plain background.
+
+**Which to pick?** BlurHash is the default and usually the best choice: nothing extra
+to download, it paints the moment a tile appears, and it's lighter on bandwidth for
+big grids — the trade-off is a one-time fetch/encode per poster while Sphynx enriches
+(and a freshly-changed poster shows the URL form until its next refresh). Choose
+**Image URL** if you'd rather see a recognizable thumbnail or skip the enrich-time
+image work; **Off** if you want no placeholder at all.
+
+Pick one and **Save** — it applies immediately.
+
+---
+
 ## Connect a player
 
 A server with no player is just a fancy JSON spitter. Connecting any

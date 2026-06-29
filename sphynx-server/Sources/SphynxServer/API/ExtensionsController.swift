@@ -6,10 +6,12 @@ import Hummingbird
 /// admin "Extensions" tab renders one module per entry returned by
 /// `GET /v1/admin/extensions`.
 ///
-/// Two extensions today:
+/// Extensions today:
 /// - `diagnostics` — the always-on activity / database / logs tooling
 ///   (`DiagnosticsController`); listed here so the UI can present it as a module.
 /// - `media-probe` — opt-in `ffprobe` track inspection (this controller owns it).
+/// - `placeholders` — the low-res image `placeholder` mode (`url`/`blurhash`/`off`);
+///   see `PlaceholderMode`. Generation happens in `EnrichmentService`.
 ///
 /// All endpoints are admin-only and server-local (`/v1/admin/extensions/*`).
 struct ExtensionsController: Sendable {
@@ -30,6 +32,8 @@ struct ExtensionsController: Sendable {
         ext.get("media-probe", use: getProbeConfig)
         ext.patch("media-probe", use: updateProbeConfig)
         ext.get("media-probe/probe", use: probe)
+        ext.get("placeholders", use: getPlaceholderConfig)
+        ext.patch("placeholders", use: updatePlaceholderConfig)
     }
 
     // MARK: Registry
@@ -38,6 +42,7 @@ struct ExtensionsController: Sendable {
     func list(_ request: Request, context: SphynxRequestContext) async throws -> ExtensionsResponse {
         try requireAdmin(context)
         let cfg = try await probeConfig()
+        let placeholderMode = try await PlaceholderMode.current(settings)
         return ExtensionsResponse(extensions: [
             ExtensionInfo(
                 id: "diagnostics", name: "Diagnostics",
@@ -47,7 +52,32 @@ struct ExtensionsController: Sendable {
                 id: "media-probe", name: "Media probe",
                 description: "Inspect a title's audio, subtitle, and video streams (language, codec, channels) with ffmpeg's ffprobe, plus any sidecar subtitle files.",
                 kind: "optional", enabled: cfg.enabled, available: cfg.available, configurable: true),
+            ExtensionInfo(
+                id: "placeholders", name: "Low-res images",
+                description: "How tiles blur up before artwork loads: a tiny image URL, a generated BlurHash, or off. BlurHash strings are generated and cached during enrichment.",
+                kind: "optional", enabled: placeholderMode != .off, available: true, configurable: true),
         ])
+    }
+
+    // MARK: Low-res images — config
+
+    @Sendable
+    func getPlaceholderConfig(_ request: Request, context: SphynxRequestContext) async throws -> PlaceholderConfig {
+        try requireAdmin(context)
+        return PlaceholderConfig(mode: try await PlaceholderMode.current(settings).rawValue)
+    }
+
+    @Sendable
+    func updatePlaceholderConfig(_ request: Request, context: SphynxRequestContext) async throws -> PlaceholderConfig {
+        try requireAdmin(context)
+        let body = try await request.decode(as: PlaceholderConfigUpdate.self, context: context)
+        if let raw = body.mode {
+            guard let mode = PlaceholderMode(rawValue: raw) else {
+                throw SphynxError.badRequest("mode must be one of: url, blurhash, off")
+            }
+            try await settings.set([PlaceholderMode.settingKey: mode.rawValue])
+        }
+        return PlaceholderConfig(mode: try await PlaceholderMode.current(settings).rawValue)
     }
 
     // MARK: Media probe — config
@@ -164,4 +194,13 @@ struct MediaProbeConfigUpdate: Codable, Sendable {
 
 struct ProbeQuery: Codable, Sendable {
     var itemId: String?
+}
+
+struct PlaceholderConfig: Codable, Sendable, ResponseEncodable {
+    /// One of `url` | `blurhash` | `off`.
+    var mode: String
+}
+
+struct PlaceholderConfigUpdate: Codable, Sendable {
+    var mode: String?
 }

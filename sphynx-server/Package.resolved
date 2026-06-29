@@ -1,5 +1,5 @@
 {
-  "originHash" : "de96d6085cf854a7706022511dc9152597cd44c76e2cd1a5f3c1cd9c4940d6d5",
+  "originHash" : "b19614890978618164117368f4f84e4ffd8f9395a57f46d3745d4870fffc7d8b",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -143,6 +143,15 @@
       "state" : {
         "revision" : "db774a277f60063a32d854f2980299caf06da041",
         "version" : "1.6.0"
+      }
+    },
+    {
+      "identity" : "swift-jpeg",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tayloraswift/swift-jpeg.git",
+      "state" : {
+        "revision" : "fd7f52dd7c1b87b713babd04cc96cda0de72abf6",
+        "version" : "1.0.1"
       }
     },
     {
