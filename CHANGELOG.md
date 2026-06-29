@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.3] — 2026-06-29
+
 ### Added
 
 - **Per-extension schedules + a "Next runs" indicator.** Each background task now
@@ -51,6 +55,27 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   credentials — no username needed — then drops straight into the approve step. The
   button only appears when the browser supports WebAuthn, and falls back cleanly when
   passkeys aren't enabled on the server.
+
+### Fixed
+
+- **The Collections library now shows its contents in the web admin too.** A
+  `collection`-kind library is a cross-library view whose box-set tiles physically
+  live in their movie/TV libraries; the client browse aggregated them, but the admin
+  item browser did a literal `libraryId` match and came back empty, so the web UI
+  showed the Collections library as empty while clients (e.g. Ocelot) showed it
+  populated. The admin browser now aggregates collection-kind libraries the same way,
+  scoped to the libraries the caller may edit.
+
+- **No more empty progress bar for a Collections library in the Activity panel.** The
+  "Items per library" breakdown skipped no libraries, so a `collection`-kind library —
+  which holds no items of its own (its tiles are counted under the owning movie/TV
+  library) — rendered a meaningless `0 / 0` bar. Collection-kind libraries are now
+  omitted from that per-library breakdown; the real `collection` tally still shows
+  under "Enriched by category".
+
+- **Transparent logos no longer get a BlurHash.** A logo PNG is mostly transparent, so
+  BlurHashing it produced a muddy box behind the artwork. Logo images are now skipped
+  by the BlurHash pass and fall back to no placeholder.
 
 ### Documentation
 
