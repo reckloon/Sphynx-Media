@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-06-29
+
 ### Added
 
 - **"Reset enrichment" button** (Libraries → Storage sources, next to *Scan all now*)
@@ -504,7 +508,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.8...v0.2.0
 [0.1.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/reckloon/Sphynx-Media/releases/tag/v0.1.0
