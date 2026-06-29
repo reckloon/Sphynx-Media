@@ -76,6 +76,22 @@ struct AuthService: Sendable {
         return try await issueSession(for: user, deviceId: deviceId)
     }
 
+    /// Verify a username/password and return the user id, **without** minting a
+    /// session — the entry point for flows that establish identity in one step and
+    /// issue tokens in another (the OAuth-style web authorization grant: the hosted
+    /// login page proves who the user is; the client later redeems a code for the
+    /// session). Same opaque error for unknown user and wrong password.
+    func verifyPassword(username: String, password: String) async throws -> String {
+        let user = try await db.writer.read { db in
+            try UserRecord.filter(Column("username") == username).fetchOne(db)
+        }
+        guard let user else { throw SphynxError.unauthorized("Invalid username or password") }
+        guard await hasher.verify(password: password, encodedHash: user.passwordHash) else {
+            throw SphynxError.unauthorized("Invalid username or password")
+        }
+        return user.id
+    }
+
     /// Rotate a refresh token: validate it, issue a brand-new pair, invalidate
     /// the presented refresh token.
     func refresh(refreshToken: String, deviceId: String) async throws -> TokenResponse {

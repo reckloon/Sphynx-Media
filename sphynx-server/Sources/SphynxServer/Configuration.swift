@@ -85,6 +85,14 @@ struct ServerConfiguration: Sendable {
     /// `https://<passkeyRelyingPartyID>`. Runtime-tunable via Settings.
     var passkeyRelyingPartyOrigin: String = ""
 
+    /// Allowed `redirect_uri` targets for the OAuth-style web sign-in
+    /// (`/v1/auth/web/*`), as a newline/comma-separated list of exact URIs or scheme
+    /// prefixes (e.g. `ocelot://auth`). Empty (the default) ⇒ app **custom schemes**
+    /// are accepted and `http(s)` web origins are rejected, so the flow works for a
+    /// native app out of the box while open redirects to the web are blocked; add a
+    /// web origin here to permit it. Runtime-tunable via Settings.
+    var webAuthRedirectAllowlist: String = ""
+
     static func fromEnvironment() -> ServerConfiguration {
         let env = ProcessInfo.processInfo.environment
         return ServerConfiguration(
@@ -112,7 +120,8 @@ struct ServerConfiguration: Sendable {
             eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15,
             passkeyRelyingPartyID: env["SPHYNX_PASSKEY_RP_ID"] ?? "",
             passkeyRelyingPartyName: env["SPHYNX_PASSKEY_RP_NAME"] ?? "",
-            passkeyRelyingPartyOrigin: env["SPHYNX_PASSKEY_ORIGIN"] ?? ""
+            passkeyRelyingPartyOrigin: env["SPHYNX_PASSKEY_ORIGIN"] ?? "",
+            webAuthRedirectAllowlist: env["SPHYNX_WEB_REDIRECT_ALLOWLIST"] ?? ""
         )
     }
 
@@ -140,5 +149,14 @@ struct ServerConfiguration: Sendable {
         if let origin = relyingParty?.origin { return origin }
         let host = (hostname == "0.0.0.0" || hostname.isEmpty) ? "localhost" : hostname
         return "http://\(host):\(port)"
+    }
+
+    /// `webAuthRedirectAllowlist` parsed into entries (split on newlines/commas,
+    /// trimmed, empties dropped).
+    var webAuthRedirectList: [String] {
+        webAuthRedirectAllowlist
+            .split(whereSeparator: { $0 == "\n" || $0 == "," })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }

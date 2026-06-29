@@ -54,6 +54,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
     "events": true,
     "passkeys": false,
     "deviceAuth": true,
+    "webAuth": true,
     "metadata": { "markers": "readwrite", "images": "read" },
     "fields": ["id", "type", "title", "tmdbId", "year", "images", "placeholder",
                "dateAdded", "updatedAt", "seriesId", "seriesTitle", "seasonIndex",
@@ -84,6 +85,10 @@ affordances and uses password login.
 `deviceAuth` advertises the **QR / code device-authorization** grant for TVs (see
 [Device authorization](#device-authorization-qr--code-sign-in)). Absent ⇒ `false`:
 the client shouldn't offer a "sign in on this TV" QR flow.
+`webAuth` advertises the **OAuth-style web authorization** flow (see
+[Web authorization](#web-authorization-oauth-style)). Absent ⇒ `false`: the client
+shouldn't offer the "sign in on the web" button and should use password, passkey, or
+device-code sign-in instead.
 A client treats unknown capability keys as ignorable and missing booleans as
 `false`. **`metadata`** is the bi-directional access policy: a per-field map of
 `none` | `read` | `readwrite` (open enum). A field absent from the map is `none`
@@ -416,6 +421,96 @@ The signed-in user approves a pending device: `{ "userCode": "WXYZ-2345" }` → 
 makes this the "scan, Face ID, done" flow**. The reference server hosts a browser
 approval page at **`GET /link`**; a native client may call this endpoint directly
 from its own (passkey-authenticated) session.
+
+---
+
+## Web authorization (OAuth-style)
+
+A seamless **same-device web sign-in** for clients that can't add the server's host
+to an Associated Domains entitlement — the self-hosted case, where the app can't be
+re-signed per server, so platform passkeys and universal-link callbacks aren't
+available. It mirrors the OAuth 2.0 authorization-code grant but returns to the app
+via a **custom URL scheme** instead of a universal link, so it needs no Associated
+Domains and no per-owner app signing. The client drives it with
+`ASWebAuthenticationSession` (or the platform equivalent). Advertised via
+`capabilities.webAuth`.
+
+```
+ ┌──────── app ────────┐                    ┌──── hosted login page ────┐
+ │ open web/start  ────┼───────────────────►│  username + password      │
+ │  (ASWebAuth…)       │                     │  authorize ──► mint code  │
+ │ capture redirect ◄──┼── scheme://?code ◄──┼── redirect                │
+ │ web/token (+verifier)──► TokenResponse    └───────────────────────────┘
+ └─────────────────────┘
+```
+
+**PKCE is recommended.** Before starting, the client generates a high-entropy
+`code_verifier` and sends its challenge (`code_challenge` =
+BASE64URL(SHA256(verifier)) with `code_challenge_method=S256`). The code can then
+only be redeemed by the client that holds the verifier, which matters because any
+app could register the same custom scheme. `plain` is accepted but discouraged; the
+non-PKCE flow works but is not recommended.
+
+**`state`** is an opaque value the client generates and must verify on return
+(it's echoed back unchanged) to tie the redirect to the request it started.
+
+### `GET /v1/auth/web/start` — unauthenticated
+
+The client opens this URL in a web-authentication session. The server renders its
+normal login page; on a successful sign-in the page redirects to
+`redirect_uri?code=<authCode>&state=<state>`.
+
+**Query params**
+
+| param | required | notes |
+|---|---|---|
+| `redirect_uri` | yes | Where the code is delivered. Must pass the server's allowlist (see below); a bad target renders an error page (**400**), not a login form. |
+| `state` | recommended | Opaque; echoed back on the redirect. |
+| `code_challenge` | recommended | PKCE challenge. |
+| `code_challenge_method` | with challenge | `S256` (recommended) or `plain`. Defaults to `plain` if a challenge is sent without it. |
+
+The page submits credentials to `POST /v1/auth/web/authorize`
+`{ username, password, redirectUri, state?, codeChallenge?, codeChallengeMethod? }`,
+which (on success) returns `{ "redirectTo": "<redirect_uri>?code=…&state=…" }` and
+the page navigates there. The browser never receives a session token — only the
+short, single-use `code`.
+
+### `POST /v1/auth/web/token` — unauthenticated
+
+The client redeems the code for a session. Honors `X-Sphynx-Device` for session
+scoping, like the other auth routes (the session is scoped to the **exchanging
+client's** device, not the browser's).
+
+**Body** `{ "code": "<authCode>", "codeVerifier": "<verifier>" }` — `codeVerifier`
+is required when the flow used PKCE; omit it otherwise.
+
+**200** — a full [`TokenResponse`](#post-v1authlogin--unauthenticated) (same shape as
+`/v1/auth/login`).
+
+**400** with an error `code` of:
+- `invalid_grant` — unknown, expired, or already-used code, or PKCE verification
+  failed. The code is **single-use** (consumed on first exchange) and short-lived
+  (**~60s** TTL).
+
+### `redirect_uri` allowlisting
+
+To prevent open redirects, `redirect_uri` is validated server-side:
+
+- With an **allowlist configured** (the `webAuthRedirectAllowlist` setting — a
+  newline/comma-separated list of exact URIs or scheme prefixes such as
+  `ocelot://auth`), the redirect must equal, or begin with, a listed entry.
+- With **no allowlist** (the default), app **custom schemes are accepted** (a
+  deep link can't be an open redirect to an arbitrary web origin) while `http(s)`
+  targets are **rejected** — an operator must allowlist a web origin to permit it.
+  This makes the flow work for a native app out of the box while keeping web
+  redirects locked down. PKCE is what binds the code to the legitimate client.
+
+The setting is runtime-tunable via the admin API/GUI (`PATCH /v1/admin/settings`,
+field `webAuthRedirectAllowlist`); the `SPHYNX_WEB_REDIRECT_ALLOWLIST` env var only
+seeds it on first run.
+
+> Device authorization (above) remains the fallback for **tvOS / input-limited**
+> clients that can't present a web view.
 
 ---
 

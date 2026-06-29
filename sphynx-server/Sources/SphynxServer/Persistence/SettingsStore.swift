@@ -20,6 +20,7 @@ enum SettingKey: String, CaseIterable, Sendable {
     case passkeyRelyingPartyID
     case passkeyRelyingPartyName
     case passkeyRelyingPartyOrigin
+    case webAuthRedirectAllowlist
 }
 
 /// Reads and writes persisted settings. The database is the source of truth;
@@ -65,6 +66,7 @@ extension ServerConfiguration {
             SettingKey.passkeyRelyingPartyID.rawValue: passkeyRelyingPartyID,
             SettingKey.passkeyRelyingPartyName.rawValue: passkeyRelyingPartyName,
             SettingKey.passkeyRelyingPartyOrigin.rawValue: passkeyRelyingPartyOrigin,
+            SettingKey.webAuthRedirectAllowlist.rawValue: webAuthRedirectAllowlist,
         ]
     }
 
@@ -86,6 +88,7 @@ extension ServerConfiguration {
         if let v = settings[SettingKey.passkeyRelyingPartyID.rawValue] { c.passkeyRelyingPartyID = v }
         if let v = settings[SettingKey.passkeyRelyingPartyName.rawValue] { c.passkeyRelyingPartyName = v }
         if let v = settings[SettingKey.passkeyRelyingPartyOrigin.rawValue] { c.passkeyRelyingPartyOrigin = v }
+        if let v = settings[SettingKey.webAuthRedirectAllowlist.rawValue] { c.webAuthRedirectAllowlist = v }
         return c
     }
 

@@ -112,6 +112,26 @@ struct DeviceAuthRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     var expiresAt: Double
 }
 
+/// A pending OAuth-style **web authorization** code (the same-device web sign-in,
+/// `/v1/auth/web/*`). Minted once the user signs in on the hosted login page and
+/// handed to the client at its `redirectUri`. We store only the code's hash; the
+/// row is single-use (deleted when the client exchanges it) and short-lived.
+/// `codeChallenge`/`codeChallengeMethod` carry the optional PKCE binding; `state`
+/// is the client's opaque value, echoed back on the redirect.
+struct WebAuthRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "web_auth"
+
+    var id: String
+    var codeHash: String
+    var userId: String
+    var redirectUri: String
+    var state: String?
+    var codeChallenge: String?
+    var codeChallengeMethod: String?
+    var createdAt: Double
+    var expiresAt: Double
+}
+
 /// A top-level browsable collection.
 struct LibraryRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "library"

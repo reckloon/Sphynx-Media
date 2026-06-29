@@ -80,6 +80,14 @@ public struct Capabilities: Codable, Hashable, Sendable {
     /// — QR / code pairing for TVs and limited-input clients? `false`/absent ⇒ the
     /// client should not offer a "sign in on this TV" QR flow.
     public var deviceAuth: Bool
+    /// Does the server support the **OAuth-style web authorization** flow
+    /// (`/v1/auth/web/start` + `/v1/auth/web/token`)? `true` ⇒ a client can sign the
+    /// user in by opening the server's hosted login page in a web session
+    /// (`ASWebAuthenticationSession`) and receiving an authorization `code` back at a
+    /// custom URL scheme, then exchanging it for tokens — no Associated Domains or
+    /// per-owner app signing required. `false`/absent ⇒ the client should fall back
+    /// to password, passkey, or device-code sign-in.
+    public var webAuth: Bool
     /// Per-field metadata access policy, keyed by field/category ("markers",
     /// "images", …). Absent field ⇒ `.none` (read what's served, no writes).
     public var metadata: [String: MetadataAccess]
@@ -109,6 +117,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         events: Bool = false,
         passkeys: Bool = false,
         deviceAuth: Bool = false,
+        webAuth: Bool = false,
         metadata: [String: MetadataAccess] = [:],
         fields: [String] = [],
         browse: BrowseCapabilities? = nil,
@@ -120,6 +129,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.events = events
         self.passkeys = passkeys
         self.deviceAuth = deviceAuth
+        self.webAuth = webAuth
         self.metadata = metadata
         self.fields = fields
         self.browse = browse
@@ -134,6 +144,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
         self.events = try container.decodeIfPresent(Bool.self, forKey: .events) ?? false
         self.passkeys = try container.decodeIfPresent(Bool.self, forKey: .passkeys) ?? false
         self.deviceAuth = try container.decodeIfPresent(Bool.self, forKey: .deviceAuth) ?? false
+        self.webAuth = try container.decodeIfPresent(Bool.self, forKey: .webAuth) ?? false
         self.metadata = try container.decodeIfPresent([String: MetadataAccess].self, forKey: .metadata) ?? [:]
         self.fields = try container.decodeIfPresent([String].self, forKey: .fields) ?? []
         self.browse = try container.decodeIfPresent(BrowseCapabilities.self, forKey: .browse)
@@ -154,7 +165,7 @@ public struct Capabilities: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case search, playstate, candidates, events, passkeys, deviceAuth, metadata, fields, browse, playstateReportInterval
+        case search, playstate, candidates, events, passkeys, deviceAuth, webAuth, metadata, fields, browse, playstateReportInterval
     }
 }
 
