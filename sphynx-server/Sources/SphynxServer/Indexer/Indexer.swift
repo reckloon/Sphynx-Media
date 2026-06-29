@@ -28,7 +28,9 @@ struct Indexer: Sendable {
             throw SphynxError.conflict("A scan of this source is already running.")
         }
         let startedAt = Date()
-        await DiagnosticsCenter.shared.scanBegan()
+        // Record the source's label so the Activity panel can show "Scanning <name>".
+        let label = (try? await catalog.source(id: sourceId))?.label ?? sourceId
+        await DiagnosticsCenter.shared.scanBegan(sourceId: sourceId, label: label)
         do {
             let summary = try await runScan(sourceId: sourceId)
             await DiagnosticsCenter.shared.scanEnded(
@@ -38,7 +40,7 @@ struct Indexer: Sendable {
             await ScanCoordinator.shared.end(sourceId)
             return summary
         } catch {
-            await DiagnosticsCenter.shared.scanFailed()
+            await DiagnosticsCenter.shared.scanFailed(sourceId: sourceId)
             await ScanCoordinator.shared.end(sourceId)
             throw error
         }

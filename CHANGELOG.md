@@ -19,6 +19,25 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   fields carry the logo/banner, and `apply()` persists them on the series record
   (gated by the `images` lock, like every other artwork field).
 
+### Changed
+
+- **WebDAV scanning is dramatically faster.** The listing used to crawl the folder
+  tree one directory at a time — a serial `PROPFIND Depth:1` per folder, so a large
+  library meant hundreds of round-trips back to back. Now it first tries a single
+  `PROPFIND Depth:infinity` (Nextcloud/ownCloud, Apache `mod_dav`, … return the whole
+  subtree in one request); if the server rejects or ignores it, it falls back to a
+  **bounded-concurrency** depth-1 walk (several `PROPFIND`s in flight instead of one).
+  Concurrency is capped so it doesn't trip rate limits, and the fetcher still retries
+  any `429`/`5xx` with `Retry-After` back-off. A listing is all-or-nothing (a partial
+  list would make the indexer delete the unseen items), so a failed directory aborts
+  the scan rather than silently dropping titles.
+- **Scanning is now per-source, with live feedback.** The **Activity** panel names
+  the source being scanned ("Scanning Tom's WebDAV") and each source in the Libraries
+  list shows a **spinner** while it runs (driven by `scanningSources` in
+  `GET /v1/admin/status`). The per-source **Scan** and **Scan all now** buttons remain;
+  the per-library **Refresh** button was removed (scanning is a source operation), and
+  "Scan all" now reports clearly instead of a bare count when sources are already busy.
+
 ## [0.1.8] — 2026-06-29
 
 ### Fixed

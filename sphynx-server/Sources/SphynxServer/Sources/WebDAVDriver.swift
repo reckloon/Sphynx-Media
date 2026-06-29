@@ -18,58 +18,142 @@ struct WebDAVDriver: SourceDriver {
 
     /// Safety bounds for a recursive walk of an untrusted server.
     private static let maxDirectories = 5_000
+    /// Concurrent `PROPFIND`s during the depth-1 fallback walk. Kept modest so a
+    /// big tree doesn't self-inflict `429`s; the fetcher still retries any that do
+    /// occur (honoring `Retry-After`), so this is a politeness cap, not the only
+    /// defense.
+    private static let maxConcurrent = 5
 
     func list() async throws -> [SourceEntry] {
         guard let root = URL(string: baseURL) else {
             throw SphynxError.badRequest("Invalid WebDAV URL '\(baseURL)'")
         }
-        // The path prefix we strip to make keys relative to the collection root.
-        let rootPath = Self.decodedPath(root.path).hasSuffix("/")
-            ? Self.decodedPath(root.path)
-            : Self.decodedPath(root.path) + "/"
+        let rootPath = Self.collectionPath(root.path)
+
+        // Fast path: a single `Depth: infinity` PROPFIND returns the entire subtree
+        // on servers that allow it (Nextcloud / ownCloud, Apache mod_dav, …),
+        // collapsing hundreds of round-trips into one. Fall back to a
+        // bounded-concurrency depth-1 walk when the server rejects or silently
+        // ignores it.
+        if let fast = try? await listInfinity(rootPath: rootPath) {
+            return fast
+        }
+        return try await listDepthOne(root: root, rootPath: rootPath)
+    }
+
+    /// The collection root path, always trailing-slashed, for relative-key math.
+    private static func collectionPath(_ raw: String) -> String {
+        let p = decodedPath(raw)
+        return p.hasSuffix("/") ? p : p + "/"
+    }
+
+    /// One `PROPFIND` member → a media `SourceEntry`, or nil if it's the root, a
+    /// collection, out of tree, or a non-media / hidden file.
+    private func entry(for member: (href: String, isCollection: Bool, size: Int?), rootPath: String) -> SourceEntry? {
+        guard !member.isCollection else { return nil }
+        let memberPath = Self.decodedPath(member.href)
+        guard memberPath != rootPath, memberPath + "/" != rootPath, memberPath.hasPrefix(rootPath) else { return nil }
+        let relative = String(memberPath.dropFirst(rootPath.count))
+        let trimmed = relative.hasSuffix("/") ? String(relative.dropLast()) : relative
+        guard !trimmed.isEmpty else { return nil }
+        let name = (trimmed as NSString).lastPathComponent
+        guard let container = LocalDriver.container(for: name), !LocalDriver.isSkippable(name) else { return nil }
+        return SourceEntry(key: trimmed, container: container, size: member.size)
+    }
+
+    /// Whether a member is a collection nested below the root (i.e. a real subfolder).
+    private func isSubCollection(_ member: (href: String, isCollection: Bool, size: Int?), rootPath: String) -> Bool {
+        guard member.isCollection else { return false }
+        let mp = Self.decodedPath(member.href)
+        return mp != rootPath && mp + "/" != rootPath && mp.hasPrefix(rootPath)
+            && !String(mp.dropFirst(rootPath.count)).isEmpty
+    }
+
+    /// Depth:infinity fast path. Returns nil (so the caller falls back) when the
+    /// server rejects it OR appears to have *ignored* it — detected by: subfolders
+    /// came back but no file nested below the root did, meaning it only listed one
+    /// level. A genuinely flat library (files at the root, no subfolders) is
+    /// accepted. A partial/ignored result is never trusted, because the indexer
+    /// deletes anything missing from a listing.
+    private func listInfinity(rootPath: String) async throws -> [SourceEntry]? {
+        let xml = try await fetcher.sendRequest(
+            method: "PROPFIND", url: baseURL,
+            headers: headers.merging(["Depth": "infinity", "Content-Type": "application/xml"]) { _, new in new },
+            body: Data(Self.propfindBody.utf8))
+        let members = Self.parsePropfind(xml)
 
         var entries: [SourceEntry] = []
-        var queue = [baseURL]
-        var visited = Set<String>()
+        var sawSubCollection = false
+        var sawNestedFile = false
+        for member in members {
+            if isSubCollection(member, rootPath: rootPath) { sawSubCollection = true; continue }
+            guard let e = entry(for: member, rootPath: rootPath) else { continue }
+            if e.key.contains("/") { sawNestedFile = true }
+            entries.append(e)
+        }
+        guard sawNestedFile || !sawSubCollection else { return nil }  // ignored Depth:infinity → bail
+        entries.sort { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+        return entries
+    }
+
+    /// Bounded-concurrency depth-1 BFS fallback: one `PROPFIND` per directory, up to
+    /// `maxConcurrent` in flight per wave. Errors propagate — a partial listing would
+    /// make the indexer delete the unseen items, so the scan is all-or-nothing.
+    private func listDepthOne(root: URL, rootPath: String) async throws -> [SourceEntry] {
+        var entries: [SourceEntry] = []
+        var visited: Set<String> = [baseURL]
+        var frontier = [baseURL]
         var scanned = 0
 
-        while !queue.isEmpty {
-            let dirURL = queue.removeFirst()
-            guard visited.insert(dirURL).inserted else { continue }
-            scanned += 1
-            guard scanned <= Self.maxDirectories else { break }
+        while !frontier.isEmpty, scanned < Self.maxDirectories {
+            let batch = Array(frontier.prefix(Self.maxDirectories - scanned))
+            frontier.removeAll(keepingCapacity: true)
+            scanned += batch.count
 
-            let xml = try await fetcher.sendRequest(
-                method: "PROPFIND", url: dirURL,
-                headers: headers.merging(["Depth": "1", "Content-Type": "application/xml"]) { _, new in new },
-                body: Data(Self.propfindBody.utf8))
-            let members = Self.parsePropfind(xml)
-
-            for member in members {
-                let memberPath = Self.decodedPath(member.href)
-                // Skip the collection itself (PROPFIND Depth:1 echoes the parent).
-                guard memberPath != rootPath, memberPath + "/" != rootPath else { continue }
-                guard memberPath.hasPrefix(rootPath) else { continue }
-                let relative = String(memberPath.dropFirst(rootPath.count))
-                guard !relative.isEmpty else { continue }
-
-                if member.isCollection {
-                    // Resolve the child collection URL against the base and recurse.
-                    if let childURL = URL(string: member.href, relativeTo: root)?.absoluteString {
-                        queue.append(childURL)
-                    }
-                } else {
-                    let name = (relative as NSString).lastPathComponent
-                    guard let container = LocalDriver.container(for: name),
-                          !LocalDriver.isSkippable(name) else { continue }
-                    entries.append(SourceEntry(
-                        key: relative.hasSuffix("/") ? String(relative.dropLast()) : relative,
-                        container: container, size: member.size))
+            let results = try await withThrowingTaskGroup(
+                of: (files: [SourceEntry], dirs: [String]).self
+            ) { group -> [(files: [SourceEntry], dirs: [String])] in
+                var next = 0
+                while next < batch.count, next < Self.maxConcurrent {
+                    let url = batch[next]; next += 1
+                    group.addTask { try await self.propfind(url, root: root, rootPath: rootPath) }
                 }
+                var out: [(files: [SourceEntry], dirs: [String])] = []
+                while let r = try await group.next() {
+                    out.append(r)
+                    if next < batch.count {
+                        let url = batch[next]; next += 1
+                        group.addTask { try await self.propfind(url, root: root, rootPath: rootPath) }
+                    }
+                }
+                return out
+            }
+            for r in results {
+                entries.append(contentsOf: r.files)
+                for d in r.dirs where visited.insert(d).inserted { frontier.append(d) }
             }
         }
         entries.sort { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
         return entries
+    }
+
+    /// One depth-1 `PROPFIND`: this directory's media files plus its child collection
+    /// URLs to recurse into.
+    private func propfind(_ dirURL: String, root: URL, rootPath: String) async throws -> (files: [SourceEntry], dirs: [String]) {
+        let xml = try await fetcher.sendRequest(
+            method: "PROPFIND", url: dirURL,
+            headers: headers.merging(["Depth": "1", "Content-Type": "application/xml"]) { _, new in new },
+            body: Data(Self.propfindBody.utf8))
+        var files: [SourceEntry] = []
+        var dirs: [String] = []
+        for member in Self.parsePropfind(xml) {
+            if isSubCollection(member, rootPath: rootPath) {
+                if let childURL = URL(string: member.href, relativeTo: root)?.absoluteString { dirs.append(childURL) }
+            } else if let e = entry(for: member, rootPath: rootPath) {
+                files.append(e)
+            }
+        }
+        return (files, dirs)
     }
 
     func resolve(_ request: ResolveRequest) async throws -> ResolvedLocation {

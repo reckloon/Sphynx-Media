@@ -48,6 +48,28 @@ struct DriverListingTests {
         #expect(entries.first?.size == 123)
     }
 
+    @Test("WebDAV uses the Depth:infinity fast path when the server honors it")
+    func webdavInfinity() async throws {
+        let root = "https://dav.example/Media/"
+        // ONLY the root is stubbed: a depth-1 fallback walk would request the
+        // subfolders and throw, so this passing proves the whole tree came back in a
+        // single Depth:infinity PROPFIND.
+        let stub = WebDAVStub(xmlByURL: [
+            root: """
+            <?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+              <d:response><d:href>/Media/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+              <d:response><d:href>/Media/Movies/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+              <d:response><d:href>/Media/Movies/Heat%20(1995).mkv</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>123</d:getcontentlength></d:prop></d:propstat></d:response>
+              <d:response><d:href>/Media/Shows/Show/S01/E01.mkv</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>9</d:getcontentlength></d:prop></d:propstat></d:response>
+            </d:multistatus>
+            """,
+        ])
+        let driver = WebDAVDriver(id: "src_x", baseURL: root, headers: [:], fetcher: stub)
+        let entries = try await driver.list()
+        #expect(entries.map(\.key) == ["Movies/Heat (1995).mkv", "Shows/Show/S01/E01.mkv"])
+        #expect(entries.last?.size == 9)
+    }
+
     // MARK: FTP
 
     @Test("FTP LIST parser handles Unix and MS-DOS layouts")

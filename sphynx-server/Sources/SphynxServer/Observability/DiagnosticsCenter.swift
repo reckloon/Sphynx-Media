@@ -29,7 +29,7 @@ actor DiagnosticsCenter {
     private let startedAt = Date()
     private var nextToken = 1
     private var queued = 0
-    private var scanningCount = 0
+    private var scanningSources: [String: String] = [:]   // sourceId → label, in flight
     private var active: [Int: ActiveJob] = [:]
 
     // Lifetime counters.
@@ -84,14 +84,14 @@ actor DiagnosticsCenter {
         if recentJobs.count > jobCap { recentJobs.removeLast(recentJobs.count - jobCap) }
     }
 
-    func scanBegan() { scanningCount += 1 }
+    func scanBegan(sourceId: String, label: String) { scanningSources[sourceId] = label }
 
     /// A scan threw before completing — clear its in-flight flag (no summary).
-    func scanFailed() { if scanningCount > 0 { scanningCount -= 1 } }
+    func scanFailed(sourceId: String) { scanningSources[sourceId] = nil }
 
     func scanEnded(sourceId: String, scanned: Int, added: Int, updated: Int,
                    removed: Int, enriched: Int, durationMs: Double) {
-        if scanningCount > 0 { scanningCount -= 1 }
+        scanningSources[sourceId] = nil
         recentScans.insert(
             ScanView(sourceId: sourceId, scanned: scanned, added: added, updated: updated,
                      removed: removed, enriched: enriched, durationMs: durationMs,
@@ -112,11 +112,15 @@ actor DiagnosticsCenter {
                            at: Self.iso.format($0.startedAt)) }
         let phase: String
         if !active.isEmpty { phase = "enriching" }
-        else if scanningCount > 0 { phase = "scanning" }
+        else if !scanningSources.isEmpty { phase = "scanning" }
         else { phase = "idle" }
+        let scanning = scanningSources
+            .map { ScanningSourceView(id: $0.key, label: $0.value) }
+            .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
         return ActivitySnapshot(
             phase: phase,
-            scanning: scanningCount > 0,
+            scanning: !scanningSources.isEmpty,
+            scanningSources: scanning,
             active: active.count,
             queued: queued,
             processed: processed,
@@ -156,9 +160,18 @@ struct ScanView: Codable, Sendable {
 }
 
 /// The live activity snapshot the Activity tab polls.
+/// A source currently being scanned (for the live "Scanning <name>" indicator and
+/// per-source spinners in the admin UI).
+struct ScanningSourceView: Codable, Sendable {
+    var id: String
+    var label: String
+}
+
 struct ActivitySnapshot: Codable, Sendable {
     var phase: String          // "idle" | "scanning" | "enriching"
     var scanning: Bool
+    /// The sources scanning right now, by id + label.
+    var scanningSources: [ScanningSourceView]
     var active: Int
     var queued: Int
     var processed: Int

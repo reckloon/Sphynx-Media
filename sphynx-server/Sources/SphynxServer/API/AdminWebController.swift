@@ -277,7 +277,7 @@ enum AdminWebController {
           <div id="all-sources"><div class="empty">No sources yet — add one below.</div></div>
           <div class="group-title" style="margin:16px 0 6px;">Add a source</div>
           <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, tick whether it holds Movies, TV Shows, or both, then scan. You can add several sources — any mix of drivers — and a single source can feed both the Movies and TV libraries at once. (The <strong>Local</strong> driver is for testing on this machine only; Sphynx doesn't serve files — use SMB/WebDAV/HTTP to stream to other devices.)</p>
-          <p class="hint" style="margin-top:0;"><strong>Scan vs Refresh:</strong> both pull the latest from your sources — adding new titles, updating changed ones, removing deleted ones. <strong>Scan</strong> (<em>Scan all now</em> here, or <em>Scan</em> on a single source) runs it against the sources directly; <strong>Refresh</strong> (on a library, under Libraries) re-scans every source feeding that library. To run scans automatically, set a source's <strong>Auto-refresh every (minutes)</strong> when you add or edit it (0 = manual only). Separately, <strong>Settings → Refresh posters &amp; info every</strong> controls how often already-imported items re-fetch artwork/metadata from TMDB.</p>
+          <p class="hint" style="margin-top:0;"><strong>Scanning</strong> pulls the latest from your sources — adding new titles, updating changed ones, removing deleted ones. Use <strong>Scan</strong> on a single source, or <strong>Scan all now</strong> for every source at once; progress shows in the <strong>Activity</strong> panel at the top (it names the source being scanned), and each source shows a spinner while it runs. To scan automatically, set a source's <strong>Auto-refresh every (minutes)</strong> when you add or edit it (0 = manual only). Separately, <strong>Settings → Refresh posters &amp; info every</strong> controls how often already-imported items re-fetch artwork/metadata from TMDB.</p>
           <div class="subtabs" id="stor-subtabs">
             <button class="subtab active" data-drv="local">Local</button>
             <button class="subtab" data-drv="http">HTTP</button>
@@ -737,6 +737,15 @@ enum AdminWebController {
   // nearly paused when the tab is hidden — so it costs nothing when no one is
   // looking and never runs at all unless the admin panel is open.
   var dashTimer = null, dashPhase = 'idle';
+  var scanningIds = {};   // sourceId → label of sources scanning right now (from /status)
+  // Toggle the per-source "scanning…" spinner + disable its Scan button.
+  function applySourceScanning() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-src-row]'), function (row) {
+      var on = !!scanningIds[row.getAttribute('data-src-row')];
+      var sc = row.querySelector('.src-scan'); if (sc) sc.hidden = !on;
+      var b = row.querySelector('[data-scan-src]'); if (b) b.disabled = on;
+    });
+  }
   function stopDash() { if (dashTimer) { clearTimeout(dashTimer); dashTimer = null; } }
   function scheduleDash() {
     stopDash();
@@ -772,7 +781,14 @@ enum AdminWebController {
       if (!s) return;
       dashPhase = s.phase;
       var live = s.phase !== 'idle';
-      $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
+      // Name the source(s) being scanned, e.g. "Scanning Tom's WebDAV".
+      var scanningSrcs = s.scanningSources || [];
+      var phaseLabel = s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
+      if (scanningSrcs.length) phaseLabel = 'Scanning ' + scanningSrcs.map(function (x) { return x.label; }).join(', ');
+      $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + esc(phaseLabel);
+      // Drive the per-source spinners in the sources list.
+      var ids = {}; scanningSrcs.forEach(function (x) { ids[x.id] = x.label; });
+      scanningIds = ids; applySourceScanning();
       $('#act-uptime').textContent = 'uptime ' + fmtDur(s.uptimeSeconds) + ' · ' + s.processed + ' processed';
       $('#act-active').textContent = s.active; $('#act-queued').textContent = s.queued; $('#act-failed').textContent = s.failed;
       // Schedule indicator: when each background task next runs.
@@ -998,12 +1014,16 @@ enum AdminWebController {
   }
 
   function scanAllSources() {
-    msg('lib-msg', 'Scanning all sources…');
+    msg('lib-msg', 'Scanning all sources… watch the Activity panel above for progress.', true);
+    startDash();   // bump to fast polling so the indicator + per-source spinners show right away
     api('/v1/admin/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
       if (!d) { msg('lib-msg', 'Scan failed.'); return; }
       var srcs = d.sources || [];
-      var tot = srcs.reduce(function (a, s) { return a + (s.scanned || 0); }, 0);
-      msg('lib-msg', 'Scanned ' + srcs.length + ' source(s), ' + tot + ' item(s).', true);
+      if (!srcs.length) { msg('lib-msg', 'Nothing to scan — no sources, or they were already scanning.'); }
+      else {
+        var tot = srcs.reduce(function (a, s) { return a + (s.scanned || 0); }, 0);
+        msg('lib-msg', 'Scan complete — ' + srcs.length + ' source(s), ' + tot + ' item(s).', true);
+      }
       loadSources(); loadLibraries(); loadOverview();
     }).catch(function () { msg('lib-msg', 'Could not reach the server.'); });
   }
@@ -1038,9 +1058,6 @@ enum AdminWebController {
       var acts = '';
       if (on && t.kind === 'movies') {
         acts += '<label class="meta" title="Collapse a movie collection into one box-set tile once it has at least this many of its movies in this library; below the number, those movies show individually. Set higher than any collection (e.g. 999) to never group.">Group collections at <input class="mini" type="number" min="1" style="width:3.6em" value="' + (l.collectionThreshold == null ? 1 : l.collectionThreshold) + '" data-thr-lib="' + esc(l.id) + '"> movies</label> ';
-      }
-      if (on) {
-        acts += '<button class="mini" data-scan-lib="' + esc(l.id) + '" title="Re-scan every source feeding this library">Refresh</button> ';
       }
       acts += '<label class="meta" title="Toggle this library on or off. Turning it off deletes the library and everything in it."><input type="checkbox" data-lib-toggle="' + t.kind + '"' + (on ? ' data-lib-id="' + esc(l.id) + '" checked' : '') + '> ' + (on ? 'On' : 'Off') + '</label>';
       return '<div class="item"><span><strong>' + esc(t.title) + '</strong> ' + counts + '</span><span class="acts">' + acts + '</span></div>';
@@ -1126,7 +1143,7 @@ enum AdminWebController {
       // Consolidated, always-visible list of every source (any driver).
       $('#all-sources').innerHTML = srcs.length ? srcs.map(function (s) {
         var rm = (s.refreshInterval > 0) ? 'auto-refresh every ' + Math.round(s.refreshInterval / 60) + ' min' : 'manual scan only';
-        return '<div class="item"><span class="it-row"><span class="chip">' + esc(s.driver) + '</span> <strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + '</span></span>' +
+        return '<div class="item" data-src-row="' + esc(s.id) + '"><span class="it-row"><span class="chip">' + esc(s.driver) + '</span> <strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + '</span> <span class="meta src-scan" hidden><span class="dot scanning pulse"></span> scanning…</span></span>' +
           '<span class="acts"><button class="mini" data-scan-src="' + esc(s.id) + '" title="Import the latest from this source only: add new titles, update changed ones, remove deleted ones.">Scan</button>' +
           '<button class="mini danger" data-del-src="' + esc(s.id) + '" title="Remove this source and every item it imported into the library.">Delete</button></span></div>';
       }).join('') : '<div class="empty">No sources yet — add one below.</div>';
@@ -1138,6 +1155,7 @@ enum AdminWebController {
           return '<div class="item"><span><strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + '</span></span><span class="acts"><button class="mini" data-scan="' + esc(s.id) + '">Scan</button><button class="mini danger" data-del-src="' + esc(s.id) + '">Delete</button></span></div>';
         }).join('') : '<div class="empty">No ' + driver + ' sources yet. Add one below.</div>';
       });
+      applySourceScanning();   // freshly-rendered rows reflect any in-flight scan
     });
   }
   function addSource(driver) {
@@ -1151,6 +1169,7 @@ enum AdminWebController {
   }
   function scanSource(driver, id) {
     msg(driver + '-msg', 'Scanning…');
+    scanningIds[id] = 1; applySourceScanning(); startDash();   // show the spinner immediately
     api('/v1/admin/sources/' + id + '/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (s) {
       if (!s) { msg(driver + '-msg', 'Scan failed.'); return; }
       msg(driver + '-msg', 'Scanned ' + s.scanned + ' · added ' + s.added + ' · updated ' + s.updated + ' · removed ' + s.removed + (s.enriched != null ? ' · enriched ' + s.enriched : ''), true);
@@ -1165,6 +1184,7 @@ enum AdminWebController {
   $('#stor-subtabs').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.drv) showStorage(b.dataset.drv); };
   function scanSourceById(id) {
     msg('all-src-msg', 'Scanning…', true);
+    scanningIds[id] = 1; applySourceScanning(); startDash();   // show the spinner immediately
     api('/v1/admin/sources/' + id + '/scan', 'POST').then(function (res) {
       if (res.status === 409) { msg('all-src-msg', 'A scan of this source is already running — try again when it finishes.'); return null; }
       return res.ok ? res.json() : null;
@@ -1180,17 +1200,6 @@ enum AdminWebController {
     var del = e.target.getAttribute('data-del-src'), scan = e.target.getAttribute('data-scan');
     if (del) { if (confirm('Delete this source and every item it imported?')) api('/v1/admin/sources/' + del, 'DELETE').then(function () { loadSources(); loadLibraries(); loadOverview(); }); return; }
     if (scan) { scanSource(storActive, scan); return; }
-    var rl = e.target.getAttribute('data-scan-lib');
-    if (rl) {
-      msg('lib-msg', 'Refreshing…');
-      api('/v1/admin/libraries/' + rl + '/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
-        if (!d) { msg('lib-msg', 'Refresh failed.'); return; }
-        var n = (d.sources || []).reduce(function (a, s) { return a + (s.scanned || 0); }, 0);
-        msg('lib-msg', 'Refreshed ' + (d.sources || []).length + ' source(s), ' + n + ' item(s).', true);
-        loadLibraries(); loadOverview();
-      }).catch(function () { msg('lib-msg', 'Refresh failed.'); });
-      return;
-    }
   };
   $('#lib-list').onchange = function (e) {
     var tk = e.target.getAttribute('data-lib-toggle');
