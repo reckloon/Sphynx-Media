@@ -792,7 +792,12 @@ enum AdminWebController {
       '<span class="bd-bar"><span style="width:' + (isExtra ? 0 : pct) + '%"></span></span></div>';
   }
   function renderBreakdown(o) {
-    var libs = o.libraries || [];
+    // A collection-kind library is a virtual shelf: its box sets live in (and are
+    // counted under) the movie/TV libraries that own their members, so it always
+    // reports 0 indexed/enriched here. Drop it from the per-library bars — an empty
+    // bar is meaningless — while keeping the real "collection" tally under
+    // "Enriched by category" below.
+    var libs = (o.libraries || []).filter(function (l) { return l.kind !== 'collection'; });
     $('#cov-bylib').innerHTML = libs.length
       ? libs.map(function (l) { return bdRow(l.title, l.indexed, l.enriched, false); }).join('')
       : '<div class="empty">No libraries yet.</div>';
