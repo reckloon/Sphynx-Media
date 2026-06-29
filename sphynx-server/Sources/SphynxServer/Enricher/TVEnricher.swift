@@ -7,15 +7,28 @@ struct TVEnricher: Sendable {
     let tmdb: any TMDBClient
 
     /// Resolve a series title to a TMDB id (best ranked candidate), or nil.
-    func identifySeries(title: String) async throws -> Int? {
+    ///
+    /// Candidates are scored by token-overlap title similarity — which rewards
+    /// covering the query while penalising titles padded with extra words, so an
+    /// exact "Love & Death" beats a longer "…Stories About Love and Death" for the
+    /// query "Love and Death" — with a known `year` as a strong confirm/demote
+    /// signal and popularity only as a tie-break. As before, the best-ranked of
+    /// whatever TMDB returns is accepted (TMDB's search already filters relevance,
+    /// and a messy parsed name like `Wrongshow` should still resolve to the one
+    /// candidate it returns); the win here is ordering, not rejection.
+    func identifySeries(title: String, year: Int? = nil) async throws -> Int? {
         let results = try await tmdb.searchTV(title: title)
-        let query = HeuristicIdentifier.normalize(title)
+        let queryTokens = HeuristicIdentifier.tokens(title)
+
         var best: (id: Int, score: Double, popularity: Double)?
         for result in results {
-            var score = 0.3
-            let name = HeuristicIdentifier.normalize(result.name)
-            if name == query { score += 0.5 }
-            else if name.contains(query) || query.contains(name) { score += 0.25 }
+            var score = HeuristicIdentifier.titleSimilarity(queryTokens, HeuristicIdentifier.tokens(result.name))
+            if let year, let resultYear = result.year {
+                let gap = abs(year - resultYear)
+                if gap == 0 { score += 0.25 }
+                else if gap == 1 { score += 0.1 }
+                else if gap >= 3 { score -= 0.2 }
+            }
             if best == nil || score > best!.score
                 || (score == best!.score && result.popularity > best!.popularity) {
                 best = (result.id, score, result.popularity)

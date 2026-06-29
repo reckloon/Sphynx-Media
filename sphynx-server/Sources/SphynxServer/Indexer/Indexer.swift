@@ -124,7 +124,7 @@ struct Indexer: Sendable {
             // fields are refreshed, and only when stale, so a re-scan hits no TMDB.
             if let tv {
                 if record.tmdbId == nil,
-                   let tmdbId = try? await tv.identifySeries(title: record.seriesTitle ?? title) {
+                   let tmdbId = try? await tv.identifySeries(title: record.seriesTitle ?? title, year: record.year) {
                     record.tmdbId = String(tmdbId)
                     if let fields = try? await tv.seriesFields(tmdbId: tmdbId) {
                         apply(fields, to: &record, now: now)

@@ -99,7 +99,7 @@ struct EnrichmentService: Sendable {
                 } else if let id = item.tmdbId.flatMap(Int.init) {
                     resolvedId = id
                 } else {
-                    resolvedId = try await tv.identifySeries(title: item.seriesTitle ?? item.title)
+                    resolvedId = try await tv.identifySeries(title: item.seriesTitle ?? item.title, year: item.year)
                 }
                 guard let resolvedId else { return .skipped }
                 updated.tmdbId = String(resolvedId)

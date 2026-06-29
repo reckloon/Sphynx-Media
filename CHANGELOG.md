@@ -12,6 +12,16 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ### Fixed
 
+- **Title matching no longer loses to longer, padded titles.** The candidate
+  ranker stripped `&` entirely (rather than reading it as "and") and gave a longer
+  title that merely *contained* the query the same weight as an exact hit — so
+  `Love.and.Death` matched "Stories About Love and Death" instead of "Love &
+  Death". Normalization now canonicalises `&`→`and` and folds diacritics
+  (`Pokémon` == `Pokemon`), and both the movie and TV rankers score by
+  token-overlap that rewards covering the query while penalising padded
+  candidates, with a known release year as a strong confirm/demote signal. A
+  re-scan or per-item re-identify corrects already-mismatched titles.
+
 - **Passkey registration from the web UI.** The `/user` page's `register/finish`
   request was malformed — it posted the raw authenticator credential at the top
   level, omitting the required `challengeId` and the `credential` wrapper the server
