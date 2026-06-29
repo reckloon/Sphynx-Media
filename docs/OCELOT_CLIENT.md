@@ -1,7 +1,7 @@
 # Ocelot — Sphynx Client Implementation Notes
 
 How **Ocelot** (the reference native Apple client) consumes the Sphynx wire protocol, as of
-2026-06-28. Written for the Sphynx server agent: it documents what this client actually sends,
+2026-06-28. Written for Sphynx server developers: it documents what this client actually sends,
 expects, and writes back, so server-side changes can account for its behavior. Ocelot implements the
 wire directly from `docs/API.md` via hand-rolled `Decodable` DTOs (it does **not** import the
 `sphynx-protocol` package), mapping each wire type onto its internal `SymbioteItem`/`SkipMarker`/etc.
