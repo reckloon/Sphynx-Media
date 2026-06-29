@@ -145,7 +145,6 @@ enum UserWebController {
         <p class="sub">Update your profile.</p>
         <div class="item u-link" data-u="u-photo"><span>Change photo</span><span class="chev">›</span></div>
         <div class="item u-link" data-u="u-name"><span>Change name</span><span class="chev">›</span></div>
-        <div class="item u-link" data-u="u-password"><span>Change password</span><span class="chev">›</span></div>
       </div>
       <div class="card">
         <h2>Security</h2>

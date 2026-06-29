@@ -12,6 +12,31 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.2] — 2026-06-29
+
+### Changed
+
+- **The `/user` account page is redesigned around a simple menu.** Instead of one
+  long scroll, it opens to three grouped sections — **Profile** (change photo / name),
+  **Security** (change password, passkeys, signed-in devices), and **Features** (watch
+  history, home screen rows, metadata correction) — and each row opens a focused panel
+  with a **Back** button. Same palette and the same underlying forms; just simpler to
+  navigate. The metadata-correction row appears only for users with edit permission.
+
+### Fixed
+
+- **The `/user` home-layout editor buttons did nothing.** `bindUserHome()` (the
+  add / remove / reorder / save / reset handlers) was defined but never called, so
+  the per-user home-screen editor rendered but its buttons were inert. It's now wired
+  at init, like the admin page's equivalent.
+
+### Documentation
+
+- Noted under the **metadata language** setting that it should be configured *before*
+  building genre/decade home rows, since genres are stored in that language (a Spanish
+  library needs a `Comedia` row, not `Comedy`); a non-matching row renders empty and is
+  dropped — with the change-it-later flow (Reset enrichment, then rebuild the rows).
+
 ## [0.2.1] — 2026-06-29
 
 ### Added
@@ -541,7 +566,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.8...v0.2.0
 [0.1.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.1...v0.1.2
