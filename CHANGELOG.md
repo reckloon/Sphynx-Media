@@ -10,6 +10,15 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+### Added
+
+- **"Reset enrichment" button** (Libraries → Storage sources, next to *Scan all now*)
+  — force-re-fetches metadata and artwork for every identified title from TMDB,
+  ignoring the freshness window (locked 🔒 fields are kept); progress shows in the
+  Activity panel. Also: changing **Settings → Metadata language** now flags that the
+  new language applies only to titles enriched from now on and points to *Reset
+  enrichment* to re-translate the existing library.
+
 ### Fixed
 
 - **Series now get their title logo (clearlogo), not just movies.** The TV details

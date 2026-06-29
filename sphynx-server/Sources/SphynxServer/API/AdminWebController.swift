@@ -269,7 +269,10 @@ enum AdminWebController {
         <div class="addbox">
           <div class="bar" style="margin-bottom:8px;">
             <div class="group-title" style="margin:0;">Storage sources</div>
-            <button id="scan-all-btn" class="mini" title="Scan every source now: import new titles, update changed ones, remove deleted ones. Sources already mid-scan are skipped.">Scan all now</button>
+            <span class="acts">
+              <button id="scan-all-btn" class="mini" title="Scan every source now: import new titles, update changed ones, remove deleted ones. Sources already mid-scan are skipped.">Scan all now</button>
+              <button id="reset-enrich-btn" class="mini secondary" title="Re-fetch metadata and artwork for EVERY identified title from TMDB now, ignoring the freshness window — e.g. after changing the metadata language. Manually-locked 🔒 fields are kept.">Reset enrichment</button>
+            </span>
           </div>
           <!-- Pinned, always-visible list of every connected source, so they're
                manageable without opening a driver tab. -->
@@ -595,7 +598,8 @@ enum AdminWebController {
           <option value="zh-CN">中文 (简体)</option>
           <option value="zh-TW">中文 (繁體)</option>
         </select>
-        <p class="hint">Titles, overviews, and episode names are normalised to this language during enrichment — so a foreign-named release (e.g. <code>Бэтмен</code>) shows in your language regardless of how the file was named. Manually-edited titles 🔒 are never overwritten. Applies on the next scan/refresh.</p>
+        <p class="hint">Titles, overviews, and episode names are normalised to this language during enrichment — so a foreign-named release (e.g. <code>Бэтмен</code>) shows in your language regardless of how the file was named. Manually-edited titles 🔒 are never overwritten. New enrichments use it immediately; <strong>existing</strong> titles keep their current language until re-enriched.</p>
+        <p id="lang-reenrich-note" class="hint" style="display:none;color:var(--accent);"><strong>Heads up:</strong> you changed the language. Save, then use <strong>Reset enrichment</strong> (Libraries tab) to re-translate the titles already in your library.</p>
         <button id="save-btn">Save settings</button>
         <div id="save-msg" class="msg"></div>
         <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
@@ -877,12 +881,13 @@ enum AdminWebController {
   // ---- settings ----
   var sfields = ['serverName', 'serverID', 'accessTokenTTL', 'refreshTokenTTL', 'enrichmentTTL', 'metadataLanguage', 'markersAccess', 'markersStaleAfter', 'playstateRetention', 'maintenanceInterval', 'avatarMaxBytes'];
   var snumbers = ['accessTokenTTL', 'refreshTokenTTL', 'enrichmentTTL', 'markersStaleAfter', 'playstateRetention', 'maintenanceInterval'];
+  var loadedLang = '';   // metadata language as last loaded, to detect a change
   function loadSettings() {
     api('/v1/admin/settings', 'GET').then(function (res) {
       if (res.status === 401) { logout(); return null; }
       if (res.status === 403) { msg('login-msg', 'That account is not the admin.'); logout(); return null; }
       return res.ok ? res.json() : null;
-    }).then(function (s) { if (!s) return; sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); var su = $('#signInUserList'); if (su) su.checked = !!s.signInUserList; });
+    }).then(function (s) { if (!s) return; sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); var su = $('#signInUserList'); if (su) su.checked = !!s.signInUserList; var lng = $('#metadataLanguage'); loadedLang = lng ? lng.value : ''; var ln = $('#lang-reenrich-note'); if (ln) ln.style.display = 'none'; });
     loadTMDBStatus();
   }
   function loadTMDBStatus() {
@@ -901,10 +906,18 @@ enum AdminWebController {
     var su = $('#signInUserList'); if (su) body.signInUserList = su.checked;
     var tmdbKey = ($('#tmdb-key') ? $('#tmdb-key').value : '').trim();
     var tmdbSave = tmdbKey ? api('/v1/admin/tmdb', 'PATCH', { apiKey: tmdbKey }) : Promise.resolve(null);
+    var lng = $('#metadataLanguage'); var langChanged = !!(lng && lng.value !== loadedLang);
     api('/v1/admin/settings', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { res.json().then(function (e) { msg('save-msg', (e && e.error && e.error.message) || 'Save failed.'); }).catch(function () { msg('save-msg', 'Save failed.'); }); return; }
-      return tmdbSave.then(function () { msg('save-msg', 'Saved. Restart the server for changes to take effect.', true); loadTMDBStatus(); });
+      return tmdbSave.then(function () {
+        msg('save-msg', langChanged
+          ? 'Saved. To apply the new metadata language to titles already in your library, use Reset enrichment on the Libraries tab.'
+          : 'Saved. Restart the server for changes to take effect.', true);
+        if (lng) loadedLang = lng.value;
+        var ln = $('#lang-reenrich-note'); if (ln) ln.style.display = 'none';
+        loadTMDBStatus();
+      });
     }).catch(function () { msg('save-msg', 'Could not reach the server.'); });
   }
   // ---- home layout (admin default) ----
@@ -1026,6 +1039,20 @@ enum AdminWebController {
       }
       loadSources(); loadLibraries(); loadOverview();
     }).catch(function () { msg('lib-msg', 'Could not reach the server.'); });
+  }
+
+  function resetEnrichment() {
+    if (!confirm('Re-fetch metadata and artwork for EVERY identified title from TMDB now? This can take a while and make a lot of TMDB requests. Manually-locked fields are kept.')) return;
+    msg('all-src-msg', 'Re-enriching the whole library… watch the Activity panel above for progress.', true);
+    startDash();
+    api('/v1/admin/enrich?force=true', 'POST').then(function (res) {
+      if (res.status === 400) { res.json().then(function (e) { msg('all-src-msg', (e && e.error && e.error.message) || 'TMDB is not configured.'); }).catch(function () { msg('all-src-msg', 'TMDB is not configured.'); }); return null; }
+      return res.ok ? res.json() : null;
+    }).then(function (d) {
+      if (!d) { if (!$('#all-src-msg').textContent) msg('all-src-msg', 'Reset enrichment failed.'); return; }
+      msg('all-src-msg', 'Reset enrichment complete — re-enriched ' + d.enriched + ' title(s).', true);
+      loadOverview();
+    }).catch(function () { msg('all-src-msg', 'Reset enrichment failed.'); });
   }
 
   // ---- libraries ----
@@ -1772,6 +1799,9 @@ enum AdminWebController {
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
+  if ($('#metadataLanguage')) $('#metadataLanguage').onchange = function () {
+    var ln = $('#lang-reenrich-note'); if (ln) ln.style.display = (this.value !== loadedLang) ? '' : 'none';
+  };
   $('#restart-btn').onclick = function () {
     if (!confirm('Restart the server now? It will be unavailable for a few seconds. Your library and settings are kept.')) return;
     $('#restart-btn').disabled = true;
@@ -1790,6 +1820,7 @@ enum AdminWebController {
   };
   bindHome();
   $('#scan-all-btn').onclick = scanAllSources;
+  $('#reset-enrich-btn').onclick = resetEnrichment;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
   $('#mp-run').onclick = runProbePass;
