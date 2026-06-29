@@ -441,6 +441,28 @@ struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("m28_web_auth") { db in
+            // A pending OAuth-style web-authorization code (the same-device web
+            // sign-in, `/v1/auth/web/*`). Minted on a successful sign-in on the
+            // hosted login page; we store only the code's hash. Single-use (deleted
+            // when the client exchanges it for tokens) and short-lived; expired rows
+            // are swept lazily. `codeChallenge`/`codeChallengeMethod` hold the
+            // optional PKCE binding; `state` is the client's opaque value.
+            try db.create(table: "web_auth") { t in
+                t.column("id", .text).primaryKey()
+                t.column("codeHash", .text).notNull().unique()
+                t.column("userId", .text).notNull()
+                    .references("user", onDelete: .cascade)
+                t.column("redirectUri", .text).notNull()    // where the code is delivered
+                t.column("state", .text)                    // client's opaque value, echoed back
+                t.column("codeChallenge", .text)            // PKCE challenge (optional)
+                t.column("codeChallengeMethod", .text)      // "S256" | "plain"
+                t.column("createdAt", .double).notNull()
+                t.column("expiresAt", .double).notNull()
+            }
+            try db.create(indexOn: "web_auth", columns: ["expiresAt"])
+        }
+
         return migrator
     }
 }

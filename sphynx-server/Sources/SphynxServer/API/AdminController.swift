@@ -224,6 +224,12 @@ struct AdminController: Sendable {
             }
             updates[SettingKey.passkeyRelyingPartyOrigin.rawValue] = origin
         }
+        // Web-auth redirect allowlist: newline/comma-separated exact URIs or scheme
+        // prefixes. Stored verbatim (trimmed); empty restores the default policy
+        // (custom schemes allowed, http(s) origins rejected).
+        if let v = body.webAuthRedirectAllowlist {
+            updates[SettingKey.webAuthRedirectAllowlist.rawValue] = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
@@ -941,6 +947,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
     var passkeyRelyingPartyID: String
     var passkeyRelyingPartyName: String
     var passkeyRelyingPartyOrigin: String
+    var webAuthRedirectAllowlist: String
 
     init(from c: ServerConfiguration) {
         self.serverName = c.serverName
@@ -958,6 +965,7 @@ struct SettingsResponse: Codable, Sendable, ResponseEncodable {
         self.passkeyRelyingPartyID = c.passkeyRelyingPartyID
         self.passkeyRelyingPartyName = c.passkeyRelyingPartyName
         self.passkeyRelyingPartyOrigin = c.passkeyRelyingPartyOrigin
+        self.webAuthRedirectAllowlist = c.webAuthRedirectAllowlist
     }
 }
 
@@ -978,6 +986,7 @@ struct UpdateSettingsRequest: Codable, Sendable {
     var passkeyRelyingPartyID: String?
     var passkeyRelyingPartyName: String?
     var passkeyRelyingPartyOrigin: String?
+    var webAuthRedirectAllowlist: String?
 }
 
 /// Masked TMDB-key status: never returns the full key.

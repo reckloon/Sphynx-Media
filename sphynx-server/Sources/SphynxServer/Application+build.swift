@@ -75,6 +75,14 @@ func buildRouter(
     let deviceAuthController = DeviceAuthController(service: DeviceAuthService(
         db: auth.db, auth: auth, publicBaseURL: configuration.publicBaseURL))
 
+    // OAuth-style web authorization (same-device web sign-in via a custom URL
+    // scheme). Always on: it rides the same password auth as `/auth/login`, so a
+    // client that can't add the server host to its Associated Domains can still do
+    // a seamless web login. `redirect_uri` targets are constrained by the configured
+    // allowlist (empty ⇒ app custom schemes only; web origins must be allowlisted).
+    let webAuthController = WebAuthController(service: WebAuthService(
+        db: auth.db, auth: auth, redirectAllowlist: configuration.webAuthRedirectList))
+
     // Public surface: discovery + auth + the static web admin page.
     let authController = AuthController(auth: auth, policy: policy, signInUserList: configuration.signInUserList)
     let publicV1 = router.group("v1")
@@ -82,6 +90,7 @@ func buildRouter(
     authController.addRoutes(to: publicV1)
     passkeyController?.addRoutes(to: publicV1)
     deviceAuthController.addRoutes(to: publicV1)
+    webAuthController.addRoutes(to: publicV1)
     AdminWebController.addRoutes(to: router)
     UserWebController.addRoutes(to: router)
     DeviceLinkWebController.addRoutes(to: router)
