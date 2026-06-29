@@ -10,7 +10,16 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Passkey sign-in on the device-approval page (`/link`).** The browser page you
+  land on after scanning a TV's QR now offers **Sign in with a passkey** alongside
+  the username/password form, so you can approve a device without typing a password.
+  It reuses the existing public passkey endpoints
+  (`POST /v1/auth/passkeys/authenticate/{begin,finish}`) with discoverable
+  credentials — no username needed — then drops straight into the approve step. The
+  button only appears when the browser supports WebAuthn, and falls back cleanly when
+  passkeys aren't enabled on the server.
 
 ## [0.1.2] — 2026-06-29
 

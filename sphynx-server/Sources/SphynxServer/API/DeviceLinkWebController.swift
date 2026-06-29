@@ -3,8 +3,8 @@ import NIOCore
 
 /// The device-authorization **approval page** at `GET /link` — where a user lands
 /// after scanning a TV's QR (or following its short URL). It signs the user in
-/// (password, or a session carried over from `/user`), shows which device is asking,
-/// and lets them approve it. A native client approves via its own
+/// (password, a passkey, or a session carried over from `/user`), shows which
+/// device is asking, and lets them approve it. A native client approves via its own
 /// passkey-authenticated session by `POST /v1/auth/device/approve` directly; this
 /// page is the reference server's browser fallback.
 enum DeviceLinkWebController {
@@ -50,6 +50,7 @@ enum DeviceLinkWebController {
   <div class="row"><input id="u" placeholder="Username" autocomplete="username"></div>
   <div class="row"><input id="p" type="password" placeholder="Password" autocomplete="current-password"></div>
   <button id="login-btn">Sign in</button>
+  <button id="passkey-signin-btn" class="secondary" hidden>Sign in with a passkey</button>
   <p class="msg" id="login-msg"></p>
 </div>
 
@@ -103,6 +104,36 @@ enum DeviceLinkWebController {
       .catch(function () { msg('login-msg', 'Could not reach the server.'); });
   };
   $('#signout').onclick = function () { token = ''; sessionStorage.removeItem('sphynxUserToken'); $('#approve').hidden = true; $('#login').hidden = false; };
+
+  // Base64url <-> ArrayBuffer, for marshalling WebAuthn challenges and credentials.
+  function b64urlToBuf(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var bin = atob(s); var b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b.buffer; }
+  function bufToB64url(buf) { var b = new Uint8Array(buf), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+
+  // Passwordless sign-in: the server's authenticate options are discoverable (no
+  // allowCredentials), so the platform offers whatever passkey is enrolled for
+  // this site — no username needed. Mirrors the /user page's flow.
+  function signInWithPasskey() {
+    if (!window.PublicKeyCredential) { msg('login-msg', 'This browser does not support passkeys.'); return; }
+    msg('login-msg', 'Follow your device prompt…', true);
+    fetch('/v1/auth/passkeys/authenticate/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { if (r.status === 404) { msg('login-msg', 'Passkeys aren’t enabled on this server.'); return null; } return r.ok ? r.json() : null; })
+      .then(function (opts) {
+        if (!opts) { if (!$('#login-msg').textContent || $('#login-msg').className.indexOf('ok') >= 0) msg('login-msg', 'Could not start passkey sign-in.'); return; }
+        var pk = opts.publicKey || opts;
+        pk.challenge = b64urlToBuf(pk.challenge);
+        if (pk.allowCredentials) pk.allowCredentials = pk.allowCredentials.map(function (c) { return { id: b64urlToBuf(c.id), type: c.type, transports: c.transports }; });
+        return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
+          var r = cred.response;
+          var body = { challengeId: opts.challengeId, credential: { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+            response: { clientDataJSON: bufToB64url(r.clientDataJSON), authenticatorData: bufToB64url(r.authenticatorData), signature: bufToB64url(r.signature), userHandle: r.userHandle ? bufToB64url(r.userHandle) : null } } };
+          return fetch('/v1/auth/passkeys/authenticate/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (rr) { if (!rr.ok) { msg('login-msg', 'Passkey sign-in failed.'); return null; } return rr.json(); })
+            .then(function (d) { if (!d) return; token = d.accessToken; sessionStorage.setItem('sphynxUserToken', token); showApprove(); });
+        });
+      }).catch(function () { msg('login-msg', 'Passkey sign-in was cancelled or failed.'); });
+  }
+  $('#passkey-signin-btn').onclick = signInWithPasskey;
+  $('#passkey-signin-btn').hidden = !window.PublicKeyCredential;
 
   $('#approve-btn').onclick = function () {
     var code = $('#code').value.trim(); if (!code) { msg('approve-msg', 'Enter the code shown on the device.'); return; }
