@@ -388,6 +388,11 @@ needed:
   everywhere**.
 - **Reset watch history** — wipe resume positions and watched marks across all your
   devices in one click.
+- **Home screen rows** — pick which rows show on your home screen and their order,
+  by **genre** or **release decade**, on top of the built-ins (Continue Watching,
+  Recently Added, Favorites). Your layout replaces the server default just for you;
+  **Reset to default** puts it back. Rows with nothing in the library hide
+  themselves. The admin sets the shared default in the **Home** tab.
 - **Library correction** *(only if you've been granted **Edit metadata**)* — the same
   browse-and-fix tools as the admin's Items tab, scoped to your libraries.
 
