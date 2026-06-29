@@ -1,0 +1,35 @@
+# Builds the Sphynx reference server FROM SOURCE and runs it.
+#
+# This is the contributor path — use it when you've changed the code and want to
+# run your build, or you'd rather not use the published image. Most users should
+# use docker-compose.yml instead (it pulls the ready-made image).
+#
+# The build context is the PARENT directory so the sibling sphynx-protocol
+# package is reachable (see Dockerfile header). Run from the sphynx-server
+# folder with:
+#
+#   docker compose -f docker-compose.build.yml up --build
+#
+# then:  curl http://localhost:9410/v1/info
+services:
+  sphynx:
+    build:
+      context: ..
+      dockerfile: sphynx-server/Dockerfile
+    image: sphynx-server:latest
+    ports:
+      - "9410:9410"
+    environment:
+      SPHYNX_HOST: "0.0.0.0"
+      SPHYNX_PORT: "9410"
+      SPHYNX_SERVER_NAME: "Sphynx (Docker)"
+      # Keep the SQLite DB on the mounted volume below, NOT in the container's
+      # throwaway layer — otherwise the catalog + admin account are lost whenever
+      # the container is rebuilt/recreated.
+      SPHYNX_DB_PATH: "/data/sphynx.sqlite"
+    volumes:
+      - sphynx-data:/data
+    restart: unless-stopped
+
+volumes:
+  sphynx-data:

@@ -1,0 +1,12 @@
+# Linux test image for the protocol package — the local half of the
+# cross-platform safety net. Used by scripts/test-linux.sh.
+#
+# Source is COPYed via the build context (a host-side tar) rather than a bind
+# mount, which avoids the Docker-Desktop-for-Mac virtiofs "Resource deadlock
+# avoided" failures that corrupt mounted source.
+#
+#   docker build -f Dockerfile.test --target test .
+FROM swift:6.3-noble AS test
+WORKDIR /pkg
+COPY . .
+RUN swift test

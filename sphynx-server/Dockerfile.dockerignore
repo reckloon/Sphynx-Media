@@ -1,0 +1,10 @@
+# Build-context filter for the parent-directory build (see Dockerfile header).
+# Exclude everything in the context, then re-include only the two packages,
+# minus their heavy/host-specific bits.
+*
+!sphynx-protocol/
+!sphynx-server/
+**/.build/
+**/.git/
+**/.DS_Store
+**/*.xcodeproj/

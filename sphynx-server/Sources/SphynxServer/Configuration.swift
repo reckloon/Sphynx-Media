@@ -1,0 +1,144 @@
+import Foundation
+
+/// Runtime configuration, sourced from environment variables with sensible
+/// defaults.
+struct ServerConfiguration: Sendable {
+    var hostname: String
+    var port: Int
+
+    /// Human-facing name reported by `/v1/info`.
+    var serverName: String
+    /// Stable server identity reported by `/v1/info`.
+    var serverID: String
+    var version: String
+
+    /// SQLite file path, or ":memory:" for an ephemeral in-memory DB (tests).
+    var databasePath: String
+
+    /// Bootstrap admin account, created on first run when no users exist.
+    var adminUsername: String
+    var adminPassword: String
+
+    /// bcrypt work factor for password hashing (2^cost rounds). Defaults to 12
+    /// (the production security setting); tests lower it so the suite isn't
+    /// dominated by deliberately-slow hashing. Not env- or settings-tunable —
+    /// production must not weaken it.
+    var bcryptCost: UInt8 = 12
+
+    /// Access-token lifetime in seconds (short-lived).
+    var accessTokenTTL: Double
+    /// Refresh-token lifetime in seconds (long-lived, rotating).
+    var refreshTokenTTL: Double
+
+    /// TMDB v3 API key. Empty disables identification/enrichment (items stay
+    /// skeletons sourced from the manifest).
+    var tmdbAPIKey: String
+    /// How long server-fetched enrichment (posters, overview, …) stays fresh
+    /// before the maintenance pass re-fetches it, in seconds. Default 90 days.
+    var enrichmentTTL: Double
+
+    /// TMDB metadata language as an ISO `language-COUNTRY` tag (e.g. `en-US`,
+    /// `ru-RU`). Drives the language of enriched titles, overviews, and episode
+    /// names — so the display title is normalised to the server's declared
+    /// language during enrichment, regardless of how the source named the file.
+    /// Runtime-tunable via Settings. Default `en-US`.
+    var metadataLanguage: String = "en-US"
+
+    /// Client access to intro/credit markers: "none" | "read" | "readwrite".
+    /// Default allows contributions (e.g. a client bridging TheIntroDB).
+    var markersAccess: String
+    /// Age after which markers are reported `stale: true` so a client refetches
+    /// and contributes fresh ones, in seconds. Default 7 days.
+    var markersStaleAfter: Double
+    /// Retention for per-user playstate; entries untouched for this long are
+    /// purged by the maintenance pass, in seconds. Default 365 days.
+    var playstateRetention: Double
+    /// Maintenance pass interval (re-enrich stale items, purge old playstate), in
+    /// seconds. 0 disables the background pass. Default 1 day.
+    var maintenanceInterval: Double
+
+    /// Maximum accepted size of an uploaded profile picture, in bytes. Validated
+    /// before the image is stored. Runtime-tunable via Settings. Default 2 MB.
+    var avatarMaxBytes: Int = 2_000_000
+
+    /// Preferred client playback-report cadence advertised in `/v1/info`, seconds.
+    /// Default 5. Push-only: clients SHOULD report progress this often; the server
+    /// never polls.
+    var playstateReportInterval: Double = 5
+
+    /// Heartbeat cadence for the `GET /v1/events` SSE stream, seconds. A comment
+    /// ping is sent this often to keep proxies from idling the connection and to
+    /// detect a vanished client. Startup-only. Default 15.
+    var eventsHeartbeat: Double = 15
+
+    /// Passkey (WebAuthn) Relying Party id — the registrable domain the server is
+    /// reached at, **no scheme or port** (e.g. `media.example.com`). Empty disables
+    /// passkeys entirely (`capabilities.passkeys == false`): the ceremonies need an
+    /// RP id that matches the client's origin, which only the operator knows.
+    /// Runtime-tunable via Settings.
+    var passkeyRelyingPartyID: String = ""
+    /// Human-facing Relying Party name shown by the authenticator during
+    /// enrollment. Defaults to the server name when left empty.
+    var passkeyRelyingPartyName: String = ""
+    /// Expected client origin for ceremony verification, **with scheme** (e.g.
+    /// `https://media.example.com`). When empty it is derived as
+    /// `https://<passkeyRelyingPartyID>`. Runtime-tunable via Settings.
+    var passkeyRelyingPartyOrigin: String = ""
+
+    static func fromEnvironment() -> ServerConfiguration {
+        let env = ProcessInfo.processInfo.environment
+        return ServerConfiguration(
+            hostname: env["SPHYNX_HOST"] ?? "0.0.0.0",
+            port: env["SPHYNX_PORT"].flatMap(Int.init) ?? 9410,
+            serverName: env["SPHYNX_SERVER_NAME"] ?? "Sphynx Reference Server",
+            serverID: env["SPHYNX_SERVER_ID"] ?? "srv_reference",
+            version: env["SPHYNX_VERSION"] ?? "0.1.1",
+            databasePath: env["SPHYNX_DB_PATH"] ?? "data/sphynx.sqlite",
+            adminUsername: env["SPHYNX_ADMIN_USERNAME"] ?? "admin",
+            // No default: an unset password makes the bootstrap generate a strong
+            // random one (printed once to the log) rather than a known credential.
+            adminPassword: env["SPHYNX_ADMIN_PASSWORD"] ?? "",
+            accessTokenTTL: env["SPHYNX_ACCESS_TTL"].flatMap(Double.init) ?? 3600,
+            refreshTokenTTL: env["SPHYNX_REFRESH_TTL"].flatMap(Double.init) ?? 2_592_000,
+            tmdbAPIKey: env["SPHYNX_TMDB_API_KEY"] ?? "",
+            enrichmentTTL: env["SPHYNX_ENRICH_TTL"].flatMap(Double.init) ?? 7_776_000,       // 90 days
+            metadataLanguage: env["SPHYNX_METADATA_LANGUAGE"] ?? "en-US",
+            markersAccess: env["SPHYNX_MARKERS_ACCESS"] ?? "readwrite",
+            markersStaleAfter: env["SPHYNX_MARKERS_STALE_AFTER"].flatMap(Double.init) ?? 604_800,    // 7 days
+            playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days
+            maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
+            avatarMaxBytes: env["SPHYNX_AVATAR_MAX_BYTES"].flatMap(Int.init) ?? 2_000_000,            // 2 MB
+            playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5,
+            eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15,
+            passkeyRelyingPartyID: env["SPHYNX_PASSKEY_RP_ID"] ?? "",
+            passkeyRelyingPartyName: env["SPHYNX_PASSKEY_RP_NAME"] ?? "",
+            passkeyRelyingPartyOrigin: env["SPHYNX_PASSKEY_ORIGIN"] ?? ""
+        )
+    }
+
+    /// Whether passkeys are configured (a Relying Party id is set). When false the
+    /// server advertises `capabilities.passkeys == false` and the ceremonies 404.
+    var passkeysEnabled: Bool {
+        !passkeyRelyingPartyID.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The effective Relying Party settings, applying the name → serverName and
+    /// origin → `https://<rpID>` fallbacks. Returns nil when passkeys are disabled.
+    var relyingParty: (id: String, name: String, origin: String)? {
+        let id = passkeyRelyingPartyID.trimmingCharacters(in: .whitespaces)
+        guard !id.isEmpty else { return nil }
+        let name = passkeyRelyingPartyName.isEmpty ? serverName : passkeyRelyingPartyName
+        let origin = passkeyRelyingPartyOrigin.isEmpty ? "https://\(id)" : passkeyRelyingPartyOrigin
+        return (id, name, origin)
+    }
+
+    /// The server's public base URL, used to build user-facing links — currently the
+    /// device-auth `/link` verification page (and its QR). Prefers the configured
+    /// passkey Relying Party origin (the real public origin a phone can reach);
+    /// otherwise falls back to `http://<host>:<port>` for local use.
+    var publicBaseURL: String {
+        if let origin = relyingParty?.origin { return origin }
+        let host = (hostname == "0.0.0.0" || hostname.isEmpty) ? "localhost" : hostname
+        return "http://\(host):\(port)"
+    }
+}

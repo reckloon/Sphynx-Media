@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']        # a version tag (v0.4.0) triggers the publish job below
+  pull_request:
+
+# Monorepo: both packages live here, so the server's local-path dependency on
+# sphynx-protocol resolves directly — no cross-repo checkout needed. Each job runs
+# `swift test` for both packages, on macOS and in a Swift Linux container.
+jobs:
+  macos:
+    name: macOS (swift test)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Test sphynx-protocol
+        working-directory: sphynx-protocol
+        run: swift test
+      - name: Test sphynx-server
+        working-directory: sphynx-server
+        run: swift test
+
+  # Build the slim runtime image and push it to GitHub's container registry
+  # (GHCR) so end users can `docker pull` instead of compiling from source.
+  # Only fires on a version tag (v*) AND only after both test jobs pass — a
+  # release is a deliberate act, and a broken build can never reach users.
+  publish:
+    name: Publish image (GHCR)
+    needs: [macos, linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # lets GITHUB_TOKEN push to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # auto-provided; no secret to set up
+      # Turn the git tag into image tags: v0.4.0 -> :0.4.0, :0.4, and :latest.
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/reckloon/sphynx-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      # QEMU + buildx let one runner build BOTH arches users actually run on:
+      # amd64 (most NAS/VPS/PC) and arm64 (Raspberry Pi, Apple Silicon, Ampere).
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .                              # parent dir — Dockerfile needs BOTH packages
+          file: sphynx-server/Dockerfile
+          target: runtime                         # the slim runtime stage, not the test stage
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha                    # reuse the SwiftPM compile across releases
+          cache-to: type=gha,mode=max
+
+  linux:
+    name: Linux (swift test)
+    runs-on: ubuntu-latest
+    container: swift:6.3-noble
+    steps:
+      - name: Install SQLite headers (GRDB links system SQLite)
+        run: apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev
+      - uses: actions/checkout@v4
+      # Cache compiled SwiftPM artifacts so each run doesn't recompile the whole
+      # dependency tree (Hummingbird, GRDB, swift-crypto, swift-webauthn, …) from
+      # scratch — that recompile dominates Linux CI time. Keyed on the resolved
+      # deps + manifests by EXPLICIT path, not a `**` glob: the cache's post-run
+      # save re-evaluates this key after the build, and a `**` glob walks the
+      # freshly-created `.build` trees — whose SwiftPM symlinks make hashFiles
+      # bail with "Fail to hash files under directory", failing the whole job (and
+      # thus blocking the publish gate). Listing the manifests directly never
+      # descends into `.build`; a path that doesn't exist yet (sphynx-protocol's
+      # Package.resolved) is simply skipped. restore-keys warm-starts from the
+      # last cache so SwiftPM incrementally rebuilds only what changed.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            sphynx-server/.build
+            sphynx-protocol/.build
+          key: linux-swift6.3-spm-${{ hashFiles('sphynx-server/Package.swift', 'sphynx-server/Package.resolved', 'sphynx-protocol/Package.swift', 'sphynx-protocol/Package.resolved') }}
+          restore-keys: |
+            linux-swift6.3-spm-
+      - run: swift --version
+      - name: Test sphynx-protocol
+        working-directory: sphynx-protocol
+        run: swift test
+      - name: Test sphynx-server
+        working-directory: sphynx-server
+        run: swift test

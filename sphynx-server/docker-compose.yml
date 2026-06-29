@@ -1,0 +1,29 @@
+# Runs the Sphynx reference server from the pre-built, published image.
+#
+# This is the easy path — it downloads a ready-made multi-arch image and runs it,
+# no source checkout or compiling. Run from anywhere with:
+#
+#   docker compose up -d
+#
+# then:  curl http://localhost:9410/v1/info
+#
+# To BUILD from source instead (contributors), use docker-compose.build.yml.
+services:
+  sphynx:
+    image: ghcr.io/reckloon/sphynx-server:latest
+    ports:
+      - "9410:9410"
+    environment:
+      SPHYNX_HOST: "0.0.0.0"
+      SPHYNX_PORT: "9410"
+      SPHYNX_SERVER_NAME: "Sphynx (Docker)"
+      # Keep the SQLite DB on the mounted volume below, NOT in the container's
+      # throwaway layer — otherwise the catalog + admin account are lost whenever
+      # the container is rebuilt/recreated.
+      SPHYNX_DB_PATH: "/data/sphynx.sqlite"
+    volumes:
+      - sphynx-data:/data
+    restart: unless-stopped
+
+volumes:
+  sphynx-data:
