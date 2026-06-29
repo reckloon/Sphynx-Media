@@ -64,6 +64,11 @@ enum UserWebController {
   .group-title { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:18px 0 8px; }
   .item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; background:#0a0a0a; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
   .item .meta { font-size:13px; color:var(--muted); }
+  .u-link { cursor:pointer; transition:border-color .12s; }
+  .u-link:last-child { margin-bottom:0; }
+  .u-link:hover, .u-link:focus-visible { border-color:var(--accent); outline:none; }
+  .u-link .chev { color:var(--muted); font-size:18px; line-height:1; }
+  .u-back { margin:0; }
   .empty { color:var(--muted); font-size:14px; padding:6px 0; }
   .uh-rows { display:flex; flex-direction:column; gap:6px; margin:8px 0 4px; }
   .uh-row { display:flex; align-items:center; gap:10px; padding:8px 11px; background:#0a0a0a; border:1px solid var(--line); border-radius:10px; }
@@ -124,29 +129,64 @@ enum UserWebController {
   </div>
 
   <div id="app" hidden>
-    <div class="card">
-      <div class="bar"><h2 style="margin:0;">Profile</h2><button id="logout-btn" class="secondary" style="margin:0;">Sign out</button></div>
-      <div class="me">
+    <!-- Persistent header: who you are + sign out -->
+    <div class="bar" style="margin-bottom:20px;">
+      <div class="me" style="margin:0;">
         <span class="avatar" id="avatar"></span>
         <div class="who"><div class="name" id="me-name"></div><div class="u" id="me-user"></div></div>
       </div>
+      <button id="logout-btn" class="secondary" style="margin:0;">Sign out</button>
+    </div>
+
+    <!-- Main menu -->
+    <div id="u-menu">
+      <div class="card">
+        <h2>Profile</h2>
+        <p class="sub">Update your profile.</p>
+        <div class="item u-link" data-u="u-photo"><span>Change photo</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-name"><span>Change name</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-password"><span>Change password</span><span class="chev">›</span></div>
+      </div>
+      <div class="card">
+        <h2>Security</h2>
+        <p class="sub">Account security settings.</p>
+        <div class="item u-link" data-u="u-password"><span>Change password</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-passkeys"><span>Passkeys</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-devices"><span>Signed-in devices</span><span class="chev">›</span></div>
+      </div>
+      <div class="card">
+        <h2>Features</h2>
+        <p class="sub">Customize your home or review watch history.</p>
+        <div class="item u-link" data-u="u-history"><span>Watch history</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-home"><span>Home screen rows</span><span class="chev">›</span></div>
+        <div class="item u-link" data-u="u-correction" id="u-link-correction" hidden><span>Metadata correction</span><span class="chev">›</span></div>
+      </div>
+    </div>
+
+    <!-- Detail panels -->
+    <div id="u-photo" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
+      <h2>Profile picture</h2>
+      <p class="sub">PNG, JPEG, or WebP. Replaces your current picture.</p>
+      <label for="avatar-file">Choose an image</label>
+      <input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp">
+      <div class="row"><button id="upload-btn">Upload picture</button><button id="remove-avatar-btn" class="secondary">Remove picture</button></div>
+      <div id="avatar-msg" class="msg"></div>
+    </div>
+
+    <div id="u-name" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
+      <h2>Display name</h2>
+      <p class="sub">The name shown on your profile.</p>
       <label for="dname">Display name</label>
       <input id="dname">
       <button id="save-name-btn">Save name</button>
       <div id="name-msg" class="msg"></div>
-
-      <label for="avatar-file">Profile picture</label>
-      <input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp">
-      <p class="hint">PNG, JPEG, or WebP. Replaces your current picture.</p>
-      <div class="row">
-        <button id="upload-btn">Upload picture</button>
-        <button id="remove-avatar-btn" class="secondary">Remove picture</button>
-      </div>
-      <div id="avatar-msg" class="msg"></div>
     </div>
 
-    <div class="card">
-      <h2>Password</h2>
+    <div id="u-password" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
+      <h2>Change password</h2>
       <p class="sub">Change the password you use to sign in.</p>
       <label for="cur-pw">Current password</label>
       <input id="cur-pw" type="password" autocomplete="current-password">
@@ -156,25 +196,8 @@ enum UserWebController {
       <div id="pw-msg" class="msg"></div>
     </div>
 
-    <div class="card">
-      <h2>Across your devices</h2>
-      <p class="sub">These affect your account everywhere you're signed in.</p>
-      <div class="row">
-        <button id="reset-history-btn" class="danger">Reset watch history</button>
-        <button id="logout-all-btn" class="secondary">Sign out everywhere</button>
-      </div>
-      <p class="hint">Resetting clears your resume positions and watched marks on every device. It can't be undone.</p>
-      <div id="device-msg" class="msg"></div>
-    </div>
-
-    <div class="card">
-      <h2>Signed-in devices</h2>
-      <p class="sub">Each device you've signed in from. Sign out any you don't recognize.</p>
-      <div id="sessions-list"><div class="empty">Loading…</div></div>
-      <div id="sessions-msg" class="msg"></div>
-    </div>
-
-    <div class="card">
+    <div id="u-passkeys" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
       <h2>Passkeys</h2>
       <p class="sub">Passwordless sign-in with Face ID, Touch ID, Windows Hello, or a security key. <span id="pk-unavailable" class="muted" hidden>This server doesn't have passkeys enabled.</span></p>
       <div id="passkeys-list"><div class="empty">Loading…</div></div>
@@ -182,7 +205,26 @@ enum UserWebController {
       <div id="passkeys-msg" class="msg"></div>
     </div>
 
-    <div class="card">
+    <div id="u-devices" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
+      <h2>Signed-in devices</h2>
+      <p class="sub">Each device you've signed in from. Sign out any you don't recognize.</p>
+      <div id="sessions-list"><div class="empty">Loading…</div></div>
+      <div class="row"><button id="logout-all-btn" class="secondary">Sign out everywhere</button></div>
+      <div id="sessions-msg" class="msg"></div>
+    </div>
+
+    <div id="u-history" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
+      <h2>Watch history</h2>
+      <p class="sub">Your resume positions and watched marks, across every device.</p>
+      <button id="reset-history-btn" class="danger">Reset watch history</button>
+      <p class="hint">Clears your resume positions and watched marks on every device. It can't be undone.</p>
+      <div id="device-msg" class="msg"></div>
+    </div>
+
+    <div id="u-home" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
       <h2>Home screen rows</h2>
       <p class="sub">Choose the rows on your home screen and their order. This replaces the server default — just for you. Genre or decade rows with nothing in the library are hidden automatically.</p>
       <div id="uh-rows" class="uh-rows"><div class="empty">Loading…</div></div>
@@ -213,7 +255,8 @@ enum UserWebController {
       <div id="uh-msg" class="msg"></div>
     </div>
 
-    <div class="card" id="correction-card" hidden>
+    <div id="u-correction" class="u-panel card" hidden>
+      <div class="bar"><button class="secondary u-back" type="button">← Back</button></div>
       <h2>Library correction</h2>
       <p class="sub">You can fix titles in the libraries you have edit access to. Browse the library, open a title, and correct its details. Anything you change is <strong>locked</strong> 🔒 so a re-scan won't overwrite it.</p>
       <label for="cx-lib">Library</label>
@@ -394,6 +437,7 @@ enum UserWebController {
       loadSessions();
       loadPasskeys();
       loadUserHome();
+      showU(null);   // land on the menu
     });
   }
 
@@ -535,8 +579,8 @@ enum UserWebController {
   var cxNav = [], cxEditing = null, cxOrig = {}, cxInited = false, cxLibs = [];
   function canEdit(perms) { return perms.some(function (p) { return p === 'metadata.edit' || p.indexOf('metadata.edit:') === 0; }); }
   function initCorrection(perms) {
-    if (!canEdit(perms)) { $('#correction-card').hidden = true; return; }
-    $('#correction-card').hidden = false;
+    if (!canEdit(perms)) { $('#u-link-correction').hidden = true; return; }
+    $('#u-link-correction').hidden = false;
     if (cxInited) return; cxInited = true;
     api('/v1/libraries', 'GET').then(function (res) { return res.ok ? res.json() : { libraries: [] }; }).then(function (d) {
       var libs = d.libraries || []; cxLibs = libs;
@@ -749,6 +793,12 @@ enum UserWebController {
     api('/v1/auth/logout', 'POST', { refreshToken: refreshToken, allDevices: true }).then(function () { logout(); }).catch(function () { logout(); });
   }
 
+  // Show one detail panel (and hide the menu), or pass null/undefined for the menu.
+  function showU(id) {
+    var menu = $('#u-menu'); if (menu) menu.hidden = !!id;
+    Array.prototype.forEach.call(document.querySelectorAll('.u-panel'), function (p) { p.hidden = (p.id !== id); });
+    if (id) window.scrollTo(0, 0);
+  }
   $('#login-btn').onclick = login;
   $('#picker-grid').onclick = function (e) { var b = e.target.closest ? e.target.closest('[data-i]') : null; if (!b) return; selectProfile(dirUsers[Number(b.getAttribute('data-i'))]); };
   $('#picker-manual').onclick = showManual;
@@ -763,6 +813,12 @@ enum UserWebController {
   $('#logout-all-btn').onclick = logoutEverywhere;
   $('#pk-add-btn').onclick = addPasskey;
   bindUserHome();   // wire the home-layout add/remove/reorder/save handlers (once)
+  // Menu navigation: tapping a row opens its panel; Back returns to the menu.
+  $('#app').addEventListener('click', function (e) {
+    var link = e.target.closest ? e.target.closest('.u-link') : null;
+    if (link && link.getAttribute('data-u')) { showU(link.getAttribute('data-u')); return; }
+    if (e.target.closest && e.target.closest('.u-back')) { showU(null); }
+  });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   if (token) enter(); else loadDirectory();
 </script>
