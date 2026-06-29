@@ -217,7 +217,7 @@ enum AdminWebController {
       <details class="scans">
         <summary>Recent scans &amp; jobs</summary>
         <div class="group-title">In progress</div>
-        <div id="act-jobs"><div class="empty">Nothing processing right now.</div></div>
+        <div id="act-jobs"><div class="empty">Nothing running right now.</div></div>
         <div class="group-title">Recent scans</div>
         <div id="act-scans"><div class="empty">No scans yet this session.</div></div>
       </details>
@@ -635,8 +635,11 @@ enum AdminWebController {
       $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
       $('#act-uptime').textContent = 'uptime ' + fmtDur(s.uptimeSeconds) + ' · ' + s.processed + ' processed';
       $('#act-active').textContent = s.active; $('#act-queued').textContent = s.queued; $('#act-failed').textContent = s.failed;
-      var jobs = (s.jobs || []).concat(s.recent || []).slice(0, 8);
-      $('#act-jobs').innerHTML = jobs.length ? jobs.map(jobRow).join('') : '<div class="empty">Nothing processing right now.</div>';
+      // "In progress" lists only jobs actively being worked. Finished jobs
+      // (enriched / already complete / skipped) must NOT linger here — when
+      // nothing is active the list clears to the placeholder.
+      var jobs = (s.jobs || []).slice(0, 8);
+      $('#act-jobs').innerHTML = jobs.length ? jobs.map(jobRow).join('') : '<div class="empty">Nothing running right now.</div>';
       $('#act-scans').innerHTML = (s.scans || []).length ? s.scans.map(function (sc) {
         return '<div class="item"><span>' + esc(sc.sourceId) + '</span><span class="meta">scanned ' + sc.scanned + ' · +' + sc.added + ' ~' + sc.updated + ' −' + sc.removed + ' · enriched ' + sc.enriched + ' · ' + fmtMs(sc.durationMs) + '</span></div>';
       }).join('') : '<div class="empty">No scans yet this session.</div>';
