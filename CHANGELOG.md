@@ -12,6 +12,14 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ### Added
 
+- **Collections library (cross-library box-set view).** A library of kind
+  `collection` now actually populates: browsing it aggregates every box-set tile
+  across the server — movie and series collections alike — instead of showing
+  empty. The tiles still live in their own movie/TV library (alongside their
+  members); the Collections library is a read-through view over them, scoped to
+  the libraries you're allowed to read. Previously the kind was selectable but
+  never filled, so collections looked enriched yet the library stayed empty.
+
 - **Manual collections (box sets), including for series.** Group movies or series
   into your own collections by hand, in addition to the ones auto-discovered from
   TMDB (TMDB has no collection data for TV, so series box sets are always manual).

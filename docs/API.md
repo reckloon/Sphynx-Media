@@ -564,7 +564,15 @@ by collection id) a `collection`-typed item in that movie's library and links th
 movie to it via `collectionId`/`collectionTitle` **and** the generic `parentId`. The
 collection then appears at the library's top level; its members are browsed with the
 existing `GET /v1/items?parent=<collectionId>`. No new endpoint — a collection is
-just another container. Libraries may use the `boxSets`/`collection` kinds.
+just another container.
+
+**Collections library.** A library of kind `collection` holds no items of its own —
+it's a **cross-library view**. Browsing it with `GET /v1/items?parent=<collectionLibraryId>`
+aggregates every box-set tile across the server (movie and series collections alike),
+newest first, paginated like any top level. The aggregate is scoped to the libraries
+the caller may read, so a box set whose titles live in an off-limits library never
+surfaces there. Each tile still opens to its members via `?parent=<collectionId>` as
+usual. Enable it like the other server libraries (one per kind).
 
 **Manual collections.** Collections can also be curated **by hand**, in any library
 and for **series** as well as movies (TMDB has no collection data for TV, so series

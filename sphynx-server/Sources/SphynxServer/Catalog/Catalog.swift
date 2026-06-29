@@ -362,6 +362,45 @@ struct Catalog: Sendable {
         }
     }
 
+    /// Every `collection`-typed tile across the given libraries — the aggregate
+    /// feed for a `kind:"collection"` library, which holds no items of its own
+    /// (box-set tiles live in the library their movies came from). `inLibraries`
+    /// is the caller's readable set, so a collection whose films sit in an
+    /// off-limits library never surfaces. Sorted like a normal top level and
+    /// fetched `limit + 1` so the caller can tell whether another page exists.
+    /// Genre/year don't apply to a box-set tile, so they're intentionally omitted.
+    func allCollections(
+        inLibraries libraries: Set<String>, limit: Int, offset: Int,
+        sort: ItemSort = .added, ascending: Bool? = nil
+    ) async throws -> [ItemRecord] {
+        guard !libraries.isEmpty else { return [] }
+        return try await db.writer.read { db in
+            var request = ItemRecord
+                .filter(Column("type") == "collection")
+                .filter(libraries.contains(Column("libraryId")))
+            // Mirror `topLevelItems`: name defaults ascending; added/rating descending.
+            let dir = (ascending ?? (sort == .name)) ? "ASC" : "DESC"
+            switch sort {
+            case .added:  request = request.order(sql: "createdAt \(dir), id")
+            case .name:   request = request.order(sql: "title COLLATE NOCASE \(dir), id")
+            case .rating: request = request.order(sql: "communityRating \(dir), id")
+            }
+            return try request.limit(limit + 1, offset: offset).fetchAll(db)
+        }
+    }
+
+    /// Count of every `collection` tile across `inLibraries` — the full set
+    /// `allCollections` paginates, for `ItemsResponse.totalCount`.
+    func countAllCollections(inLibraries libraries: Set<String>) async throws -> Int {
+        guard !libraries.isEmpty else { return 0 }
+        return try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("type") == "collection")
+                .filter(libraries.contains(Column("libraryId")))
+                .fetchCount(db)
+        }
+    }
+
     /// The top-level browse filter — collection threshold + optional genre/year —
     /// without ordering or pagination. Shared by `topLevelItems` (adds sort + limit)
     /// and `countTopLevelItems` (counts) so the two never diverge. Static so it has

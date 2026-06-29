@@ -154,13 +154,28 @@ struct BrowseController: Sendable {
         // The full set the cursor paginates over, for `totalCount` (structural —
         // genre/year — not the per-user `unwatched` post-filter). nil ⇒ not computed.
         let totalCount: Int?
-        if try await catalog.library(id: parent) != nil {
+        if let library = try await catalog.library(id: parent) {
             libraryId = parent
-            records = try await catalog.topLevelItems(
-                libraryId: parent, limit: limit, offset: offset,
-                sort: sort, ascending: ascending, genre: query.genre, year: query.year
-            )
-            totalCount = try await catalog.countTopLevelItems(libraryId: parent, genre: query.genre, year: query.year)
+            if library.kind == "collection" {
+                // A `collection` library holds no items of its own — it's a
+                // cross-library view of every box-set tile. Aggregate them,
+                // restricted to the libraries this user may read so a box set
+                // whose movies live in an off-limits library never leaks.
+                let readable = Set(try await catalog.libraries()
+                    .filter { identity.canReadLibrary($0.id) }
+                    .map(\.id))
+                records = try await catalog.allCollections(
+                    inLibraries: readable, limit: limit, offset: offset,
+                    sort: sort, ascending: ascending
+                )
+                totalCount = try await catalog.countAllCollections(inLibraries: readable)
+            } else {
+                records = try await catalog.topLevelItems(
+                    libraryId: parent, limit: limit, offset: offset,
+                    sort: sort, ascending: ascending, genre: query.genre, year: query.year
+                )
+                totalCount = try await catalog.countTopLevelItems(libraryId: parent, genre: query.genre, year: query.year)
+            }
         } else if let parentItem = try await catalog.item(id: parent) {
             libraryId = try await catalog.owningLibraryId(of: parentItem)
             records = try await catalog.childItems(parentId: parent, limit: limit, offset: offset)
