@@ -13,6 +13,10 @@ struct DiagnosticsController: Sendable {
     /// Next-run schedule for the background tasks, surfaced on `/status` for the
     /// Activity panel's "Next runs" indicator. Absent in tests that don't wire it.
     var schedule: ScheduleCenter? = nil
+    /// Live progress for the measurable backfills, so the Activity panel can show a
+    /// "running 133/476" bar for whichever is active. Keyed to the schedule task names.
+    var blurHashProgress: BackfillProgress? = nil
+    var mediaProbeProgress: BackfillProgress? = nil
 
     /// Columns never returned by the DB browser — password hashes, token hashes,
     /// stored credentials, and request headers (which may carry auth).
@@ -37,7 +41,16 @@ struct DiagnosticsController: Sendable {
         var snapshot = await diagnostics.snapshot()
         if let schedule {
             let now = Date().timeIntervalSince1970
-            snapshot.schedule = await schedule.snapshot().map { ScheduleView($0, now: now) }
+            let blur = await blurHashProgress?.snapshot()
+            let probe = await mediaProbeProgress?.snapshot()
+            snapshot.schedule = await schedule.snapshot().map { entry in
+                var view = ScheduleView(entry, now: now)
+                // Attach the running pass's unit progress for the measurable backfills.
+                let prog = entry.name == ScheduledTask.blurhash.name ? blur
+                         : entry.name == ScheduledTask.mediaProbe.name ? probe : nil
+                if let prog, prog.running { view.total = prog.total; view.done = prog.done }
+                return view
+            }
         }
         return snapshot
     }

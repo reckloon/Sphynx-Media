@@ -89,6 +89,10 @@ struct ScheduleView: Codable, Sendable {
     var running: Bool
     var nextRunInSeconds: Double?
     var lastRunSecondsAgo: Double?
+    /// Progress of the currently-running pass, when the task measures it (the
+    /// BlurHash + media-probe backfills do); `nil` for tasks without a unit count.
+    var total: Int?
+    var done: Int?
 
     init(_ entry: ScheduleCenter.Entry, now: Double) {
         name = entry.name

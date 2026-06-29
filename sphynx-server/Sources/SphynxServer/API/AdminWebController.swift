@@ -269,8 +269,13 @@ enum AdminWebController {
         <div class="addbox">
           <div class="bar" style="margin-bottom:8px;">
             <div class="group-title" style="margin:0;">Storage sources</div>
-            <button id="scan-all-btn" class="mini">Scan all now</button>
+            <button id="scan-all-btn" class="mini" title="Scan every source now: import new titles, update changed ones, remove deleted ones. Sources already mid-scan are skipped.">Scan all now</button>
           </div>
+          <!-- Pinned, always-visible list of every connected source, so they're
+               manageable without opening a driver tab. -->
+          <div id="all-src-msg" class="msg" style="min-height:0;"></div>
+          <div id="all-sources"><div class="empty">No sources yet — add one below.</div></div>
+          <div class="group-title" style="margin:16px 0 6px;">Add a source</div>
           <p class="hint" style="margin-top:0;">Connect the places your media lives. Pick a driver, add a source, tick whether it holds Movies, TV Shows, or both, then scan. You can add several sources — any mix of drivers — and a single source can feed both the Movies and TV libraries at once. (The <strong>Local</strong> driver is for testing on this machine only; Sphynx doesn't serve files — use SMB/WebDAV/HTTP to stream to other devices.)</p>
           <p class="hint" style="margin-top:0;"><strong>Scan vs Refresh:</strong> both pull the latest from your sources — adding new titles, updating changed ones, removing deleted ones. <strong>Scan</strong> (<em>Scan all now</em> here, or <em>Scan</em> on a single source) runs it against the sources directly; <strong>Refresh</strong> (on a library, under Libraries) re-scans every source feeding that library. To run scans automatically, set a source's <strong>Auto-refresh every (minutes)</strong> when you add or edit it (0 = manual only). Separately, <strong>Settings → Refresh posters &amp; info every</strong> controls how often already-imported items re-fetch artwork/metadata from TMDB.</p>
           <div class="subtabs" id="stor-subtabs">
@@ -459,7 +464,7 @@ enum AdminWebController {
           <div class="lockrow"><label for="it-f-backdrop">Backdrop URL <span class="lockbadge" data-lb="images"></span></label><input id="it-f-backdrop" placeholder="https://…"></div>
           <button id="it-save-btn">Save &amp; lock edited fields</button>
           <button id="it-unlock-btn" class="secondary" style="margin-left:8px;">Unlock all</button>
-          <button id="it-enrich-btn" class="secondary" style="margin-left:8px;">Re-enrich</button>
+          <button id="it-enrich-btn" class="secondary" style="margin-left:8px;" title="Re-fetch this title's metadata and artwork from TMDB now (ignores the freshness window). Locked 🔒 fields are kept.">Re-enrich</button>
           <div class="row" style="margin-top:16px;">
             <div><label for="it-f-tmdb">Re-identify: TMDB id</label><input id="it-f-tmdb" placeholder="603"></div>
             <div><label for="it-f-tmdb-type">As type</label><select id="it-f-tmdb-type"><option value="">(keep)</option><option value="movie">movie</option><option value="series">series</option></select></div>
@@ -568,6 +573,11 @@ enum AdminWebController {
         <label for="tmdb-key">TMDB API key <span id="tmdb-status" class="muted"></span></label>
         <input id="tmdb-key" type="password" placeholder="Paste your TMDB v3 API key" autocomplete="off">
         <p class="hint">Identifies titles and fetches posters, overviews, and cast. <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free key →</a> Leave blank to keep the current key; saving applies on the next restart.</p>
+        <div class="row" style="margin:6px 0;">
+          <button id="restart-btn" class="secondary" style="margin-top:0;" title="Restart the server process now. Needed for a changed TMDB API key to take effect (it's only read at startup). Your library and settings are untouched; the server is unavailable for a few seconds.">Restart server</button>
+          <span id="restart-msg" class="hint" style="margin:0;"></span>
+        </div>
+        <p class="hint">A changed <strong>TMDB API key</strong> only takes effect after a restart (it's read once at startup). <strong>Save settings</strong> first, then click <strong>Restart server</strong> — your library and all settings are preserved; the server is briefly unavailable while it comes back up.</p>
         <label for="metadataLanguage">Metadata language</label>
         <select id="metadataLanguage">
           <option value="en-US">English (US)</option>
@@ -642,7 +652,7 @@ enum AdminWebController {
           <p class="hint" style="margin-top:4px;">Each probed title costs one source request (e.g. a TorBox <code>requestdl</code>, capped at 300/min and shared with playback). Keep this comfortably under your source's limit so probing never starves playback. Default 120.</p>
           <p class="hint" style="margin-top:4px;">When set above 0, Sphynx probes not-yet-probed titles in the background on this cadence. Leave at 0 to only probe on demand.</p>
           <button id="mp-save">Save</button>
-          <button id="mp-run" class="secondary">Run probe pass now</button>
+          <button id="mp-run" class="secondary" title="Probe every not-yet-probed title once, now (caches audio/subtitle tracks so players start faster). Runs in the background; safe to leave the page.">Run probe pass now</button>
           <div id="mp-status" class="hint" style="margin-top:10px;" hidden></div>
           <div class="addbox">
             <div class="group-title">Probe a single title</div>
@@ -664,7 +674,7 @@ enum AdminWebController {
           <label for="ph-interval">BlurHash generation interval <span class="muted">(seconds; 0 = manual only; decimals allowed; blank = default)</span></label>
           <input id="ph-interval" type="number" min="0" step="any" placeholder="default">
           <button id="ph-save">Save</button>
-          <button id="ph-run" class="secondary">Generate now</button>
+          <button id="ph-run" class="secondary" title="Generate the low-res BlurHash placeholders for any images still missing one, now. Runs in the background; safe to leave the page.">Generate now</button>
           <div id="ph-status" class="hint" style="margin-top:10px;" hidden></div>
           <div id="ph-msg" class="msg"></div>
         </div>
@@ -771,9 +781,12 @@ enum AdminWebController {
         $('#act-schedule').hidden = false;
         $('#act-schedule').innerHTML = '<span style="color:var(--fg);font-weight:600;">Next runs:</span> ' + sched.map(function (t) {
           var state;
-          if (t.running) state = '<span class="dot enriching pulse"></span> running now';
-          else if (t.nextRunInSeconds == null) state = 'manual only';
-          else state = 'in <b>' + fmtDur(t.nextRunInSeconds) + '</b>';
+          if (t.running) {
+            // Show live unit progress for tasks that measure it (BlurHash, media probe).
+            var prog = (t.total != null && t.total > 0) ? ' <b>' + t.done + ' / ' + t.total + '</b>' : '';
+            state = '<span class="dot enriching pulse"></span> running' + prog;
+          } else if (t.nextRunInSeconds == null) state = '<span class="muted">manual only</span>';
+          else state = 'next in <b>' + fmtDur(t.nextRunInSeconds) + '</b>';
           return '<span class="sched">' + esc(t.label) + ': ' + state + '</span>';
         }).join('');
       } else { $('#act-schedule').hidden = true; }
@@ -1110,6 +1123,13 @@ enum AdminWebController {
   function loadSources() {
     api('/v1/admin/sources', 'GET').then(function (res) { return res.ok ? res.json() : { sources: [] }; }).then(function (d) {
       var srcs = d.sources || [];
+      // Consolidated, always-visible list of every source (any driver).
+      $('#all-sources').innerHTML = srcs.length ? srcs.map(function (s) {
+        var rm = (s.refreshInterval > 0) ? 'auto-refresh every ' + Math.round(s.refreshInterval / 60) + ' min' : 'manual scan only';
+        return '<div class="item"><span class="it-row"><span class="chip">' + esc(s.driver) + '</span> <strong>' + esc(s.label) + '</strong> <span class="meta">' + rm + '</span></span>' +
+          '<span class="acts"><button class="mini" data-scan-src="' + esc(s.id) + '" title="Import the latest from this source only: add new titles, update changed ones, remove deleted ones.">Scan</button>' +
+          '<button class="mini danger" data-del-src="' + esc(s.id) + '" title="Remove this source and every item it imported into the library.">Delete</button></span></div>';
+      }).join('') : '<div class="empty">No sources yet — add one below.</div>';
       STORAGE_DRIVERS.forEach(function (driver) {
         var list = $('#src-list-' + driver); if (!list) return;
         var mine = srcs.filter(function (s) { return s.driver === driver; });
@@ -1143,10 +1163,22 @@ enum AdminWebController {
     Array.prototype.forEach.call(document.querySelectorAll('.stor-panel'), function (p) { p.hidden = (p.getAttribute('data-drvpanel') !== driver); });
   }
   $('#stor-subtabs').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.drv) showStorage(b.dataset.drv); };
+  function scanSourceById(id) {
+    msg('all-src-msg', 'Scanning…', true);
+    api('/v1/admin/sources/' + id + '/scan', 'POST').then(function (res) {
+      if (res.status === 409) { msg('all-src-msg', 'A scan of this source is already running — try again when it finishes.'); return null; }
+      return res.ok ? res.json() : null;
+    }).then(function (s) {
+      if (!s) { if (!$('#all-src-msg').textContent) msg('all-src-msg', 'Scan failed.'); return; }
+      msg('all-src-msg', 'Scanned ' + s.scanned + ' · +' + s.added + ' new · ~' + s.updated + ' updated · −' + s.removed + ' removed' + (s.enriched != null ? ' · ' + s.enriched + ' enriched' : ''), true);
+      loadSources(); loadLibraries(); loadOverview();
+    }).catch(function () { msg('all-src-msg', 'Scan failed.'); });
+  }
   $('#tab-libraries').onclick = function (e) {
     var add = e.target.getAttribute('data-add'); if (add) { addSource(add); return; }
+    var scanSrc = e.target.getAttribute('data-scan-src'); if (scanSrc) { scanSourceById(scanSrc); return; }
     var del = e.target.getAttribute('data-del-src'), scan = e.target.getAttribute('data-scan');
-    if (del) { if (confirm('Delete this source and its items?')) api('/v1/admin/sources/' + del, 'DELETE').then(function () { loadSources(); loadLibraries(); }); return; }
+    if (del) { if (confirm('Delete this source and every item it imported?')) api('/v1/admin/sources/' + del, 'DELETE').then(function () { loadSources(); loadLibraries(); loadOverview(); }); return; }
     if (scan) { scanSource(storActive, scan); return; }
     var rl = e.target.getAttribute('data-scan-lib');
     if (rl) {
@@ -1731,6 +1763,22 @@ enum AdminWebController {
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
+  $('#restart-btn').onclick = function () {
+    if (!confirm('Restart the server now? It will be unavailable for a few seconds. Your library and settings are kept.')) return;
+    $('#restart-btn').disabled = true;
+    msg('restart-msg', 'Restarting…', true);
+    var waitForBack = function () {
+      $('#restart-msg').textContent = 'Restarting — waiting for the server…';
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        fetch('/v1/info', { cache: 'no-store' }).then(function (r) { if (r.ok) { clearInterval(iv); location.reload(); } }).catch(function () {});
+        if (tries > 60) { clearInterval(iv); msg('restart-msg', 'Still waiting… reload the page once it is back.'); $('#restart-btn').disabled = false; }
+      }, 1500);
+    };
+    // The connection drops as the server goes down, so a network error here is expected — wait for it to return either way.
+    api('/v1/admin/restart', 'POST').then(waitForBack).catch(waitForBack);
+  };
   bindHome();
   $('#scan-all-btn').onclick = scanAllSources;
   $('#usr-add-btn').onclick = addUser;

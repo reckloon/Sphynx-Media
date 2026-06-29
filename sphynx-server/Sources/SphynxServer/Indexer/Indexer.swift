@@ -21,6 +21,12 @@ struct Indexer: Sendable {
     /// Scan one source, reporting scan activity to the diagnostics center (the web
     /// admin Activity tab) and ensuring the in-flight flag is cleared even on error.
     func scan(sourceId: String) async throws -> IndexSummary {
+        // One scan per source at a time. Without this, a second scan of the same
+        // source (manual or an auto-refresh tick firing before a slow scan finishes)
+        // snapshots the same pre-scan item set and re-inserts every key → duplicates.
+        guard await ScanCoordinator.shared.begin(sourceId) else {
+            throw SphynxError.conflict("A scan of this source is already running.")
+        }
         let startedAt = Date()
         await DiagnosticsCenter.shared.scanBegan()
         do {
@@ -29,9 +35,11 @@ struct Indexer: Sendable {
                 sourceId: summary.sourceId, scanned: summary.scanned, added: summary.added,
                 updated: summary.updated, removed: summary.removed, enriched: summary.enriched,
                 durationMs: Date().timeIntervalSince(startedAt) * 1000)
+            await ScanCoordinator.shared.end(sourceId)
             return summary
         } catch {
             await DiagnosticsCenter.shared.scanFailed()
+            await ScanCoordinator.shared.end(sourceId)
             throw error
         }
     }
@@ -53,9 +61,18 @@ struct Indexer: Sendable {
         // sourceKey. Containers (series/season, empty sourceKey) are excluded —
         // they're found via dedicated lookups so they don't collide on "".
         var existingByKey: [String: ItemRecord] = [:]
+        var duplicateRowIds: [String] = []
         for record in try await catalog.itemsBySource(sourceId: sourceId) where !record.sourceKey.isEmpty {
-            existingByKey[record.sourceKey] = record
+            if existingByKey[record.sourceKey] == nil {
+                existingByKey[record.sourceKey] = record
+            } else {
+                // A leftover duplicate row for this key (e.g. from a past overlapping
+                // scan, before the per-source lock). Self-heal: keep the first, delete
+                // the rest, so the catalog converges to one item per file.
+                duplicateRowIds.append(record.id)
+            }
         }
+        for dupId in duplicateRowIds { try await catalog.deleteItem(id: dupId) }
 
         // Per-scan caches to dedupe containers and avoid refetching seasons.
         var seriesCache: [String: ItemRecord] = [:]                 // normalized series title
@@ -448,7 +465,11 @@ struct Indexer: Sendable {
     func scanAll() async throws -> [IndexSummary] {
         var summaries: [IndexSummary] = []
         for source in try await catalog.sources() {
-            summaries.append(try await scan(sourceId: source.id))
+            do {
+                summaries.append(try await scan(sourceId: source.id))
+            } catch let error as SphynxError where error.status == .conflict {
+                continue  // already being scanned — skip, don't abort the batch
+            }
         }
         return summaries
     }

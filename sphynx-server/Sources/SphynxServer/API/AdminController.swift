@@ -1,6 +1,11 @@
 import Foundation
 import Hummingbird
 import SphynxProtocol
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 /// Admin-only endpoints for catalog setup + manual entry. These are
 /// server-specific (not part of the client-facing wire protocol) and live under
@@ -25,6 +30,7 @@ struct AdminController: Sendable {
         let admin = group.group("admin")
         admin.get("settings", use: getSettings)
         admin.patch("settings", use: updateSettings)
+        admin.post("restart", use: restart)
         admin.get("home", use: getHomeDefault)
         admin.put("home", use: setHomeDefault)
         admin.get("genres", use: listGenres)
@@ -233,6 +239,21 @@ struct AdminController: Sendable {
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
+    }
+
+    /// Restart the server process. Used to apply boot-time settings that aren't
+    /// hot-reloaded (notably a changed **TMDB API key**) without shell access. Sends
+    /// the process a graceful `SIGTERM` (the same signal `runService()` handles for a
+    /// clean shutdown); the container's restart policy relaunches it. The signal is
+    /// raised just after this response is sent so the client sees the `202`.
+    @Sendable
+    func restart(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        try requireAdmin(context)
+        Task.detached {
+            try? await Task.sleep(for: .milliseconds(300))
+            kill(getpid(), SIGTERM)
+        }
+        return Response(status: .accepted)
     }
 
     /// The admin **default** home-screen layout (the ordered rows new/unconfigured
@@ -447,7 +468,13 @@ struct AdminController: Sendable {
         try requireScan(context, libraries: [libraryId])
         let sources = try await catalog.sources().filter { $0.feedsLibraries().contains(libraryId) }
         var summaries: [IndexSummary] = []
-        for source in sources { summaries.append(try await indexer.scan(sourceId: source.id)) }
+        for source in sources {
+            do {
+                summaries.append(try await indexer.scan(sourceId: source.id))
+            } catch let error as SphynxError where error.status == .conflict {
+                continue  // a source already being scanned — skip, don't fail the refresh
+            }
+        }
         await notifyLibrariesChanged([libraryId], action: "scanned")
         return IndexAllSummary(sources: summaries)
     }

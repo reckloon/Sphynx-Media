@@ -45,7 +45,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
   "product": "Sphynx",
   "serverName": "Sphynx Reference Server",
   "id": "srv_reference",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "protocol": ["v1"],
   "capabilities": {
     "search": false,
@@ -1306,6 +1306,15 @@ Update any subset of the runtime settings. **Body** e.g.
 ([`GET /v1/auth/directory`](#get-v1authdirectory--unauthenticated-opt-in)). It
 exposes the account list — display names + avatars — before sign-in, so it is
 opt-in. Seeds once from `SPHYNX_SIGN_IN_USER_LIST`. Applies on the next restart.
+
+### `POST /v1/admin/restart`
+
+Restart the server process. Used to apply boot-time config that isn't hot-reloaded —
+notably a changed **TMDB API key** (read once at startup) — without shell access.
+Sends the process a graceful `SIGTERM` (the signal `runService()` handles for a clean
+shutdown); a process manager / container restart policy relaunches it. Returns **202
+Accepted** just before the signal fires; the catalog and all settings are preserved.
+Admin only.
 
 **Passkeys** ([WebAuthn](#passkeys-webauthn)) are configured here too:
 `passkeyRelyingPartyID` is the registrable domain the server is reached at — a bare

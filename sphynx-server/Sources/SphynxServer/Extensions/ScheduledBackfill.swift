@@ -26,8 +26,9 @@ protocol ScheduledBackfill: Sendable {
 
 extension ScheduledBackfill {
     /// How often the idle (manual-only) loop re-checks settings for a newly-set
-    /// interval, so enabling a schedule takes effect without a restart.
-    var idlePollTick: Double { 30 }
+    /// interval, so enabling a schedule takes effect (and the "Next runs" indicator
+    /// stops saying "manual only") within a few seconds, not half a minute.
+    var idlePollTick: Double { 5 }
 
     /// Current interval in seconds: the live setting, else `defaultInterval`. A value
     /// `<= 0` means manual-only.

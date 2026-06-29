@@ -120,7 +120,8 @@ func buildRouter(
                     configuration: configuration, events: events).addRoutes(to: securedV1)
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
-                          logStore: LogStore.shared, schedule: scheduleCenter).addRoutes(to: securedV1)
+                          logStore: LogStore.shared, schedule: scheduleCenter,
+                          blurHashProgress: blurHashProgress, mediaProbeProgress: mediaProbeProgress).addRoutes(to: securedV1)
     ExtensionsController(
         catalog: catalog, resolver: resolver, settings: settings,
         blurHashProgress: blurHashProgress, mediaProbeProgress: mediaProbeProgress,

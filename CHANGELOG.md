@@ -12,6 +12,40 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.1.7] — 2026-06-29
+
+### Fixed
+
+- **Duplicate items from overlapping scans.** A source had no concurrency guard, so a
+  second scan starting before the first finished (common with a slow source + an
+  auto-refresh interval, or a manual "Scan"/"Refresh" during one) each snapshotted the
+  pre-scan item set and both re-inserted every file — producing a duplicate row per
+  title. Scans are now **serialized per source** (a second scan of a source in flight
+  is rejected with `409`; "Scan all"/"Refresh"/auto-refresh skip a busy source instead
+  of failing). The indexer also **self-heals** existing duplicates: on the next scan,
+  leftover duplicate-`sourceKey` rows are removed so the catalog converges to one item
+  per file.
+
+### Added
+
+- **Restart button** (Settings → below the TMDB API key) and `POST /v1/admin/restart`.
+  Restarts the server process (graceful `SIGTERM`; the container's restart policy
+  relaunches it) so a changed **TMDB API key** — which is only read at startup — can
+  take effect without shell access. Library and settings are preserved.
+
+### Changed
+
+- **Activity panel: clearer + snappier.** The "Next runs" indicator now shows **live
+  progress** for the running task where it's measurable (e.g. `Media probe: running
+  133 / 476`), and a manual-only task that has just been given an interval flips out of
+  "manual only" within ~5s instead of up to 30s (`idlePollTick` 30 → 5; surfaced via
+  new `total`/`done` on each `schedule` entry in `GET /v1/admin/status`).
+- **Storage sources are now listed at the top of the Libraries tab** — an always-visible
+  "Your sources" list (every driver) with Scan/Delete, so you can manage connected
+  sources without opening a driver tab. Added explanatory **tooltips** to the main
+  action buttons (Scan, Scan all, Refresh, Re-enrich, Run probe pass, Generate now,
+  Restart) so it's clear what each does.
+
 ## [0.1.6] — 2026-06-29
 
 ### Added
