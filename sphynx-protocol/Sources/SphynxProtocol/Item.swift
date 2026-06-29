@@ -7,8 +7,10 @@ import Foundation
 public struct ImageInfo: Codable, Hashable, Sendable {
     /// The full-size image URL (the same value as the matching flat role field).
     public var url: String
-    /// A low-res stand-in for `url` (the reference server's form is admin-selectable
-    /// — `url`, `blurHash`, or omitted).
+    /// A low-res stand-in for *this role's* `url` (not the poster's) — so each image
+    /// blurs up from its own placeholder. The reference server's form is admin-
+    /// selectable (`url`, `blurHash`, or omitted) and, in `blurHash` mode, carries a
+    /// hash generated per role.
     public var placeholder: Placeholder?
     /// Aspect ratio = width ÷ height. ~0.667 for a portrait poster (2:3), ~1.778
     /// for landscape art (16:9). Absent when the server can't state it.

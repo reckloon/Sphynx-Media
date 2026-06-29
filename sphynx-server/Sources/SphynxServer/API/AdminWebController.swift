@@ -640,7 +640,7 @@ enum AdminWebController {
         </div>
 
         <div id="mod-placeholders" class="ext-mod" hidden>
-          <p class="hint" style="margin-top:0;"><strong>BlurHash</strong> (default) sends a compact hash the client paints instantly, with no extra request — hashes are generated and cached during enrichment, so existing titles fill in on their next refresh (until then they fall back to URL). <strong>URL</strong> sends a tiny image link instead (one request per tile, looks like a thumbnail). <strong>Off</strong> sends no placeholder.</p>
+          <p class="hint" style="margin-top:0;"><strong>BlurHash</strong> (default) sends a compact hash the client paints instantly, with no extra request. Hashes are generated for <em>every</em> image — poster, backdrop, still, logo, banner, and cast faces — by a background pass that fills in lazily without slowing enrichment, so titles gain hashes over time (until then they fall back to URL). <strong>URL</strong> sends a tiny image link instead (one request per tile, looks like a thumbnail). <strong>Off</strong> sends no placeholder.</p>
           <label for="ph-mode">Low-res placeholder</label>
           <select id="ph-mode">
             <option value="blurhash">BlurHash (default)</option>
@@ -648,6 +648,7 @@ enum AdminWebController {
             <option value="off">Off</option>
           </select>
           <button id="ph-save">Save</button>
+          <div id="ph-status" class="hint" style="margin-top:10px;" hidden></div>
           <div id="ph-msg" class="msg"></div>
         </div>
       </section>
@@ -1623,10 +1624,32 @@ enum AdminWebController {
   }
 
   // ---- module: low-res images (placeholders) ----
+  var phPollTimer = null;
+  function renderHashStatus(h) {
+    var el = $('#ph-status');
+    if (!h) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    if (h.running) {
+      var pct = h.total > 0 ? Math.floor((h.done / h.total) * 100) : 0;
+      el.innerHTML = '<strong>Generating BlurHashes…</strong> ' + h.done.toLocaleString() + ' / ' +
+        h.total.toLocaleString() + ' images (' + pct + '%).';
+    } else if (h.lastCompletedAt) {
+      el.innerHTML = '<strong>BlurHashes up to date.</strong> Last pass finished ' +
+        new Date(h.lastCompletedAt).toLocaleString() + '. New titles fill in on the next pass.';
+    } else {
+      el.textContent = 'BlurHash generation runs in the background; progress will appear here.';
+    }
+  }
   function loadPlaceholderConfig() {
     api('/v1/admin/extensions/placeholders', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
       if (!c) return;
       $('#ph-mode').value = c.mode || 'blurhash';
+      renderHashStatus(c.hashing);
+      // Poll while a pass is in flight and the module is on screen.
+      if (phPollTimer) { clearTimeout(phPollTimer); phPollTimer = null; }
+      if (c.hashing && c.hashing.running && !$('#mod-placeholders').hidden) {
+        phPollTimer = setTimeout(loadPlaceholderConfig, 2000);
+      }
     });
   }
   function savePlaceholderConfig() {

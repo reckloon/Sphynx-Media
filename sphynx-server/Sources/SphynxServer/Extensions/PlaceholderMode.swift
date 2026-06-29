@@ -7,9 +7,9 @@ import SphynxProtocol
 /// without a restart.
 ///
 /// `blurhash` only changes the *form* served; the hashes themselves are generated
-/// and cached during enrichment (see `EnrichmentService`). An item enriched before
-/// the mode was switched has no hash yet and transparently falls back to `url`
-/// until it's re-enriched (the periodic poster refresh, or a manual one).
+/// lazily, for every image role + cast face, by `BlurHashBackfillService` (bounded
+/// concurrency, decoupled from enrichment). An image without a hash yet transparently
+/// falls back to `url` until the next backfill pass reaches it.
 ///
 /// **Default is `blurhash`** — the nicest out-of-the-box experience (instant,
 /// request-free blur-up), with the `url` fallback meaning a fresh server still

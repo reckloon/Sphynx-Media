@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Self-contained (no platform image APIs), so it behaves identically on macOS and
 /// the Linux deploy target and is unit-testable from synthetic pixels. Decoding the
-/// source JPEG into pixels is the generator's job (`PosterBlurHashGenerator`); this
+/// source JPEG into pixels is the generator's job (`ImageBlurHashGenerator`); this
 /// type only does the maths.
 enum BlurHash {
     /// The BlurHash base-83 alphabet (order is significant).

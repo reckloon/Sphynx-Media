@@ -463,6 +463,19 @@ struct AppDatabase: Sendable {
             try db.create(indexOn: "web_auth", columns: ["expiresAt"])
         }
 
+        migrator.registerMigration("m29_item_image_blurhashes") { db in
+            // Per-role BlurHashes for every image (poster, backdrop, thumb, logo,
+            // banner) as a JSON `{role: hash}` map, generated lazily by the
+            // low-res-images backfill when its mode is `blurhash`. Supersedes the
+            // single-image `placeholderBlurHash` (kept as a read-fallback for the
+            // poster); cast-face hashes ride inside the existing `castJSON` blob, so
+            // they need no column. Absent/missing role ⇒ serving falls back to the
+            // URL placeholder for that role.
+            try db.alter(table: "item") { t in
+                t.add(column: "imageBlurHashesJSON", .text)
+            }
+        }
+
         return migrator
     }
 }

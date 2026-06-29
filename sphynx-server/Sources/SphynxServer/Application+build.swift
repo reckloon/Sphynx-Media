@@ -49,7 +49,8 @@ func buildRouter(
     policy: AccessPolicy,
     settings: SettingsStore,
     homeConfig: HomeConfigStore,
-    events: EventBus
+    events: EventBus,
+    blurHashProgress: BlurHashProgress? = nil
 ) -> Router<SphynxRequestContext> {
     let router = Router(context: SphynxRequestContext.self)
 
@@ -115,7 +116,7 @@ func buildRouter(
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
                           logStore: LogStore.shared).addRoutes(to: securedV1)
-    ExtensionsController(catalog: catalog, resolver: resolver, settings: settings).addRoutes(to: securedV1)
+    ExtensionsController(catalog: catalog, resolver: resolver, settings: settings, blurHashProgress: blurHashProgress).addRoutes(to: securedV1)
 
     return router
 }
@@ -186,10 +187,14 @@ func buildApplication(
             tv: TVEnricher(tmdb: client),
             ttl: configuration.enrichmentTTL,
             logger: logger,
-            settings: settingsStore,
-            blurHashGenerator: PosterBlurHashGenerator(fetcher: fetcher)
+            settings: settingsStore
         )
     }
+    // Low-res-images BlurHash backfill: shared progress (for the Extensions status
+    // indicator) plus the role-agnostic generator. The background service is wired
+    // below alongside the other maintenance services.
+    let blurHashProgress = BlurHashProgress()
+    let blurHashGenerator = ImageBlurHashGenerator(fetcher: fetcher)
     if enrichment == nil {
         logger.warning("TMDB not configured — items will not be identified/enriched (set SPHYNX_TMDB_API_KEY).")
     }
@@ -217,7 +222,8 @@ func buildApplication(
         policy: policy,
         settings: settingsStore,
         homeConfig: homeConfigStore,
-        events: events
+        events: events,
+        blurHashProgress: blurHashProgress
     )
 
     // Background maintenance: TTL-refresh stale enrichment + purge old playstate.
@@ -235,6 +241,16 @@ func buildApplication(
         // the maintenance gate so tests / one-shot runs stay loop-free.
         services.append(SourceRefreshService(
             tick: 60, catalog: catalog, indexer: indexer, logger: logger))
+        // Lazy BlurHash backfill for every image role + cast face (low-res-images
+        // extension, `blurhash` mode). Bounded concurrency so it never hammers the
+        // image CDN, and decoupled from enrichment so it never stalls it.
+        services.append(BlurHashBackfillService(
+            interval: configuration.maintenanceInterval,
+            catalog: catalog,
+            generator: blurHashGenerator,
+            settings: settingsStore,
+            progress: blurHashProgress,
+            logger: logger))
     }
 
     return Application(

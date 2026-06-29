@@ -1,6 +1,9 @@
 import Foundation
 
-/// A cheap low-res poster placeholder (§5.5).
+/// A cheap low-res image placeholder (§5.5) — a blur-up stand-in for *any* image
+/// (poster, backdrop, episode still, logo, banner, or a cast face), not just the
+/// poster. Attached at the item top level (`Item.placeholder`, the poster), per role
+/// (`ItemImages.variants[role].placeholder`), and per `CastMember`.
 ///
 /// **Self-describing one-of.** The object carries exactly one form. New forms
 /// may be added over time, so decoding "uses the first form it understands and

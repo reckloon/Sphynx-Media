@@ -15,10 +15,11 @@ struct EnrichmentService: Sendable {
     let logger: Logger
     /// Live source for the low-res-images extension's mode; consulted per item so a
     /// mode change applies on the next (re-)enrich without a restart.
+    ///
+    /// Note: BlurHash *generation* is no longer done here. It runs out-of-band in
+    /// `BlurHashBackfillService` (bounded concurrency, lazy) so a slow image fetch
+    /// never stalls enrichment; enrichment only writes the image URLs.
     var settings: SettingsStore? = nil
-    /// Generates the poster BlurHash when the extension is in `blurhash` mode.
-    /// Optional so the service still builds without it (no hashes generated).
-    var blurHashGenerator: (any BlurHashGenerating)? = nil
 
     private static let tvTypes: Set<String> = ["series", "season", "episode"]
 
@@ -86,7 +87,6 @@ struct EnrichmentService: Sendable {
             let fields = try await enricher.enrichMovie(tmdbId: resolvedId)
             apply(fields, to: &updated)
             try await linkCollection(fields.collection, to: &updated)
-            await generatePlaceholderBlurHash(for: &updated)
             updated.enrichedAt = now
             updated.updatedAt = now
             try await catalog.updateItem(updated)
@@ -163,7 +163,6 @@ struct EnrichmentService: Sendable {
             default:
                 return .skipped
             }
-            await generatePlaceholderBlurHash(for: &updated)
             updated.enrichedAt = now
             updated.updatedAt = now
             try await catalog.updateItem(updated)
@@ -172,19 +171,6 @@ struct EnrichmentService: Sendable {
             logger.warning("TV enrichment failed for item \(item.id): \(error)")
             return .failed
         }
-    }
-
-    /// When the low-res-images extension is in `blurhash` mode, generate and cache a
-    /// BlurHash for the item's poster placeholder. Best-effort: gated on the
-    /// `placeholder` field lock, and any failure leaves the hash nil so serving
-    /// transparently falls back to the URL placeholder.
-    private func generatePlaceholderBlurHash(for item: inout ItemRecord) async {
-        guard let settings, let generator = blurHashGenerator,
-              let url = item.placeholderURL,
-              !item.lockedFields().contains(LockableField.placeholder),
-              (try? await PlaceholderMode.current(settings)) == .blurhash
-        else { return }
-        item.placeholderBlurHash = await generator.blurHash(forImageAt: url)
     }
 
     /// Enrich every item that needs it (new or stale). Returns the count updated.

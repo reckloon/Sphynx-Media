@@ -11,13 +11,18 @@ import Hummingbird
 ///   (`DiagnosticsController`); listed here so the UI can present it as a module.
 /// - `media-probe` — opt-in `ffprobe` track inspection (this controller owns it).
 /// - `placeholders` — the low-res image `placeholder` mode (`url`/`blurhash`/`off`);
-///   see `PlaceholderMode`. Generation happens in `EnrichmentService`.
+///   see `PlaceholderMode`. BlurHash generation for every image role + cast face
+///   happens lazily in `BlurHashBackfillService`; this controller reports its
+///   progress via `GET /v1/admin/extensions/placeholders`.
 ///
 /// All endpoints are admin-only and server-local (`/v1/admin/extensions/*`).
 struct ExtensionsController: Sendable {
     let catalog: Catalog
     let resolver: Resolver
     let settings: SettingsStore
+    /// Live progress of the low-res-images BlurHash backfill, for the status
+    /// indicator. Absent in tests / when the backfill service isn't running.
+    var blurHashProgress: BlurHashProgress? = nil
 
     /// Settings keys for the media-probe extension (stored alongside runtime
     /// settings; read live so config changes apply without a restart).
@@ -54,7 +59,7 @@ struct ExtensionsController: Sendable {
                 kind: "optional", enabled: cfg.enabled, available: cfg.available, configurable: true),
             ExtensionInfo(
                 id: "placeholders", name: "Low-res images",
-                description: "How tiles blur up before artwork loads: a tiny image URL, a generated BlurHash, or off. BlurHash strings are generated and cached during enrichment.",
+                description: "How tiles blur up before artwork loads: a tiny image URL, a generated BlurHash, or off. BlurHashes are generated for every image (poster, backdrop, still, logo, banner, cast faces) by a lazy background pass.",
                 kind: "optional", enabled: placeholderMode != .off, available: true, configurable: true),
         ])
     }
@@ -64,7 +69,7 @@ struct ExtensionsController: Sendable {
     @Sendable
     func getPlaceholderConfig(_ request: Request, context: SphynxRequestContext) async throws -> PlaceholderConfig {
         try requireAdmin(context)
-        return PlaceholderConfig(mode: try await PlaceholderMode.current(settings).rawValue)
+        return try await placeholderConfig()
     }
 
     @Sendable
@@ -77,7 +82,24 @@ struct ExtensionsController: Sendable {
             }
             try await settings.set([PlaceholderMode.settingKey: mode.rawValue])
         }
-        return PlaceholderConfig(mode: try await PlaceholderMode.current(settings).rawValue)
+        return try await placeholderConfig()
+    }
+
+    /// The current placeholder mode plus, in `blurhash` mode, the live backfill
+    /// progress that drives the Extensions tab's status indicator.
+    private func placeholderConfig() async throws -> PlaceholderConfig {
+        let mode = try await PlaceholderMode.current(settings)
+        var hashing: BlurHashStatus?
+        if mode == .blurhash, let snapshot = await blurHashProgress?.snapshot() {
+            hashing = BlurHashStatus(
+                running: snapshot.running,
+                total: snapshot.total,
+                done: snapshot.done,
+                lastCompletedAt: snapshot.lastCompletedAt.map {
+                    ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0))
+                })
+        }
+        return PlaceholderConfig(mode: mode.rawValue, hashing: hashing)
     }
 
     // MARK: Media probe — config
@@ -199,6 +221,19 @@ struct ProbeQuery: Codable, Sendable {
 struct PlaceholderConfig: Codable, Sendable, ResponseEncodable {
     /// One of `url` | `blurhash` | `off`.
     var mode: String
+    /// BlurHash backfill progress; present only in `blurhash` mode.
+    var hashing: BlurHashStatus?
+}
+
+/// Progress of the lazy BlurHash backfill, for the Extensions status indicator.
+/// `total`/`done` count images (every role + cast face the current/last pass set out
+/// to hash); `running` is true while a pass is in flight.
+struct BlurHashStatus: Codable, Sendable {
+    var running: Bool
+    var total: Int
+    var done: Int
+    /// RFC 3339 time the last pass finished, if one has.
+    var lastCompletedAt: String?
 }
 
 struct PlaceholderConfigUpdate: Codable, Sendable {

@@ -118,9 +118,15 @@ struct PlaceholdersExtensionTests {
         }
     }
 
-    // MARK: End-to-end: generation + live mode switching
+    // MARK: End-to-end: serving + live mode switching
+    //
+    // BlurHash *generation* is decoupled from enrichment (it runs in the background
+    // `BlurHashBackfillService`, exercised directly in `BlurHashBackfillTests`). With
+    // the maintenance interval off in tests, a freshly scanned item has no hash yet,
+    // so blurhash mode serves the URL fallback. This test covers serving + live mode
+    // switching; generation correctness lives in the backfill suite.
 
-    @Test("blurhash mode generates a hash at enrich time; switching mode re-shapes serving live")
+    @Test("blurhash mode serves the URL fallback until backfilled; switching mode re-shapes serving live")
     func endToEnd() async throws {
         let app = try await buildApplication(
             configuration: testConfiguration(),
@@ -150,15 +156,11 @@ struct PlaceholdersExtensionTests {
                 uri: "/v1/admin/sources/\(source.id)/scan", method: .post, headers: jsonHeaders(bearer: token)
             ) { try $0.decoded(IndexSummary.self) }
 
-            // blurhash: the served placeholder is a BlurHash string.
+            // blurhash, not yet backfilled: serving falls back to the URL form, and
+            // the poster's per-image variant matches.
             let blurItem = try await firstItem(client, token: token, parent: library.id)
-            if case .blurHash(let hash)? = blurItem.placeholder {
-                #expect(!hash.isEmpty)
-            } else {
-                Issue.record("expected a blurHash placeholder, got \(String(describing: blurItem.placeholder))")
-            }
-            // The poster's per-image variant carries the same hash.
-            #expect(blurItem.images?.variants?["primary"]?.placeholder == blurItem.placeholder)
+            #expect(blurItem.placeholder == .url(posterURL))
+            #expect(blurItem.images?.variants?["primary"]?.placeholder == .url(posterURL))
 
             // Switch to off (no re-enrich): the placeholder disappears immediately.
             _ = try await client.execute(

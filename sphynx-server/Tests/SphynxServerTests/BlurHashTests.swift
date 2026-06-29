@@ -63,7 +63,7 @@ struct BlurHashTests {
     @Test("generator decodes a real JPEG and produces a 4×3 hash")
     func generatesFromJPEG() async throws {
         let url = "https://image.tmdb.org/t/p/w92/poster.jpg"
-        let generator = PosterBlurHashGenerator(fetcher: StubFetcher([url: sampleJPEG]))
+        let generator = ImageBlurHashGenerator(fetcher: StubFetcher([url: sampleJPEG]))
         let hash = try #require(await generator.blurHash(forImageAt: url))
         #expect(hash.count == 28)  // 4×3 components (the generator's default)
     }
@@ -72,10 +72,10 @@ struct BlurHashTests {
     func generatorFailsGracefully() async {
         let url = "https://image.tmdb.org/t/p/w92/poster.jpg"
         // Non-JPEG bytes under the URL.
-        let garbage = PosterBlurHashGenerator(fetcher: StubFetcher([url: Data("not an image".utf8)]))
+        let garbage = ImageBlurHashGenerator(fetcher: StubFetcher([url: Data("not an image".utf8)]))
         #expect(await garbage.blurHash(forImageAt: url) == nil)
         // URL the fetcher doesn't know.
-        let empty = PosterBlurHashGenerator(fetcher: StubFetcher([:]))
+        let empty = ImageBlurHashGenerator(fetcher: StubFetcher([:]))
         #expect(await empty.blurHash(forImageAt: url) == nil)
     }
 }

@@ -7,24 +7,26 @@ import CoreGraphics
 import JPEG
 #endif
 
-/// Produces a BlurHash for an item's poster, for the **low-res-images** extension's
-/// `blurhash` mode. Abstracted so enrichment can be unit-tested with a stub that
-/// returns a fixed hash instead of hitting the network.
+/// Produces a BlurHash for any image (poster, backdrop, still, logo, banner, cast
+/// face), for the **low-res-images** extension's `blurhash` mode. Abstracted so the
+/// backfill can be unit-tested with a stub that returns a fixed hash instead of
+/// hitting the network.
 protocol BlurHashGenerating: Sendable {
     /// Fetch the image at `url`, decode it, and return a BlurHash. Best-effort:
     /// returns nil on any failure (bad URL, fetch error, undecodable image) so a
-    /// missing hash never breaks enrichment — serving just falls back to the URL.
+    /// missing hash never breaks anything — serving just falls back to the URL.
     func blurHash(forImageAt url: String) async -> String?
 }
 
-/// The production generator: fetches the (small, pre-sized) poster image with the
-/// shared http(s)-only fetcher, decodes it into pixels, and BlurHash-encodes them.
+/// The production generator: fetches a (small, pre-sized) image with the shared
+/// http(s)-only fetcher, decodes it into pixels, and BlurHash-encodes them. Role-
+/// agnostic — the caller passes whichever tiny image URL it wants hashed.
 ///
 /// Decoding is platform-split so we don't pay for a pure-Swift image decoder where
 /// the OS already ships one: **ImageIO/CoreGraphics on Apple platforms** (and it
 /// handles any format ImageIO knows), **swift-jpeg on Linux** (TMDB serves JPEG, so
 /// JPEG-only there is fine). Either way an undecodable image yields nil.
-struct PosterBlurHashGenerator: BlurHashGenerating {
+struct ImageBlurHashGenerator: BlurHashGenerating {
     let fetcher: any HTTPFetching
     var componentsX = 4
     var componentsY = 3

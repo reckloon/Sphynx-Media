@@ -44,12 +44,13 @@ struct EnrichedFields: Sendable {
 struct Enricher: Sendable {
     let tmdb: any TMDBClient
     /// How many cast members to keep.
-    var castLimit = 15
+    var castLimit = 30
 
     /// Map TMDB cast/guest-star members to the persisted form (top `limit`,
     /// images sized like the movie path). Shared by movies, series, and episodes
-    /// so people are populated consistently everywhere.
-    static func storedCast(_ members: [TMDBCastMember], limit: Int = 15) -> [StoredCast] {
+    /// so people are populated consistently everywhere. Members without a TMDB photo
+    /// are still kept (for a complete credits list); they just carry no image to hash.
+    static func storedCast(_ members: [TMDBCastMember], limit: Int = 30) -> [StoredCast] {
         members.prefix(limit).map { member in
             StoredCast(
                 id: "pe_\(member.id)",
