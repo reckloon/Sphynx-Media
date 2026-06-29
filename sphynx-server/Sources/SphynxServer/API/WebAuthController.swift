@@ -23,6 +23,13 @@ struct WebAuthController: Sendable {
         group.post("auth/web/token", use: token)
     }
 
+    /// Secured route (behind `AuthMiddleware`). The hosted page's **passkey** sign-in
+    /// proves identity via the public passkey ceremony — which mints a session — then
+    /// presents that bearer here to finish the flow, instead of submitting a password.
+    func addSecuredRoutes(to group: RouterGroup<SphynxRequestContext>) {
+        group.post("auth/web/authorize/session", use: authorizeSession)
+    }
+
     /// The hosted login page. Validates `redirect_uri` up front so a bad target never
     /// renders a credential form, then embeds the flow parameters for the page's JS.
     @Sendable
@@ -53,6 +60,26 @@ struct WebAuthController: Sendable {
         let userId = try await service.auth.verifyPassword(username: body.username, password: body.password)
         let redirectTo = try await service.issueCode(
             userId: userId,
+            redirectUri: body.redirectUri,
+            state: body.state,
+            codeChallenge: body.codeChallenge,
+            codeChallengeMethod: body.codeChallengeMethod
+        )
+        return WebAuthorizeResponse(redirectTo: redirectTo)
+    }
+
+    /// Secured variant of `authorize`: the page has already proven identity (its
+    /// passkey ceremony minted a session), so it presents that bearer instead of a
+    /// password. Issues the same single-use code bound to the flow parameters.
+    @Sendable
+    func authorizeSession(_ request: Request, context: SphynxRequestContext) async throws -> WebAuthorizeResponse {
+        let identity = try context.requireIdentity()
+        let body = try await request.decode(as: WebAuthorizeSessionRequest.self, context: context)
+        guard service.isAllowed(redirectUri: body.redirectUri) else {
+            throw SphynxError.badRequest("redirect_uri is not allowed")
+        }
+        let redirectTo = try await service.issueCode(
+            userId: identity.userId,
             redirectUri: body.redirectUri,
             state: body.state,
             codeChallenge: body.codeChallenge,
@@ -112,6 +139,7 @@ struct WebAuthController: Sendable {
   input, button { font: inherit; padding: .55rem .7rem; border-radius: .5rem; border: 1px solid #333; width: 100%; box-sizing: border-box; }
   input { background: #0a0a0a; color: #e6e6e6; }
   button { background: var(--accent); color: #000; border: 0; font-weight: 600; cursor: pointer; margin-top: .5rem; }
+  button.secondary { background: transparent; color: #e6e6e6; border: 1px solid #333; }
   .row { margin: .6rem 0; }
   .msg { color: #ff7a7a; min-height: 1.2em; }
   .msg.ok { color: var(--accent); }
@@ -125,6 +153,7 @@ struct WebAuthController: Sendable {
   <div class="row"><input id="u" placeholder="Username" autocomplete="username" autofocus></div>
   <div class="row"><input id="p" type="password" placeholder="Password" autocomplete="current-password"></div>
   <button id="go">Sign in</button>
+  <button id="passkey-signin-btn" class="secondary" hidden>Sign in with a passkey</button>
   <p class="msg" id="msg"></p>
 </div>
 <p class="msg" id="fatal">__ERROR__</p>
@@ -162,7 +191,57 @@ struct WebAuthController: Sendable {
     }).catch(function () { msg('Could not reach the server.'); $('#go').disabled = false; });
   }
 
+  // Base64url <-> ArrayBuffer, for marshalling WebAuthn challenges and credentials.
+  function b64urlToBuf(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var bin = atob(s); var b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b.buffer; }
+  function bufToB64url(buf) { var b = new Uint8Array(buf), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+
+  // Finish the web flow for an already-authenticated session (after a passkey
+  // ceremony minted one): present the bearer to the secured endpoint, which issues
+  // the same code+redirect the password path returns.
+  function finishWithSession(bearer) {
+    fetch('/v1/auth/web/authorize/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + bearer },
+      body: JSON.stringify({ redirectUri: CFG.redirectUri, state: CFG.state, codeChallenge: CFG.codeChallenge, codeChallengeMethod: CFG.codeChallengeMethod })
+    }).then(function (r) {
+      if (!r.ok) { msg('Could not complete sign-in. Please try again.'); $('#passkey-signin-btn').disabled = false; return null; }
+      return r.json();
+    }).then(function (d) {
+      if (!d) return;
+      msg('Signed in — returning to the app…', true);
+      window.location.href = d.redirectTo;
+    }).catch(function () { msg('Could not reach the server.'); $('#passkey-signin-btn').disabled = false; });
+  }
+
+  // Passwordless sign-in: the server's authenticate options are discoverable (no
+  // allowCredentials), so the platform offers whatever passkey is enrolled for this
+  // site — no username needed. Mirrors the /user and /link pages.
+  function signInWithPasskey() {
+    if (!CFG) return;
+    if (!window.PublicKeyCredential) { msg('This browser does not support passkeys.'); return; }
+    msg('Follow your device prompt…', true);
+    $('#passkey-signin-btn').disabled = true;
+    fetch('/v1/auth/passkeys/authenticate/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { if (r.status === 404) { msg('Passkeys aren’t enabled on this server.'); $('#passkey-signin-btn').disabled = false; return null; } return r.ok ? r.json() : null; })
+      .then(function (opts) {
+        if (!opts) { if (!$('#msg').textContent || $('#msg').className.indexOf('ok') >= 0) { msg('Could not start passkey sign-in.'); $('#passkey-signin-btn').disabled = false; } return; }
+        var pk = opts.publicKey || opts;
+        pk.challenge = b64urlToBuf(pk.challenge);
+        if (pk.allowCredentials) pk.allowCredentials = pk.allowCredentials.map(function (c) { return { id: b64urlToBuf(c.id), type: c.type, transports: c.transports }; });
+        return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
+          var rr = cred.response;
+          var body = { challengeId: opts.challengeId, credential: { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+            response: { clientDataJSON: bufToB64url(rr.clientDataJSON), authenticatorData: bufToB64url(rr.authenticatorData), signature: bufToB64url(rr.signature), userHandle: rr.userHandle ? bufToB64url(rr.userHandle) : null } } };
+          return fetch('/v1/auth/passkeys/authenticate/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (r2) { if (!r2.ok) { msg('Passkey sign-in failed.'); $('#passkey-signin-btn').disabled = false; return null; } return r2.json(); })
+            .then(function (d) { if (!d) return; finishWithSession(d.accessToken); });
+        });
+      }).catch(function () { msg('Passkey sign-in was cancelled or failed.'); $('#passkey-signin-btn').disabled = false; });
+  }
+
   $('#go').onclick = submit;
+  $('#passkey-signin-btn').onclick = signInWithPasskey;
+  if (CFG && window.PublicKeyCredential) $('#passkey-signin-btn').hidden = false;
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
 </script>
 </body>
@@ -183,6 +262,15 @@ struct WebAuthPageConfig: Codable, Sendable {
 struct WebAuthorizeRequest: Codable, Sendable {
     var username: String
     var password: String
+    var redirectUri: String
+    var state: String?
+    var codeChallenge: String?
+    var codeChallengeMethod: String?
+}
+
+/// `POST /v1/auth/web/authorize/session` body: just the flow parameters — the user
+/// is identified by the bearer token (a session already minted, e.g. via passkey).
+struct WebAuthorizeSessionRequest: Codable, Sendable {
     var redirectUri: String
     var state: String?
     var codeChallenge: String?

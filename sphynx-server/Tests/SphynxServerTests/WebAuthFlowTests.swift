@@ -73,6 +73,53 @@ struct WebAuthFlowTests {
         }
     }
 
+    @Test("authorize/session: a signed-in session (the passkey path) finishes the flow with its bearer")
+    func sessionAuthorize() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        let verifier = "verifier-0123456789-abcdefghijklmnop"
+        let redirect = "ocelot://auth"
+        try await app.test(.router) { client in
+            // A session, as the page's passkey ceremony would mint (here via password login).
+            let session: TokenResponse = try await client.execute(
+                uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),
+                body: try jsonBody(LoginRequest(username: "admin", password: "test-password"))
+            ) { try $0.decoded() }
+
+            // The page presents that bearer to the secured endpoint to finish the flow.
+            let authorize: WebAuthorizeResponse = try await client.execute(
+                uri: "/v1/auth/web/authorize/session", method: .post,
+                headers: jsonHeaders(bearer: session.accessToken),
+                body: try jsonBody(WebAuthorizeSessionRequest(
+                    redirectUri: redirect, state: "xyz",
+                    codeChallenge: challenge(for: verifier), codeChallengeMethod: "S256"))
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(authorize.redirectTo.hasPrefix("ocelot://auth?"))
+            let authCode = try #require(code(in: authorize.redirectTo))
+
+            // The code redeems for a working session, just like the password path.
+            let granted: TokenResponse = try await client.execute(
+                uri: "/v1/auth/web/token", method: .post, headers: jsonHeaders(device: "iphone-2"),
+                body: try jsonBody(WebTokenRequest(code: authCode, codeVerifier: verifier))
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(!granted.accessToken.isEmpty)
+
+            // The endpoint is secured: no bearer ⇒ 401.
+            try await client.execute(
+                uri: "/v1/auth/web/authorize/session", method: .post, headers: jsonHeaders(),
+                body: try jsonBody(WebAuthorizeSessionRequest(
+                    redirectUri: redirect, state: nil, codeChallenge: nil, codeChallengeMethod: nil))
+            ) { #expect($0.status == .unauthorized) }
+
+            // And it still enforces the redirect allowlist.
+            try await client.execute(
+                uri: "/v1/auth/web/authorize/session", method: .post,
+                headers: jsonHeaders(bearer: session.accessToken),
+                body: try jsonBody(WebAuthorizeSessionRequest(
+                    redirectUri: "https://evil.example.com/steal", state: nil, codeChallenge: nil, codeChallengeMethod: nil))
+            ) { #expect($0.status == .badRequest) }
+        }
+    }
+
     @Test("the wrong PKCE verifier is rejected")
     func pkceMismatch() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

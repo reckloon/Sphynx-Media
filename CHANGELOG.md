@@ -10,6 +10,18 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+### Added
+
+- **Passkey sign-in on the web authorization page.** The hosted OAuth-style web
+  sign-in page (`GET /v1/auth/web/start`, used by clients that can't add the server
+  to an Associated Domains entitlement) now offers **Sign in with a passkey**
+  alongside the username/password form — so the web login path matches `/user` and
+  `/link`. It runs the discoverable passkey ceremony (no username needed), then
+  finishes the flow through a new secured `POST /v1/auth/web/authorize/session`,
+  which issues the same single-use code+redirect from the signed-in session. The
+  button appears only when the browser supports WebAuthn and falls back cleanly when
+  passkeys aren't enabled.
+
 ### Documentation
 
 - **Media probe: document the playback-speed benefit.** The web admin **Extensions

@@ -105,6 +105,7 @@ func buildRouter(
     authController.addSecuredRoutes(to: securedV1)
     passkeyController?.addSecuredRoutes(to: securedV1)
     deviceAuthController.addSecuredRoutes(to: securedV1)
+    webAuthController.addSecuredRoutes(to: securedV1)
     let home = HomeService(catalog: catalog, playstate: playstate, userState: userState)
     BrowseController(catalog: catalog, playstate: playstate, userState: userState,
                      home: home, homeConfig: homeConfig, settings: settings).addRoutes(to: securedV1)

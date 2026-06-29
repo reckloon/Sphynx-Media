@@ -506,6 +506,15 @@ which (on success) returns `{ "redirectTo": "<redirect_uri>?code=…&state=…" 
 the page navigates there. The browser never receives a session token — only the
 short, single-use `code`.
 
+### `POST /v1/auth/web/authorize/session` — auth required
+
+The passkey path of the same step. The hosted page signs in with a **passkey** via
+the public `authenticate/{begin,finish}` ceremony — which mints a session — then
+presents that bearer here to finish the flow without a password. **Body**
+`{ redirectUri, state?, codeChallenge?, codeChallengeMethod? }` (the user is taken
+from the token). Same response as `authorize` — `{ "redirectTo": "…?code=…&state=…" }`
+— and the same `redirect_uri` allowlist applies. **401** without a valid bearer.
+
 ### `POST /v1/auth/web/token` — unauthenticated
 
 The client redeems the code for a session. Honors `X-Sphynx-Device` for session
