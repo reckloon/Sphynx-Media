@@ -37,6 +37,10 @@ struct ExtensionsController: Sendable {
         /// Background-probe cadence in seconds (fractional allowed); `<= 0`/unset ⇒
         /// manual-only.
         static let probeInterval = "ext.mediaProbe.intervalSeconds"
+        /// Max per-item resolves a minute the background pass issues, so its TorBox
+        /// (and other rate-limited) requests stay under budget. `0` ⇒ unlimited;
+        /// unset ⇒ `MediaProbeBackfillService.defaultMaxPerMinute`.
+        static let probeMaxPerMinute = "ext.mediaProbe.maxPerMinute"
     }
 
     /// Settings key for the low-res-images background cadence (seconds, fractional;
@@ -147,6 +151,12 @@ struct ExtensionsController: Sendable {
         if let interval = body.intervalSeconds {
             updates[Key.probeInterval] = String(try requireInterval(interval))
         }
+        if let perMinute = body.maxPerMinute {
+            guard perMinute >= 0, perMinute.isFinite else {
+                throw SphynxError.badRequest("maxPerMinute must be ≥ 0 (0 = unlimited)")
+            }
+            updates[Key.probeMaxPerMinute] = String(perMinute)
+        }
         if !updates.isEmpty { try await settings.set(updates) }
         return try await probeConfig()
     }
@@ -217,6 +227,7 @@ struct ExtensionsController: Sendable {
         if let resolved { version = await FFprobeProber(ffprobePath: resolved).version() }
         let enabled = all[Key.probeEnabled] == "true"
         let interval = all[Key.probeInterval].flatMap(Double.init)
+        let maxPerMinute = all[Key.probeMaxPerMinute].flatMap(Double.init) ?? MediaProbeBackfillService.defaultMaxPerMinute
         var probing: BackfillStatus?
         if enabled, let snapshot = await mediaProbeProgress?.snapshot() { probing = BackfillStatus(snapshot) }
         return MediaProbeConfig(
@@ -226,6 +237,7 @@ struct ExtensionsController: Sendable {
             available: resolved != nil,
             version: version,
             intervalSeconds: interval,
+            maxPerMinute: maxPerMinute,
             probing: probing
         )
     }
@@ -271,6 +283,9 @@ struct MediaProbeConfig: Codable, Sendable, ResponseEncodable {
     var version: String?
     /// Background-probe cadence in seconds (fractional allowed); 0/absent ⇒ manual-only.
     var intervalSeconds: Double?
+    /// Max per-item resolves a minute the background pass issues (rate limit to stay
+    /// under the source's request budget). `0` ⇒ unlimited.
+    var maxPerMinute: Double?
     /// Background-probe progress; present only when the extension is enabled.
     var probing: BackfillStatus?
 }
@@ -279,6 +294,7 @@ struct MediaProbeConfigUpdate: Codable, Sendable {
     var enabled: Bool?
     var ffprobePath: String?
     var intervalSeconds: Double?
+    var maxPerMinute: Double?
 }
 
 

@@ -127,7 +127,42 @@ struct MediaProbeTests {
             ) { try $0.decoded() }
             #expect(reread.enabled)
             #expect(reread.ffprobePath == "/custom/ffprobe")
+            // Unset ⇒ the conservative default rate (under TorBox's 300/min).
+            #expect(reread.maxPerMinute == MediaProbeBackfillService.defaultMaxPerMinute)
         }
+    }
+
+    @Test("maxPerMinute persists and rejects a negative value")
+    func updatesProbeRateLimit() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let token = try await adminToken(client)
+            let updated: MediaProbeConfig = try await client.execute(
+                uri: "/v1/admin/extensions/media-probe", method: .patch, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(MediaProbeConfigUpdate(maxPerMinute: 90))
+            ) { #expect($0.status == .ok); return try $0.decoded() }
+            #expect(updated.maxPerMinute == 90)
+
+            try await client.execute(
+                uri: "/v1/admin/extensions/media-probe", method: .patch, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(MediaProbeConfigUpdate(maxPerMinute: -5))
+            ) { #expect($0.status == .badRequest) }
+        }
+    }
+
+    @Test("RateLimiter paces grants to its per-minute rate")
+    func rateLimiterPaces() async throws {
+        // 600/min ⇒ 0.1s spacing. Five grants take at least ~0.4s (4 gaps), and an
+        // unlimited limiter never waits.
+        let limiter = RateLimiter(perMinute: 600)
+        let start = Date()
+        for _ in 0 ..< 5 { await limiter.acquire() }
+        #expect(Date().timeIntervalSince(start) >= 0.35)
+
+        let unlimited = RateLimiter(perMinute: 0)
+        let t = Date()
+        for _ in 0 ..< 50 { await unlimited.acquire() }
+        #expect(Date().timeIntervalSince(t) < 0.2)
     }
 
     @Test("probe is rejected with 400 while the extension is disabled")

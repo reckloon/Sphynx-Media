@@ -637,6 +637,9 @@ enum AdminWebController {
           <input id="mp-path" placeholder="/usr/local/bin/ffprobe">
           <label for="mp-interval">Background probe interval <span class="muted">(seconds; 0 = manual only; decimals allowed, e.g. 0.5)</span></label>
           <input id="mp-interval" type="number" min="0" step="any" placeholder="0">
+          <label for="mp-rate">Max probes per minute <span class="muted">(rate limit; 0 = unlimited)</span></label>
+          <input id="mp-rate" type="number" min="0" step="any" placeholder="120">
+          <p class="hint" style="margin-top:4px;">Each probed title costs one source request (e.g. a TorBox <code>requestdl</code>, capped at 300/min and shared with playback). Keep this comfortably under your source's limit so probing never starves playback. Default 120.</p>
           <p class="hint" style="margin-top:4px;">When set above 0, Sphynx probes not-yet-probed titles in the background on this cadence. Leave at 0 to only probe on demand.</p>
           <button id="mp-save">Save</button>
           <button id="mp-run" class="secondary">Run probe pass now</button>
@@ -1639,6 +1642,7 @@ enum AdminWebController {
       if (!c) return;
       $('#mp-enabled').checked = c.enabled; $('#mp-path').value = c.ffprobePath || '';
       $('#mp-interval').value = c.intervalSeconds != null ? fmtNum(c.intervalSeconds) : '';
+      $('#mp-rate').value = c.maxPerMinute != null ? fmtNum(c.maxPerMinute) : '';
       var badge = c.available ? '<span class="ok-badge">' + esc(c.version || 'ffprobe found') + '</span>' : '<span class="off-badge">ffprobe not found</span>';
       $('#mp-avail').innerHTML = badge + (c.resolvedPath ? ' <span class="meta">' + esc(c.resolvedPath) + '</span>' : '');
       renderBackfillStatus($('#mp-status'), c.probing, { running: 'Probing titles', unit: 'items', done: 'Media probe up to date.', idle: 'The background probe runs on the interval above (or "Run probe pass now").' });
@@ -1650,6 +1654,7 @@ enum AdminWebController {
     msg('mp-msg', '');
     var body = { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value };
     var iv = $('#mp-interval').value; if (iv !== '') body.intervalSeconds = Math.max(0, Number(iv));
+    var rt = $('#mp-rate').value; if (rt !== '') body.maxPerMinute = Math.max(0, Number(rt));
     api('/v1/admin/extensions/media-probe', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { msg('mp-msg', 'Save failed.'); return; }

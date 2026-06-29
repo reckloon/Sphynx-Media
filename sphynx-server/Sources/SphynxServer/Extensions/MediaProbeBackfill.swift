@@ -16,6 +16,11 @@ import ServiceLifecycle
 /// sets an interval — "Run now" works regardless. Registers its next run with the
 /// `ScheduleCenter`.
 struct MediaProbeBackfillService: Service, ScheduledBackfill {
+    /// Default cap on per-item resolves a minute when the admin hasn't set one. Each
+    /// probed item costs one source resolve (a TorBox `requestdl` is one of 300/min),
+    /// so this stays well under that and leaves headroom for live playback.
+    static let defaultMaxPerMinute = 120.0
+
     let defaultInterval: Double
     let catalog: Catalog
     let resolver: Resolver
@@ -61,22 +66,28 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
         let work = items.filter { !$0.sourceKey.isEmpty && $0.probedTracksJSON == nil }
         guard !work.isEmpty else { return }
 
+        // Rate-limit the per-item source resolves so the pass stays under the
+        // provider's request budget (TorBox: 300/min, shared with playback). Read
+        // live; `0` ⇒ unlimited; unset ⇒ the conservative default.
+        let perMinute = all[ExtensionsController.Key.probeMaxPerMinute].flatMap(Double.init) ?? Self.defaultMaxPerMinute
+        let limiter = RateLimiter(perMinute: perMinute)
+
         await progress.beginPass(total: work.count)
-        logger.info("Media-probe backfill: probing \(work.count) item(s)")
+        logger.info("Media-probe backfill: probing \(work.count) item(s) at ≤\(Int(perMinute))/min")
 
         await withTaskGroup(of: Void.self) { group in
             var iterator = work.makeIterator()
             var active = 0
             for _ in 0 ..< maxConcurrentItems where !Task.isCancelled {
                 guard let next = iterator.next() else { break }
-                group.addTask { await self.probe(next, with: prober) }
+                group.addTask { await self.probe(next, with: prober, limiter: limiter) }
                 active += 1
             }
             while active > 0 {
                 _ = await group.next()
                 active -= 1
                 guard !Task.isCancelled, let next = iterator.next() else { continue }
-                group.addTask { await self.probe(next, with: prober) }
+                group.addTask { await self.probe(next, with: prober, limiter: limiter) }
                 active += 1
             }
         }
@@ -87,7 +98,11 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     /// Resolve + probe one item and cache the result. Best-effort: a bad/offline
     /// location is logged and left for a future pass. Like the manual probe, this does
     /// not bump `updatedAt` (it adds cached detail, not a content change).
-    private func probe(_ item: ItemRecord, with prober: FFprobeProber) async {
+    private func probe(_ item: ItemRecord, with prober: FFprobeProber, limiter: RateLimiter) async {
+        guard !Task.isCancelled else { return }
+        // Wait for a rate-limit slot before the resolve (a source request). Outside the
+        // per-item timeout, so queue time isn't charged against the probe budget.
+        await limiter.acquire()
         guard !Task.isCancelled else { return }
         do {
             // Bound the whole item (resolve + ffprobe). On timeout the operation task
@@ -131,5 +146,27 @@ private func withTimeout(_ seconds: Double, _ operation: @escaping @Sendable () 
         }
         defer { group.cancelAll() }
         try await group.next()
+    }
+}
+
+/// A spacing rate limiter shared across the probe workers: each `acquire()` reserves
+/// the next slot `60 / perMinute` seconds after the previous one and sleeps until then,
+/// so concurrent callers are paced to at most `perMinute` grants a minute. `perMinute
+/// <= 0` ⇒ unlimited (a no-op).
+actor RateLimiter {
+    private let interval: Double
+    private var nextAt: Double = 0
+
+    init(perMinute: Double) {
+        interval = perMinute > 0 ? 60.0 / perMinute : 0
+    }
+
+    func acquire() async {
+        guard interval > 0 else { return }
+        let now = Date().timeIntervalSince1970
+        let scheduled = max(now, nextAt)
+        nextAt = scheduled + interval
+        let wait = scheduled - now
+        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
     }
 }

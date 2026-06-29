@@ -12,6 +12,20 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.1.6] — 2026-06-29
+
+### Added
+
+- **Media-probe rate limit (`maxPerMinute`).** The background probe pass now caps how
+  many per-item source resolves it issues a minute, so it stays under the provider's
+  request budget and leaves headroom for live playback. Each probed title costs one
+  resolve (a TorBox `requestdl` is one of **300/min**, shared with playback), so the
+  unthrottled pass could trip TorBox rate limiting (`429`s). A new **Max probes per
+  minute** field in **Extensions → Media probe** (and `maxPerMinute` on
+  `GET`/`PATCH /v1/admin/extensions/media-probe`) governs it — applied live, `0` ⇒
+  unlimited, **default 120**. Workers wait on a shared spacing limiter before each
+  resolve, so concurrency no longer bursts past the cap.
+
 ## [0.1.5] — 2026-06-29
 
 ### Fixed

@@ -45,7 +45,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
   "product": "Sphynx",
   "serverName": "Sphynx Reference Server",
   "id": "srv_reference",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "protocol": ["v1"],
   "capabilities": {
     "search": false,
@@ -1844,15 +1844,18 @@ frame, especially for remote sources. Clients that rely on the advertised `track
 (e.g. Ocelot) therefore start dramatically faster on probed titles, so running a
 background pass over the whole library is recommended when such a client is in use.
 
-- **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version", "intervalSeconds"?, "probing"? }`.
+- **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version", "intervalSeconds"?, "maxPerMinute"?, "probing"? }`.
   `ffprobePath` is the admin-set path (blank ⇒ auto-discovered); `resolvedPath` is
   the path actually in use. `intervalSeconds` is the background-pass cadence (seconds,
-  fractional allowed; `0`/absent ⇒ **manual-only**, the default). `probing` carries
-  background-pass progress (`{ "running", "total", "done", "lastCompletedAt"? }`,
-  `total`/`done` counting items) when the extension is enabled.
-- **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"?, "intervalSeconds"? }`
+  fractional allowed; `0`/absent ⇒ **manual-only**, the default). `maxPerMinute` caps
+  how many per-item resolves the background pass issues a minute — each probed title
+  costs one source request (a TorBox `requestdl` is one of 300/min, shared with
+  playback), so this keeps probing under budget (`0` ⇒ unlimited; default `120`).
+  `probing` carries background-pass progress (`{ "running", "total", "done",
+  "lastCompletedAt"? }`, `total`/`done` counting items) when the extension is enabled.
+- **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"?, "intervalSeconds"?, "maxPerMinute"? }`
   → the updated config. Persisted; applied live (no restart). A negative
-  `intervalSeconds` is **400**.
+  `intervalSeconds` or `maxPerMinute` is **400**.
 - **`POST /v1/admin/extensions/media-probe/run`** → kick off a one-off background
   probe pass immediately (probes every not-yet-probed item, bounded concurrency).
   Returns the config; **400** when the extension is disabled or `ffprobe` isn't found.

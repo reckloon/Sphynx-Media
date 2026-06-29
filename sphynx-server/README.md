@@ -40,7 +40,7 @@ curl http://localhost:9410/v1/info
 | `SPHYNX_PORT`           | `9410`                     | Bind port                        |
 | `SPHYNX_SERVER_NAME`    | `Sphynx Reference Server`  | Name reported by `/v1/info`      |
 | `SPHYNX_SERVER_ID`      | `srv_reference`            | Stable id reported by `/v1/info`  |
-| `SPHYNX_VERSION`        | `0.1.5`                    | Version reported by `/v1/info`   |
+| `SPHYNX_VERSION`        | `0.1.6`                    | Version reported by `/v1/info`   |
 | `SPHYNX_DB_PATH`        | `data/sphynx.sqlite`       | SQLite path (`:memory:` = ephemeral) |
 | `SPHYNX_ADMIN_USERNAME` | `admin`                    | Bootstrap admin (first run only) |
 | `SPHYNX_ADMIN_PASSWORD` | *(none)*                   | Bootstrap admin password. Unset ⇒ a strong random one is generated + printed once to the log |
