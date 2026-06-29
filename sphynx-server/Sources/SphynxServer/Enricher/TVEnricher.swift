@@ -54,7 +54,11 @@ struct TVEnricher: Sendable {
             backdropImage: TMDBImage.url(details.backdropPath, size: "w1280"),
             thumbImage: TMDBImage.url(details.backdropPath, size: "w780"),
             placeholderURL: TMDBImage.url(details.posterPath, size: "w92"),
-            cast: Enricher.storedCast(details.cast)
+            cast: Enricher.storedCast(details.cast),
+            // Title-logo (clearlogo) + wide banner, same as the movie path — so a
+            // series' detail screen gets its logo, not just movies.
+            logoImage: TMDBImage.url(details.logoPath, size: "w500"),
+            bannerImage: TMDBImage.url(details.bannerPath, size: "w1280")
         )
     }
 

@@ -93,6 +93,10 @@ struct TMDBTVDetails: Sendable {
     var cast: [TMDBCastMember] = []
     /// Content rating (e.g. "TV-MA"), from the chosen country's `content_ratings`.
     var officialRating: String? = nil
+    /// Title-logo (clearlogo) path, from TMDB `images.logos`.
+    var logoPath: String? = nil
+    /// Wide banner art path, from TMDB `images.backdrops`.
+    var bannerPath: String? = nil
 }
 
 struct TMDBSeasonSummary: Sendable {
@@ -259,7 +263,11 @@ struct TMDBHTTPClient: TMDBClient {
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
             URLQueryItem(name: "language", value: language),
-            URLQueryItem(name: "append_to_response", value: "credits,content_ratings"),
+            URLQueryItem(name: "append_to_response", value: "credits,content_ratings,images"),
+            // Title-logo art carries no language on backdrops; ask for English +
+            // null-language so a clearlogo (and textless banner) is available —
+            // exactly as the movie path does.
+            URLQueryItem(name: "include_image_language", value: "en,null"),
         ]
         let data = try await fetcher.getData(url: components.url!.absoluteString, headers: [:])
         let raw = try JSONDecoder().decode(RawTVDetails.self, from: data)
@@ -278,7 +286,9 @@ struct TMDBHTTPClient: TMDBClient {
             cast: (raw.credits?.cast ?? []).map {
                 TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
             },
-            officialRating: Self.tvRating(from: raw.content_ratings?.results)
+            officialRating: Self.tvRating(from: raw.content_ratings?.results),
+            logoPath: raw.images?.logos?.first?.file_path,
+            bannerPath: Self.bannerPath(from: raw.images?.backdrops)
         )
     }
 
@@ -464,6 +474,7 @@ private struct RawTVDetails: Decodable {
     var seasons: [RawSeasonSummary]?
     var credits: RawCredits?
     var content_ratings: RawContentRatings?
+    var images: RawImages?
 }
 
 private struct RawSeasonSummary: Decodable {

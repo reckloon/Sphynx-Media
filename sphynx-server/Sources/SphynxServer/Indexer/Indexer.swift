@@ -536,6 +536,8 @@ struct Indexer: Sendable {
             record.primaryImage = fields.primaryImage
             record.backdropImage = fields.backdropImage
             record.thumbImage = fields.thumbImage
+            record.logoImage = fields.logoImage
+            record.bannerImage = fields.bannerImage
         }
         if !locked.contains(LockableField.placeholder) { record.placeholderURL = fields.placeholderURL }
         if !locked.contains(LockableField.cast) {

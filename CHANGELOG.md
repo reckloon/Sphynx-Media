@@ -10,7 +10,14 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Series now get their title logo (clearlogo), not just movies.** The TV details
+  fetch never requested TMDB's `images`, so a series carried no `logo` (or wide
+  `banner`) — only movies, whose details fetch already asked for them. `tvDetails`
+  now appends `images` with `include_image_language=en,null`, the series enrichment
+  fields carry the logo/banner, and `apply()` persists them on the series record
+  (gated by the `images` lock, like every other artwork field).
 
 ## [0.1.7] — 2026-06-29
 
