@@ -7,6 +7,15 @@ import Foundation
 /// The blocking work happens on a background queue; only `Sendable` values
 /// (`Data`, the exit code) cross back, so the non-`Sendable` `Process`/`Pipe` stay
 /// contained in the closure.
+/// A tiny thread-safe boolean, set from the watchdog queue and read on the worker
+/// thread — so a single shared flag survives the cross-thread hand-off cleanly.
+private final class TimeoutFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    func set() { lock.lock(); flag = true; lock.unlock() }
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+}
+
 enum ProcessRunner {
     struct Output: Sendable {
         var stdout: Data
@@ -46,12 +55,18 @@ enum ProcessRunner {
                     continuation.resume(throwing: ProcessError.launchFailed(error.localizedDescription))
                     return
                 }
-                // Watchdog: terminate (SIGTERM) a process that overruns the timeout.
-                // Terminating unblocks the reads + waitUntilExit below; we then report
-                // the timeout via the signal-based termination reason.
+                // Watchdog: SIGTERM a process that overruns the timeout, which unblocks
+                // the reads + waitUntilExit below. We track the kill with an explicit
+                // flag rather than `terminationReason`/`isRunning` — both are unreliable
+                // on swift-corelibs-foundation (Linux), where `isRunning` can read false
+                // and skip the kill entirely.
+                let timedOut = TimeoutFlag()
                 let watchdog = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
                 watchdog.schedule(deadline: .now() + timeout)
-                watchdog.setEventHandler { if process.isRunning { process.terminate() } }
+                watchdog.setEventHandler {
+                    timedOut.set()
+                    process.terminate()  // safe after launch (signals the pid; no-op if already exited)
+                }
                 watchdog.resume()
                 // ffprobe's JSON output is small, so reading to EOF before waiting
                 // won't deadlock the pipe buffer.
@@ -59,8 +74,7 @@ enum ProcessRunner {
                 let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 watchdog.cancel()
-                // A clean exit is `.exit`; our watchdog kill surfaces as `.uncaughtSignal`.
-                if process.terminationReason == .uncaughtSignal {
+                if timedOut.value {
                     continuation.resume(throwing: ProcessError.timedOut(timeout))
                     return
                 }
