@@ -24,6 +24,10 @@ What you get out of the box:
 - **Gorgeous libraries, automatically.** Point it at your files, press **Scan**,
   and TMDB fills in posters, cast, episode art, and descriptions — for movies, TV,
   box sets, and extras.
+- **A best-in-class identifier.** Sphynx reads the *whole folder path* to get
+  titles, years, and season/episode numbers right — in any language, through the
+  messiest scene-release naming. It's stress-tested against **500,000** generated
+  paths with **zero** misidentifications. [See the proof →](docs/PARSER.md)
 - **Passwordless sign-in with passkeys.** Face ID, Touch ID, Windows Hello, or a
   hardware key. No password to type, none to leak.
 - **Sign in a TV by scanning a QR code** and approving on your phone — the same
@@ -215,7 +219,12 @@ Open the **Libraries** tab and switch on the shelves your media needs:
 
 On the Movies shelf you'll see **Group collections at `[N]` movies** — once a box
 set has at least that many of its films, Sphynx collapses them into one collection
-tile instead of loose movies. Leave it at the default to start.
+tile instead of loose movies. Leave it at the default to start. (The same minimum
+applies to any library, including hand-made collections of TV series.)
+
+You can also build collections **by hand** on the **Collections** tab — handy for
+series box sets (TMDB only auto-groups movies). Name a collection, then add any
+movies or series from that library; it follows the same minimum-members rule above.
 
 ### Step 2 — Tell it where your files live (add a Storage source)
 
@@ -395,6 +404,9 @@ needed:
   themselves. The admin sets the shared default in the **Home** tab.
 - **Library correction** *(only if you've been granted **Edit metadata**)* — the same
   browse-and-fix tools as the admin's Items tab, scoped to your libraries.
+- **Collections** *(only if you've been granted **Manage collections**)* — create
+  box sets by hand and add/remove movies or series, the same as the admin's
+  Collections tab, scoped to your libraries.
 
 ---
 
