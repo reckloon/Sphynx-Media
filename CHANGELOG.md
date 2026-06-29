@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.4] — 2026-06-29
+
 ### Added
 
 - **Passkey sign-in on the web authorization page.** The hosted OAuth-style web
