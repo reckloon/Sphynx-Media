@@ -445,6 +445,19 @@ struct Indexer: Sendable {
             try await catalog.setChildCount(itemId: containerId, count: count)
         }
 
+        // Prune orphaned containers — a season/series with no remaining children.
+        // Covers duplicate container shells left after the leaf dedup (their episodes
+        // re-parent onto the canonical container above, emptying the duplicate) and a
+        // container whose children all vanished from the source. Seasons before series,
+        // since emptying a season can in turn empty its series; `countChildren` is a
+        // live query so the cascade is order-correct.
+        let containers = try await catalog.itemsBySource(sourceId: sourceId)
+            .filter { $0.type == "season" || $0.type == "series" }
+            .sorted { ($0.type == "season" ? 0 : 1) < ($1.type == "season" ? 0 : 1) }
+        for container in containers where try await catalog.countChildren(parentId: container.id) == 0 {
+            try await catalog.deleteItem(id: container.id)
+        }
+
         // Movie identify + enrich (best-effort). TV (series/season/episode) is
         // already enriched inline above and reported via `noteTVEnriched`, so it's
         // excluded here — otherwise the movie pass re-touches every fresh TV row and

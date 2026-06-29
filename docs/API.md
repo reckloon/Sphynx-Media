@@ -45,7 +45,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
   "product": "Sphynx",
   "serverName": "Sphynx Reference Server",
   "id": "srv_reference",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "protocol": ["v1"],
   "capabilities": {
     "search": false,

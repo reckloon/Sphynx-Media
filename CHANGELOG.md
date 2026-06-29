@@ -19,6 +19,20 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   fields carry the logo/banner, and `apply()` persists them on the series record
   (gated by the `images` lock, like every other artwork field).
 
+## [0.1.8] — 2026-06-29
+
+### Fixed
+
+- **Empty/orphaned containers are pruned on scan.** The duplicate-item heal removed
+  duplicate leaf items (episodes/movies) but left their now-empty container shells —
+  e.g. duplicate **empty seasons** and series — behind. A scan now prunes any
+  `season`/`series` with no remaining children (cascading: emptying a season can empty
+  its series), which both heals those leftover shells and removes a container whose
+  children all vanished from the source.
+- **Saved sources now load with the page.** The Libraries tab only fetched the source
+  list after an add/scan/delete, so existing active sources didn't appear until you
+  pressed Scan. The list is now loaded on sign-in like the rest of the page.
+
 ## [0.1.7] — 2026-06-29
 
 ### Fixed

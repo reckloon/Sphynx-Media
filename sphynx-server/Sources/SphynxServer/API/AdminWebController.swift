@@ -709,7 +709,7 @@ enum AdminWebController {
   function logout() { stopPoll(); stopDash(); token = ''; sessionStorage.removeItem('sphynxToken'); $('#app').hidden = true; $('#login').hidden = false; }
   function enter() {
     $('#login').hidden = true; $('#app').hidden = false;
-    loadSettings(); loadLibraries(); loadPermCatalog(); loadUsers();
+    loadSettings(); loadLibraries(); loadSources(); loadPermCatalog(); loadUsers();
     startDash();
   }
 
