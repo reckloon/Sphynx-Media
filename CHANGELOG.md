@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.1] — 2026-06-29
+
 ### Added
 
 - **Re-map a source to different libraries after creating it.** Each source in
@@ -31,6 +35,15 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   (scoped by `libraryId`) left those rows behind — still counted, with no library or
   source. `deleteLibrary` now sweeps the orphaned descendants, and a startup pass
   (`pruneOrphans`) clears any already stranded by an earlier delete.
+
+### Documentation
+
+- Reconciled the guide, `docs/API.md`, and the READMEs with everything shipped through
+  0.2.0–0.2.1 (three-agent audit): documented `POST /v1/admin/restart`, the media-probe
+  `maxPerMinute` rate limit, the live-`metadataLanguage` + Reset-enrichment behavior,
+  the source library re-map, and the profile-picker setting; added the
+  `SPHYNX_SIGN_IN_USER_LIST` and `SPHYNX_WEB_REDIRECT_ALLOWLIST` env rows; bumped all
+  version strings to 0.2.1 and fixed a stale `/v1/info` example and a broken README link.
 
 ## [0.2.0] — 2026-06-29
 
@@ -528,7 +541,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.8...v0.2.0
 [0.1.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.0...v0.1.1

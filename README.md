@@ -503,7 +503,9 @@ other clients connect the same way.
 ## A quick tour of Settings
 
 Almost everything is a checkbox or text box in **Settings** — these are the starting
-defaults; tweak and **Save** (some apply on the next restart):
+defaults; tweak and **Save**. Most apply right away; a couple of boot-time settings
+(the TMDB key) need a restart — there's a **Restart server** button for that, no shell
+needed (your library and settings are preserved).
 
 - **Server name / Server ID** — what players show; a stable identity.
 - **Login session length** / **Time before sign-in is required again** — how long a
@@ -512,8 +514,14 @@ defaults; tweak and **Save** (some apply on the next restart):
 - **Refresh posters & info every** — how often Sphynx re-checks TMDB.
 - **Remember watch progress for** / **Run background cleanup every** — housekeeping.
 - **Max profile-picture size** — the avatar upload cap.
-- **TMDB API key** — set or change it here any time (no file editing).
-- **Metadata language** — the language for fetched titles and overviews.
+- **TMDB API key** — set or change it here any time (no file editing). It's read at
+  startup, so click **Restart server** afterward to apply it.
+- **Metadata language** — the language for fetched titles and overviews. It applies
+  **live**: after changing it, click **Reset enrichment** (Libraries → Storage
+  sources) to re-fetch your existing titles, posters, and overviews in the new
+  language — manually-locked fields are kept.
+- **Sign-in profile picker** — optionally show a Jellyfin-style "who's watching" face
+  picker on the sign-in page instead of a username box (off by default).
 
 All time fields are in **minutes** (the panel reminds you: 1 day = 1440, 30 days =
 43200, 1 year = 525600).
@@ -528,7 +536,7 @@ All time fields are in **minutes** (the panel reminds you: 1 day = 1440, 30 days
   `docker compose logs | grep -i password`. Worst case `docker compose down -v` starts
   fresh (this also erases your catalog).
 - **No posters or descriptions** — no TMDB key yet, or it's wrong. Set it in
-  **Settings**, then re-scan.
+  **Settings**, click **Restart server** to apply it (it's read at startup), then re-scan.
 - **A file won't play** — that's the *player's* department. Sphynx handed over the
   right URL; the format just isn't one your device plays directly. Sphynx never
   converts video.
@@ -551,7 +559,7 @@ You don't need any of this to *run* Sphynx, but if you're curious:
 | [`sphynx-server/`](sphynx-server) | The actual server you just ran. |
 | [`sphynx-protocol/`](sphynx-protocol) | The "language" servers and players speak — written once so the two sides can never disagree. |
 | [`docs/`](docs/API.md) | The full menu of everything the server can do, request by request. |
-| [`CHANGELOG.md`](CHANGELOG.md) | What landed in each release. Currently **v0.1.2**. |
+| [`CHANGELOG.md`](CHANGELOG.md) | What landed in each release. Currently **v0.2.1**. |
 
 **Want the deep version?** The protocol, how to build your own client or server, and
 how to extend it all live in the

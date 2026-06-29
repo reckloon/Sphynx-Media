@@ -40,7 +40,7 @@ curl http://localhost:9410/v1/info
 | `SPHYNX_PORT`           | `9410`                     | Bind port                        |
 | `SPHYNX_SERVER_NAME`    | `Sphynx Reference Server`  | Name reported by `/v1/info`      |
 | `SPHYNX_SERVER_ID`      | `srv_reference`            | Stable id reported by `/v1/info`  |
-| `SPHYNX_VERSION`        | `0.2.0`                    | Version reported by `/v1/info`   |
+| `SPHYNX_VERSION`        | `0.2.1`                    | Version reported by `/v1/info`   |
 | `SPHYNX_DB_PATH`        | `data/sphynx.sqlite`       | SQLite path (`:memory:` = ephemeral) |
 | `SPHYNX_ADMIN_USERNAME` | `admin`                    | Bootstrap admin (first run only) |
 | `SPHYNX_ADMIN_PASSWORD` | *(none)*                   | Bootstrap admin password. Unset ⇒ a strong random one is generated + printed once to the log |
@@ -59,6 +59,8 @@ curl http://localhost:9410/v1/info
 | `SPHYNX_PASSKEY_RP_ID`       | *(empty)*                 | Passkey (WebAuthn) Relying Party id — the bare domain the server is reached at (no scheme/port). Empty disables passkeys (`capabilities.passkeys=false`) |
 | `SPHYNX_PASSKEY_RP_NAME`     | *(server name)*           | Display name shown by the authenticator during enrollment |
 | `SPHYNX_PASSKEY_ORIGIN`      | `https://<RP_ID>`         | Expected client origin (with scheme) for ceremony verification. **Also the public base URL for the device-code QR / `/link` page** — set it (or the RP id) to a phone-reachable domain, or remote QR sign-in falls back to `http://<host>:<port>` and won't work off-LAN |
+| `SPHYNX_SIGN_IN_USER_LIST`   | `false`                   | Show a Jellyfin-style profile picker on the sign-in page (lists accounts before sign-in). Runtime-tunable in Settings |
+| `SPHYNX_WEB_REDIRECT_ALLOWLIST` | *(empty)*             | Newline/comma-separated allowlist of `redirect_uri`s (or scheme prefixes, e.g. `ocelot://auth`) for the OAuth-style web sign-in flow. Empty = app custom schemes allowed, `http(s)` targets rejected. Runtime-tunable in Settings |
 
 Only the **startup/secret** vars (`SPHYNX_HOST`, `SPHYNX_PORT`, `SPHYNX_DB_PATH`,
 `SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. Note `SPHYNX_TMDB_API_KEY`
@@ -93,7 +95,7 @@ revoked without logging out the others.
 ### Linux (via Docker)
 
 Most users should just run the **published image** — see the
-[2-minute setup](../README.md#the-2-minute-setup-docker-compose) in the root
+[2-minute setup](../README.md#set-it-up-in-2-minutes-docker) in the root
 README, or pull it directly: `ghcr.io/reckloon/sphynx-server:latest` (multi-arch,
 amd64 + arm64). To build and run from source instead:
 
