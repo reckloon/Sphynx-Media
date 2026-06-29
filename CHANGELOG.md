@@ -28,6 +28,20 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   fields carry the logo/banner, and `apply()` persists them on the series record
   (gated by the `images` lock, like every other artwork field).
 
+- **The Restart button now actually restarts — it used to just stop the server.** It
+  signalled `SIGTERM` and relied on a supervisor's restart policy to relaunch, which
+  exists in the Docker setup but not when running from source — so the process simply
+  exited. The executable now **re-execs itself in place** once it has shut down
+  cleanly, so restart works everywhere (and no longer even depends on the container's
+  `restart:` policy).
+
+- **Home genre shelves now work in non-English metadata languages.** The admin Home
+  tab's one-click starter chips (and "Loaded the built-in starter set") hardcoded
+  English genre names like `Action`, so with a non-English metadata language they
+  matched none of the localized genres actually stored (`Боевик`, …) and the shelves
+  came back empty. The starter genre chips now come from the operator's real genres
+  (`GET /v1/admin/genres`), so they match whatever language the library is enriched in.
+
 ### Changed
 
 - **WebDAV scanning is dramatically faster.** The listing used to crawl the folder

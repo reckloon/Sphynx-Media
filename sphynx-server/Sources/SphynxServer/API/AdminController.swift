@@ -242,15 +242,18 @@ struct AdminController: Sendable {
     }
 
     /// Restart the server process. Used to apply boot-time settings that aren't
-    /// hot-reloaded (notably a changed **TMDB API key**) without shell access. Sends
-    /// the process a graceful `SIGTERM` (the same signal `runService()` handles for a
-    /// clean shutdown); the container's restart policy relaunches it. The signal is
+    /// hot-reloaded (notably a changed **TMDB API key**) without shell access. Flags a
+    /// restart, then signals a graceful `SIGTERM` (the same signal `runService()`
+    /// handles for a clean shutdown); once the server has stopped cleanly the
+    /// executable **re-execs itself in place** (see `SphynxServerCommand`), so this
+    /// works whether or not a supervisor would relaunch the process. The signal is
     /// raised just after this response is sent so the client sees the `202`.
     @Sendable
     func restart(_ request: Request, context: SphynxRequestContext) async throws -> Response {
         try requireAdmin(context)
         Task.detached {
             try? await Task.sleep(for: .milliseconds(300))
+            await RestartCoordinator.shared.request()
             kill(getpid(), SIGTERM)
         }
         return Response(status: .accepted)

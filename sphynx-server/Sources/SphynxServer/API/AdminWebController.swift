@@ -925,16 +925,16 @@ enum AdminWebController {
   var homeGenres = [];    // distinct genres for the picker
   var homeLoaded = false;
   var HOME_DECADES = [2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950];
-  // The sensible starter set offered as one-click chips (kind | genre | decade).
-  var HOME_QUICK = [
+  // One-click starter chips. Core rows + decades are fixed; the GENRE chips come
+  // from the operator's actual genres (loaded from /admin/genres), so they match
+  // whatever language metadata is enriched in — hardcoded English names ("Action")
+  // would match nothing once the metadata language is, say, Russian.
+  var HOME_QUICK_CORE = [
     { kind: 'continueWatching', title: 'Continue Watching' },
     { kind: 'recentlyAdded', title: 'Recently Added' },
-    { kind: 'favorites', title: 'Favorites' },
-    { genre: 'Action' }, { genre: 'Comedy' }, { genre: 'Drama' }, { genre: 'Horror' },
-    { genre: 'Science Fiction' }, { genre: 'Thriller' }, { genre: 'Documentary' },
-    { genre: 'Animation' }, { genre: 'Family' }, { genre: 'Romance' },
-    { decade: 2020 }, { decade: 2010 }, { decade: 2000 }, { decade: 1990 }, { decade: 1980 }
+    { kind: 'favorites', title: 'Favorites' }
   ];
+  var HOME_QUICK_DECADES = [2020, 2010, 2000, 1990, 1980];
 
   function enterHome() {
     var dsel = $('#home-decade');
@@ -961,6 +961,7 @@ enum AdminWebController {
       sel.innerHTML = homeGenres.length
         ? homeGenres.map(function (g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('')
         : '<option value="">No genres yet — scan a library first</option>';
+      renderHomeQuick();   // genre chips now reflect the real (localized) genres
     });
   }
   var HOME_KIND_LABEL = { genre: 'genre', releaseDecade: 'decade', continueWatching: 'continue watching', recentlyAdded: 'recently added', favorites: 'favorites' };
@@ -982,10 +983,16 @@ enum AdminWebController {
   }
   function renderHomeQuick() {
     var box = $('#home-quick'); if (!box) return;
-    box.innerHTML = HOME_QUICK.map(function (q, i) {
-      var label = q.kind ? q.title : (q.genre || (q.decade + 's'));
-      return '<button class="mini secondary" data-home-q="' + i + '">+ ' + esc(label) + '</button>';
-    }).join('');
+    var chips = HOME_QUICK_CORE.map(function (q) {
+      return '<button class="mini secondary" data-q-kind="' + esc(q.kind) + '">+ ' + esc(q.title) + '</button>';
+    });
+    homeGenres.slice(0, 12).forEach(function (g) {
+      chips.push('<button class="mini secondary" data-q-genre="' + esc(g) + '">+ ' + esc(g) + '</button>');
+    });
+    HOME_QUICK_DECADES.forEach(function (d) {
+      chips.push('<button class="mini secondary" data-q-decade="' + d + '">+ ' + d + 's</button>');
+    });
+    box.innerHTML = chips.join('');
   }
   function homeHasId(id) { return homeRows.some(function (r) { return r.id === id; }); }
   function addHomeRow(spec) {
@@ -1004,9 +1011,11 @@ enum AdminWebController {
       }).catch(function () { msg('home-msg', 'Could not reach the server.'); });
     };
     $('#home-reset-btn').onclick = function () {
-      homeRows = [specCore('continueWatching'), specCore('recentlyAdded'), specCore('favorites'),
-                  specGenre('Action'), specGenre('Comedy'), specGenre('Science Fiction'), specDecade(1980)];
-      renderHomeRows(); msg('home-msg', 'Loaded the built-in starter set — press Save to apply it.');
+      // Use the operator's real genres (localized), not hardcoded English names.
+      var g = homeGenres.slice(0, 3).map(specGenre);
+      homeRows = [specCore('continueWatching'), specCore('recentlyAdded'), specCore('favorites')]
+        .concat(g).concat([specDecade(1980)]);
+      renderHomeRows(); msg('home-msg', 'Loaded a starter set' + (g.length ? ' from your library\'s genres' : '') + ' — press Save to apply it.');
     };
     // Row reorder / remove / toggle / quick-add (delegated, since rows re-render).
     $('#home-rows').addEventListener('click', function (e) {
@@ -1020,9 +1029,10 @@ enum AdminWebController {
       if (a != null) { homeRows[+a].enabled = e.target.checked; renderHomeRows(); }
     });
     $('#home-quick').addEventListener('click', function (e) {
-      var a = e.target.getAttribute('data-home-q'); if (a == null) return;
-      var def = HOME_QUICK[+a];
-      addHomeRow(def.kind ? specCore(def.kind) : def.genre ? specGenre(def.genre) : specDecade(def.decade));
+      var t = e.target, v;
+      if ((v = t.getAttribute('data-q-kind')) != null) addHomeRow(specCore(v));
+      else if ((v = t.getAttribute('data-q-genre')) != null) addHomeRow(specGenre(v));
+      else if ((v = t.getAttribute('data-q-decade')) != null) addHomeRow(specDecade(+v));
     });
   }
 
