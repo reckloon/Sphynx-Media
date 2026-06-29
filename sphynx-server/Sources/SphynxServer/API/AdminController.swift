@@ -543,9 +543,21 @@ struct AdminController: Sendable {
         }
         let records: [ItemRecord]
         let libraryId: String?
-        if try await catalog.library(id: parent) != nil {
+        if let library = try await catalog.library(id: parent) {
             libraryId = parent
-            records = try await catalog.rawTopLevel(libraryId: parent, limit: limit, offset: 0)
+            if library.kind == "collection" {
+                // A `collection` library is a virtual cross-library view — its box
+                // sets physically live in the movie/TV libraries that own their
+                // members. Aggregate them like the client's browse does (scoped to
+                // libraries the caller may edit), instead of a literal libraryId
+                // match that would always come back empty.
+                let editable = Set(try await catalog.libraries()
+                    .filter { identity.has(Permissions.metadataEdit, inLibrary: $0.id) }
+                    .map(\.id))
+                records = try await catalog.allCollections(inLibraries: editable, limit: limit, offset: 0)
+            } else {
+                records = try await catalog.rawTopLevel(libraryId: parent, limit: limit, offset: 0)
+            }
         } else if let parentItem = try await catalog.item(id: parent) {
             libraryId = try await catalog.owningLibraryId(of: parentItem)
             records = try await catalog.childItems(parentId: parent, limit: limit, offset: 0)

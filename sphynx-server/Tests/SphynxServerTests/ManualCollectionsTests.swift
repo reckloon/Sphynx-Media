@@ -91,6 +91,37 @@ struct ManualCollectionsTests {
         }
     }
 
+    @Test("a collection-kind library aggregates collections in BOTH the client and admin browsers")
+    func collectionLibraryAggregatesInAdminToo() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let admin = jsonHeaders(bearer: try await token(client, "admin", "test-password"))
+            // A TV library with two series grouped into a box set…
+            let lib = try await makeLibrary(client, admin, kind: "tvShows")
+            let a = try await makeItem(client, admin, type: "series", title: "Orbit One", libraryId: lib)
+            let b = try await makeItem(client, admin, type: "series", title: "Orbit Two", libraryId: lib)
+            let made: AdminCollection = try await client.execute(
+                uri: "/v1/admin/collections", method: .post, headers: admin,
+                body: try jsonBody(CreateCollectionRequest(libraryId: lib, title: "Orbit Saga", itemIds: [a.id, b.id]))
+            ) { try $0.decoded() }
+
+            // …and a separate, physically-empty "Collections" library.
+            let colLib = try await makeLibrary(client, admin, kind: "collection")
+
+            // CLIENT view of the collection library: the box set shows (aggregated).
+            let clientView: ItemsResponse = try await client.execute(
+                uri: "/v1/items?parent=\(colLib)", method: .get, headers: admin) { try $0.decoded() }
+            #expect(clientView.items.contains { $0.id == made.id && $0.type == .collection })
+
+            // ADMIN view must match — previously it used a literal libraryId match
+            // and came back empty, so the web UI showed an empty Collections library.
+            let adminView: AdminItemsResponse = try await client.execute(
+                uri: "/v1/admin/items?parent=\(colLib)", method: .get, headers: admin) { try $0.decoded() }
+            #expect(adminView.items.contains { $0.id == made.id && $0.type == .collection })
+            #expect(adminView.items.map(\.title).contains("Orbit Saga"))
+        }
+    }
+
     @Test("rename, remove a member, and delete (orphaning members back to top level)")
     func renameRemoveDelete() async throws {
         let app = try await buildApplication(configuration: testConfiguration())
