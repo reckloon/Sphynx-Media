@@ -499,6 +499,9 @@
 <div class="ep"><span class="method badge get">GET</span><span class="path">/v1/auth/device/pending?code=…</span><span class="badge auth">auth</span></div>
 <div class="ep"><span class="method badge post">POST</span><span class="path">/v1/auth/device/approve</span><span class="badge auth">auth</span></div>
 <p><code>pending</code> confirms <em>which</em> device (<code>{ "label", "expiresIn" }</code>); <code>approve</code> takes <code>{ "userCode" }</code> → <strong>204</strong>. The approver authenticates however they like — <strong>a passkey makes this "scan → Face ID → done."</strong> The reference server hosts a browser approval page at <strong><code>GET /link</code></strong>; a native client can call <code>approve</code> straight from its own passkey-authenticated session.</p>
+<div class="callout warn">
+  <p><strong>The QR must point somewhere the phone can reach.</strong> <code>verificationUri</code> is the server's public base URL + <code>/link</code>, derived from <code>passkeyRelyingPartyOrigin</code> (else <code>SPHYNX_PASSKEY_RP_ID</code> → <code>https://&lt;id&gt;</code>, else <code>http://&lt;host&gt;:&lt;port&gt;</code>). For sign-in from a phone off the LAN, set your public domain (the same origin you use for passkeys) — otherwise the QR resolves to <code>http://&lt;host&gt;:9410</code>, which a phone on cellular can't open.</p>
+</div>
 
 <h3 id="api-browse">Browse</h3>
 
@@ -975,7 +978,7 @@ SPHYNX_ADMIN_PASSWORD=changeme swift run SphynxServer
   <tr><td><code>maintenanceInterval</code></td><td><code>SPHYNX_MAINTENANCE_INTERVAL</code></td><td><code>86400</code> (1d)</td><td>Background maintenance interval; <code>0</code> disables it</td></tr>
   <tr><td><code>passkeyRelyingPartyID</code></td><td><code>SPHYNX_PASSKEY_RP_ID</code></td><td><em>(empty)</em></td><td>Passkey (<a href="#api-passkeys">WebAuthn</a>) Relying Party id — the bare domain the server is reached at (no scheme/port). Empty disables passkeys (<code>capabilities.passkeys=false</code>)</td></tr>
   <tr><td><code>passkeyRelyingPartyName</code></td><td><code>SPHYNX_PASSKEY_RP_NAME</code></td><td><em>(server name)</em></td><td>Display name the authenticator shows during enrollment</td></tr>
-  <tr><td><code>passkeyRelyingPartyOrigin</code></td><td><code>SPHYNX_PASSKEY_ORIGIN</code></td><td><code>https://&lt;rpId&gt;</code></td><td>Expected client origin (with scheme) for ceremony verification</td></tr>
+  <tr><td><code>passkeyRelyingPartyOrigin</code></td><td><code>SPHYNX_PASSKEY_ORIGIN</code></td><td><code>https://&lt;rpId&gt;</code></td><td>Expected client origin (with scheme) for ceremony verification. <strong>Also the public base URL for the <a href="#api-deviceauth">device-code</a> QR / <code>/link</code> page</strong> — set it (or the RP id) to a domain a phone can reach, or remote QR sign-in falls back to <code>http://&lt;host&gt;:&lt;port&gt;</code> and won't work off-LAN.</td></tr>
 </table>
 <div class="callout note">
   <p><strong>Env seeds once.</strong> After first run the database is authoritative for these settings, so changing their env vars later has no effect — edit them via <code>PATCH /v1/admin/settings</code> instead. (Startup/secret vars above are read from the environment every boot.)</p>

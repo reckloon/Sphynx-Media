@@ -58,7 +58,7 @@ curl http://localhost:9410/v1/info
 | `SPHYNX_EVENTS_HEARTBEAT`    | `15`                      | Keep-alive ping interval for the `/v1/events` SSE stream (seconds) |
 | `SPHYNX_PASSKEY_RP_ID`       | *(empty)*                 | Passkey (WebAuthn) Relying Party id — the bare domain the server is reached at (no scheme/port). Empty disables passkeys (`capabilities.passkeys=false`) |
 | `SPHYNX_PASSKEY_RP_NAME`     | *(server name)*           | Display name shown by the authenticator during enrollment |
-| `SPHYNX_PASSKEY_ORIGIN`      | `https://<RP_ID>`         | Expected client origin (with scheme) for ceremony verification |
+| `SPHYNX_PASSKEY_ORIGIN`      | `https://<RP_ID>`         | Expected client origin (with scheme) for ceremony verification. **Also the public base URL for the device-code QR / `/link` page** — set it (or the RP id) to a phone-reachable domain, or remote QR sign-in falls back to `http://<host>:<port>` and won't work off-LAN |
 
 Only the **startup/secret** vars (`SPHYNX_HOST`, `SPHYNX_PORT`, `SPHYNX_DB_PATH`,
 `SPHYNX_ADMIN_*`, `SPHYNX_TMDB_API_KEY`) are read every boot. Note `SPHYNX_TMDB_API_KEY`
