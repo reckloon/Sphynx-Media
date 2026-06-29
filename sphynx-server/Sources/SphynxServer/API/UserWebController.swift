@@ -323,8 +323,8 @@ enum UserWebController {
       pk.user.id = b64urlToBuf(pk.user.id);
       if (pk.excludeCredentials) pk.excludeCredentials = pk.excludeCredentials.map(function (c) { return { id: b64urlToBuf(c.id), type: c.type, transports: c.transports }; });
       return navigator.credentials.create({ publicKey: pk }).then(function (cred) {
-        var body = { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
-          response: { clientDataJSON: bufToB64url(cred.response.clientDataJSON), attestationObject: bufToB64url(cred.response.attestationObject) } };
+        var body = { challengeId: opts.challengeId, credential: { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+          response: { clientDataJSON: bufToB64url(cred.response.clientDataJSON), attestationObject: bufToB64url(cred.response.attestationObject) } } };
         return api('/v1/auth/passkeys/register/finish', 'POST', body).then(function (r) {
           if (!r.ok) { msg('passkeys-msg', 'Registration failed.'); return; }
           msg('passkeys-msg', 'Passkey added.', true); loadPasskeys();

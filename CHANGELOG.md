@@ -10,7 +10,14 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Passkey registration from the web UI.** The `/user` page's `register/finish`
+  request was malformed — it posted the raw authenticator credential at the top
+  level, omitting the required `challengeId` and the `credential` wrapper the server
+  decodes (`PasskeyRegistrationFinishRequest`). The authenticator created and saved
+  the passkey, then enrollment always failed server-side with `400`. The client now
+  sends `{ challengeId, credential }`, so passkeys actually enroll.
 
 ## [0.1.1] — 2026-06-28
 
