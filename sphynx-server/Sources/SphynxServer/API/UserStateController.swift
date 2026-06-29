@@ -13,6 +13,8 @@ struct UserStateController: Sendable {
     let playstate: PlaystateService
     /// Live updates: a state change publishes a per-subject event.
     let events: EventBus
+    /// Live source for the low-res-images extension's placeholder mode.
+    let settings: SettingsStore
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.put("items/:itemId/state", use: setState)
@@ -51,7 +53,7 @@ struct UserStateController: Sendable {
             .userItemState(itemId: itemId, watched: state.watched, isFavorite: state.isFavorite,
                            playCount: state.playCount, ts: now),
             to: .user(identity.userId))
-        var item = record.toProtocol(full: false)
+        var item = record.toProtocol(full: false, placeholderMode: try await PlaceholderMode.current(settings))
         UserStateService.fold(state, into: &item)
         return item
     }

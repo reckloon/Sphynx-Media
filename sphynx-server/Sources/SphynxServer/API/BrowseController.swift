@@ -12,6 +12,9 @@ struct BrowseController: Sendable {
     let userState: UserStateService
     let home: HomeService
     let homeConfig: HomeConfigStore
+    /// Live source for the low-res-images extension's placeholder mode (read once
+    /// per request and threaded into the item projection).
+    let settings: SettingsStore
 
     /// Default number of items per shelf on the aggregated home feed.
     private static let shelfLimit = 20
@@ -48,11 +51,12 @@ struct BrowseController: Sendable {
         // The user's effective layout: their saved override if any, else the admin
         // default (which itself falls back to the built-in default).
         let specs = try await homeConfig.effective(userId: identity.userId)
+        let mode = try await PlaceholderMode.current(settings)
 
         var shelves: [Shelf] = []
         for spec in specs where spec.enabled {
             // Build the row's first page; empty rows are omitted (existing contract).
-            let items = try await rowItems(spec, identity, full: full, limit: n, offset: 0).items
+            let items = try await rowItems(spec, identity, full: full, placeholderMode: mode, limit: n, offset: 0).items
             guard !items.isEmpty, let kind = ShelfKind(rawValue: spec.kind) else { continue }
             let aspect = ShelfAspect(rawValue: spec.aspect) ?? .portrait
             shelves.append(Shelf(id: spec.id, title: spec.title, kind: kind, aspect: aspect, items: items))
@@ -63,17 +67,17 @@ struct BrowseController: Sendable {
     /// Build one page of a configured row, dispatching on its kind. Continue
     /// Watching carries next-up; genre/decade rows query the catalog cross-library.
     private func rowItems(_ spec: HomeShelfSpec, _ identity: AuthIdentity,
-                          full: Bool, limit: Int, offset: Int) async throws -> (items: [Item], hasMore: Bool) {
+                          full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int) async throws -> (items: [Item], hasMore: Bool) {
         switch spec.kind {
-        case "continueWatching": return try await continuePage(identity, full: full, limit: limit, offset: offset)
-        case "recentlyAdded":    return try await recentPage(identity, full: full, limit: limit, offset: offset)
-        case "favorites":        return try await favoritesPage(identity, full: full, limit: limit, offset: offset)
+        case "continueWatching": return try await continuePage(identity, full: full, placeholderMode: placeholderMode, limit: limit, offset: offset)
+        case "recentlyAdded":    return try await recentPage(identity, full: full, placeholderMode: placeholderMode, limit: limit, offset: offset)
+        case "favorites":        return try await favoritesPage(identity, full: full, placeholderMode: placeholderMode, limit: limit, offset: offset)
         case "genre":
             guard let genre = spec.genre else { return ([], false) }
-            return try await genrePage(genre, identity, full: full, limit: limit, offset: offset)
+            return try await genrePage(genre, identity, full: full, placeholderMode: placeholderMode, limit: limit, offset: offset)
         case "releaseDecade":
             guard let decade = spec.decade else { return ([], false) }
-            return try await decadePage(decade, identity, full: full, limit: limit, offset: offset)
+            return try await decadePage(decade, identity, full: full, placeholderMode: placeholderMode, limit: limit, offset: offset)
         default:
             return ([], false)
         }
@@ -92,7 +96,8 @@ struct BrowseController: Sendable {
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
 
-        let (items, hasMore) = try await continuePage(identity, full: full, limit: limit, offset: offset)
+        let mode = try await PlaceholderMode.current(settings)
+        let (items, hasMore) = try await continuePage(identity, full: full, placeholderMode: mode, limit: limit, offset: offset)
         return ItemsResponse(
             items: items,
             nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil
@@ -101,7 +106,7 @@ struct BrowseController: Sendable {
 
     /// Build one page of the unified Continue Watching list (resume + next-up),
     /// filtered to items the user may read, with resume + per-user state folded in.
-    private func continuePage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+    private func continuePage(_ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let entries = try await home.continueWatching(userId: identity.userId)
         // Permission filter (per-library scoping) preserving recency order.
@@ -113,7 +118,7 @@ struct BrowseController: Sendable {
         let page = Array(readable.dropFirst(offset).prefix(limit))
 
         var items = page.map { entry -> Item in
-            var item = entry.record.toProtocol(full: full)
+            var item = entry.record.toProtocol(full: full, placeholderMode: placeholderMode)
             if entry.position > 0 { item.resumePosition = entry.position }
             return item
         }
@@ -198,7 +203,8 @@ struct BrowseController: Sendable {
             page = page.filter { !watched.contains($0.id) }
         }
 
-        let items = try await foldUserData(page.map { $0.toProtocol(full: full) }, userId: identity.userId)
+        let mode = try await PlaceholderMode.current(settings)
+        let items = try await foldUserData(page.map { $0.toProtocol(full: full, placeholderMode: mode) }, userId: identity.userId)
         return ItemsResponse(
             items: items,
             nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil,
@@ -215,11 +221,12 @@ struct BrowseController: Sendable {
         let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
-        let (items, hasMore) = try await recentPage(identity, full: query.detail == "full", limit: limit, offset: offset)
+        let mode = try await PlaceholderMode.current(settings)
+        let (items, hasMore) = try await recentPage(identity, full: query.detail == "full", placeholderMode: mode, limit: limit, offset: offset)
         return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
     }
 
-    private func recentPage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+    private func recentPage(_ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let records = try await catalog.recentItems(limit: limit + 1, offset: offset)
         let hasMore = records.count > limit
@@ -227,7 +234,7 @@ struct BrowseController: Sendable {
 
         var items: [Item] = []
         for record in page where try await canRead(record, identity) {
-            items.append(record.toProtocol(full: full))
+            items.append(record.toProtocol(full: full, placeholderMode: placeholderMode))
         }
         return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
@@ -239,11 +246,12 @@ struct BrowseController: Sendable {
         let query = try request.uri.decodeQuery(as: ContinueQuery.self, context: context)
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
-        let (items, hasMore) = try await favoritesPage(identity, full: query.detail == "full", limit: limit, offset: offset)
+        let mode = try await PlaceholderMode.current(settings)
+        let (items, hasMore) = try await favoritesPage(identity, full: query.detail == "full", placeholderMode: mode, limit: limit, offset: offset)
         return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
     }
 
-    private func favoritesPage(_ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+    private func favoritesPage(_ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let ids = try await userState.favoriteItemIds(userId: identity.userId, limit: limit, offset: offset)
         let hasMore = ids.count > limit
@@ -253,7 +261,7 @@ struct BrowseController: Sendable {
         var items: [Item] = []
         for id in page {  // preserve the favourites order
             guard let record = byId[id], try await canRead(record, identity) else { continue }
-            items.append(record.toProtocol(full: full))
+            items.append(record.toProtocol(full: full, placeholderMode: placeholderMode))
         }
         return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
@@ -269,14 +277,15 @@ struct BrowseController: Sendable {
         }
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
-        let (items, hasMore) = try await genrePage(name, identity, full: query.detail == "full", limit: limit, offset: offset)
+        let mode = try await PlaceholderMode.current(settings)
+        let (items, hasMore) = try await genrePage(name, identity, full: query.detail == "full", placeholderMode: mode, limit: limit, offset: offset)
         return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
     }
 
-    private func genrePage(_ genre: String, _ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+    private func genrePage(_ genre: String, _ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let records = try await catalog.itemsByGenre(genre: genre, limit: limit + 1, offset: offset)
-        return try await page(records, identity, full: full, limit: limit)
+        return try await page(records, identity, full: full, placeholderMode: placeholderMode, limit: limit)
     }
 
     /// A configured **release-decade** row: top items released in the decade that
@@ -290,26 +299,27 @@ struct BrowseController: Sendable {
         }
         let limit = Cursor.clampLimit(query.limit)
         let offset = Cursor.offset(from: query.cursor)
-        let (items, hasMore) = try await decadePage(start, identity, full: query.detail == "full", limit: limit, offset: offset)
+        let mode = try await PlaceholderMode.current(settings)
+        let (items, hasMore) = try await decadePage(start, identity, full: query.detail == "full", placeholderMode: mode, limit: limit, offset: offset)
         return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
     }
 
-    private func decadePage(_ start: Int, _ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+    private func decadePage(_ start: Int, _ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int, offset: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let records = try await catalog.itemsByDecade(startYear: start, limit: limit + 1, offset: offset)
-        return try await page(records, identity, full: full, limit: limit)
+        return try await page(records, identity, full: full, placeholderMode: placeholderMode, limit: limit)
     }
 
     /// Shared paging tail for cross-library rows: take a `limit + 1` fetch,
     /// permission-filter, project, and fold per-user state. Like `recentPage`,
     /// `hasMore` reflects the raw fetch before the read-permission filter.
-    private func page(_ records: [ItemRecord], _ identity: AuthIdentity, full: Bool, limit: Int)
+    private func page(_ records: [ItemRecord], _ identity: AuthIdentity, full: Bool, placeholderMode: PlaceholderMode, limit: Int)
         async throws -> (items: [Item], hasMore: Bool) {
         let hasMore = records.count > limit
         let slice = hasMore ? Array(records.prefix(limit)) : records
         var items: [Item] = []
         for record in slice where try await canRead(record, identity) {
-            items.append(record.toProtocol(full: full))
+            items.append(record.toProtocol(full: full, placeholderMode: placeholderMode))
         }
         return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
@@ -379,7 +389,8 @@ struct BrowseController: Sendable {
             throw SphynxError.forbidden("You don't have permission to view this item")
         }
         let query = try request.uri.decodeQuery(as: DetailQuery.self, context: context)
-        var item = record.toProtocol(full: query.detail == "full")
+        let mode = try await PlaceholderMode.current(settings)
+        var item = record.toProtocol(full: query.detail == "full", placeholderMode: mode)
         if let position = try await playstate.get(userId: identity.userId, itemId: itemId)?.position,
            position > 0 {
             item.resumePosition = position

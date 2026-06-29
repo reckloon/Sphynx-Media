@@ -102,12 +102,12 @@ func buildRouter(
     deviceAuthController.addSecuredRoutes(to: securedV1)
     let home = HomeService(catalog: catalog, playstate: playstate, userState: userState)
     BrowseController(catalog: catalog, playstate: playstate, userState: userState,
-                     home: home, homeConfig: homeConfig).addRoutes(to: securedV1)
-    ChangesController(catalog: catalog, playstate: playstate, userState: userState).addRoutes(to: securedV1)
-    PeopleController(catalog: catalog, userState: userState, playstate: playstate).addRoutes(to: securedV1)
+                     home: home, homeConfig: homeConfig, settings: settings).addRoutes(to: securedV1)
+    ChangesController(catalog: catalog, playstate: playstate, userState: userState, settings: settings).addRoutes(to: securedV1)
+    PeopleController(catalog: catalog, userState: userState, playstate: playstate, settings: settings).addRoutes(to: securedV1)
     ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
     PlaystateController(playstate: playstate, userState: userState, catalog: catalog, events: events).addRoutes(to: securedV1)
-    UserStateController(catalog: catalog, userState: userState, playstate: playstate, events: events).addRoutes(to: securedV1)
+    UserStateController(catalog: catalog, userState: userState, playstate: playstate, events: events, settings: settings).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter, events: events).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
                     settings: settings, homeConfig: homeConfig,
@@ -185,7 +185,9 @@ func buildApplication(
             enricher: Enricher(tmdb: client),
             tv: TVEnricher(tmdb: client),
             ttl: configuration.enrichmentTTL,
-            logger: logger
+            logger: logger,
+            settings: settingsStore,
+            blurHashGenerator: PosterBlurHashGenerator(fetcher: fetcher)
         )
     }
     if enrichment == nil {

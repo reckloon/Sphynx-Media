@@ -72,7 +72,7 @@ struct HomeConfigTests {
 
     @Test("admin default starts at the built-in layout and drives the feed")
     func builtInDefaultDrivesFeed() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token = try await login(client)
             try await addMovie(client, token: token, tmdbId: "603")   // Action / Sci-Fi / 1999
@@ -94,7 +94,7 @@ struct HomeConfigTests {
 
     @Test("a genre/decade default layout builds the right rows; empty rows are omitted")
     func genreAndDecadeRows() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token = try await login(client)
             try await addMovie(client, token: token, tmdbId: "603")   // 1999
@@ -123,7 +123,7 @@ struct HomeConfigTests {
 
     @Test("a user's saved layout replaces the default, and reset restores it")
     func perUserReplaceAndReset() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token = try await login(client)
             try await addMovie(client, token: token, tmdbId: "603")
@@ -152,7 +152,7 @@ struct HomeConfigTests {
 
     @Test("see-all endpoints page genre and decade rows; malformed rows are dropped")
     func seeAllAndSanitization() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token = try await login(client)
             try await addMovie(client, token: token, tmdbId: "603")   // 1999 Action

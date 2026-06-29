@@ -10,22 +10,30 @@ import SphynxProtocol
 /// and cached during enrichment (see `EnrichmentService`). An item enriched before
 /// the mode was switched has no hash yet and transparently falls back to `url`
 /// until it's re-enriched (the periodic poster refresh, or a manual one).
+///
+/// **Default is `blurhash`** — the nicest out-of-the-box experience (instant,
+/// request-free blur-up), with the `url` fallback meaning a fresh server still
+/// shows tile placeholders before its first enrich pass fills the hashes in.
 enum PlaceholderMode: String, Sendable, CaseIterable {
-    /// A pre-sized tiny image URL — the always-available form. Default.
+    /// A pre-sized tiny image URL — the always-available form.
     case url
-    /// A BlurHash string, decoded client-side. Falls back to `url` for any item
-    /// (or image role) without a generated hash.
+    /// A BlurHash string, decoded client-side. The default. Falls back to `url`
+    /// for any item (or image role) without a generated hash.
     case blurhash
     /// No placeholder at all — clients render a plain background.
     case off
 
+    /// The default when no mode has been configured. BlurHash gives the best
+    /// experience; until an item has a generated hash it serves the `url` form.
+    static let `default` = PlaceholderMode.blurhash
+
     /// Settings key, stored alongside the other free-form `ext.*` extension keys.
     static let settingKey = "ext.placeholders.mode"
 
-    /// The live mode from settings (defaults to `.url` when unset or unrecognised).
+    /// The live mode from settings (defaults to `.default` when unset or unrecognised).
     static func current(_ settings: SettingsStore) async throws -> PlaceholderMode {
         let all = try await settings.all()
-        return PlaceholderMode(rawValue: all[settingKey] ?? "") ?? .url
+        return PlaceholderMode(rawValue: all[settingKey] ?? "") ?? .default
     }
 
     /// Resolve the `Placeholder` to serve for one image role under this mode:

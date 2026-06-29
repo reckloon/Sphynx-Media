@@ -26,6 +26,12 @@ let package = Package(
         // and assertion verification. Pure Swift on top of swift-crypto, so it builds
         // on macOS arm64 + Linux like the rest of the stack.
         .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
+        // JPEG decode for the low-res-images extension's `blurhash` mode, on Linux
+        // only — Apple platforms decode via the OS's ImageIO (see
+        // PlaceholderImage.swift). Pure Swift, zero transitive deps at this version.
+        // Linked just on Linux (below); the JPEG module's encoder trips the macOS
+        // toolchain's type-checker, and we don't use the encoder anyway.
+        .package(url: "https://github.com/tayloraswift/swift-jpeg.git", exact: "1.0.1"),
     ],
     targets: [
         .executableTarget(
@@ -38,6 +44,7 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
                 .product(name: "WebAuthn", package: "swift-webauthn"),
+                .product(name: "jpeg", package: "swift-jpeg", condition: .when(platforms: [.linux])),
             ]
         ),
         .testTarget(

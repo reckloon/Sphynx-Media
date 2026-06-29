@@ -14,6 +14,8 @@ struct PeopleController: Sendable {
     let catalog: Catalog
     let userState: UserStateService
     let playstate: PlaystateService
+    /// Live source for the low-res-images extension's placeholder mode.
+    let settings: SettingsStore
 
     /// The required shape of a person id (the cast-entry id minted by the enricher).
     private static let personIdPrefix = "pe_"
@@ -61,8 +63,9 @@ struct PeopleController: Sendable {
         let hasMore = sorted.count > offset + limit
         let page = Array(sorted.dropFirst(offset).prefix(limit))
 
+        let mode = try await PlaceholderMode.current(settings)
         let items = try await foldUserData(
-            page.map { $0.toProtocol(full: full) }, userId: identity.userId)
+            page.map { $0.toProtocol(full: full, placeholderMode: mode) }, userId: identity.userId)
         return ItemsResponse(
             items: items,
             nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil

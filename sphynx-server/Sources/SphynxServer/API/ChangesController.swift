@@ -15,6 +15,8 @@ struct ChangesController: Sendable {
     let catalog: Catalog
     let playstate: PlaystateService
     let userState: UserStateService
+    /// Live source for the low-res-images extension's placeholder mode.
+    let settings: SettingsStore
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         group.get("changes", use: changes)
@@ -38,9 +40,10 @@ struct ChangesController: Sendable {
         let hasMore = records.count > limit
         let page = hasMore ? Array(records.prefix(limit)) : records
 
+        let mode = try await PlaceholderMode.current(settings)
         var items: [Item] = []
         for record in page where try await canRead(record, identity) {
-            items.append(record.toProtocol(full: query.detail == "full"))
+            items.append(record.toProtocol(full: query.detail == "full", placeholderMode: mode))
         }
         items = try await foldUserData(items, userId: identity.userId)
 

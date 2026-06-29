@@ -34,7 +34,7 @@ struct ExtendedMetadataTests {
 
     @Test("enrichment populates + projects the extended canonical fields")
     func extendedFieldsProject() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token: String = try await client.execute(
                 uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),
@@ -73,7 +73,7 @@ struct ExtendedMetadataTests {
 
     @Test("skeleton omits the extended fields but keeps dateAdded")
     func skeletonOmitsExtended() async throws {
-        let app = try await buildApplication(configuration: testConfiguration(), tmdbClient: stubTMDB)
+        let app = try await buildApplication(configuration: testConfiguration(), httpFetcher: StubFetcher([:]), tmdbClient: stubTMDB)
         try await app.test(.router) { client in
             let token: String = try await client.execute(
                 uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),

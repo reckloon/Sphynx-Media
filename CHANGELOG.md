@@ -20,6 +20,17 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   the libraries you're allowed to read. Previously the kind was selectable but
   never filled, so collections looked enriched yet the library stayed empty.
 
+- **Low-res images extension (`blurhash` / `url` / `off`).** The low-res image
+  `placeholder` that tiles blur up from is now a configurable **Extensions →
+  Low-res images** module instead of a fixed behaviour. `blurhash` (**the new
+  default**) sends a [BlurHash](https://blurha.sh) the client paints instantly with
+  no extra request — generated and cached during enrichment (the server fetches,
+  decodes, and encodes the poster), with a transparent fall back to `url` until a
+  hash exists; `url` sends a tiny image link; `off` sends no placeholder. The mode
+  is read live, so `off`/`url` apply immediately and `blurhash` serves whatever
+  hashes are already cached. Configure it via
+  `GET`/`PATCH /v1/admin/extensions/placeholders`.
+
 - **Manual collections (box sets), including for series.** Group movies or series
   into your own collections by hand, in addition to the ones auto-discovered from
   TMDB (TMDB has no collection data for TV, so series box sets are always manual).

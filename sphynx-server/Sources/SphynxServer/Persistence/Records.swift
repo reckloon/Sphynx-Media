@@ -462,31 +462,38 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
     /// `skeleton` carries the fields needed to render a tile (images,
     /// placeholder, year); `full` adds enrichment (overview, genres, ratings,
     /// runtime, cast). A skeleton is distinguished by the absence of enrichment.
-    func toProtocol(full: Bool = false) -> Item {
+    /// - Parameter placeholderMode: how to emit low-res `placeholder` forms (the
+    ///   low-res-images extension's knob): `.url` (tiny image URL, the default),
+    ///   `.blurhash` (the generated BlurHash, falling back to the URL form where no
+    ///   hash exists — only the poster carries one), or `.off` (omit all
+    ///   placeholders). Only the poster has a stored hash; the secondary image roles
+    ///   resolve to URL/none accordingly.
+    func toProtocol(full: Bool = false, placeholderMode: PlaceholderMode = .url) -> Item {
         // Per-image variants: each role carries its own low-res placeholder and an
         // aspect hint (inferred from the role's orientation), so a client can blur
         // up and lay out each image independently — not just the poster. Derived
         // here from the stored URLs (no extra storage / re-enrich needed).
         let landscape = 1.778, portrait = 0.667
+        let posterPlaceholder = placeholderMode.placeholder(url: placeholderURL, blurHash: placeholderBlurHash)
         var variants: [String: ImageInfo] = [:]
         if let primaryImage {
             variants["primary"] = ImageInfo(
-                url: primaryImage, placeholder: placeholderURL.map { .url($0) },
+                url: primaryImage, placeholder: posterPlaceholder,
                 aspect: type == "episode" ? landscape : portrait)  // episode primary is the landscape still
         }
         if let backdropImage {
             variants["backdrop"] = ImageInfo(
-                url: backdropImage, placeholder: .url(Self.resizeTMDB(backdropImage, to: "w300")), aspect: landscape)
+                url: backdropImage, placeholder: placeholderMode.placeholder(url: Self.resizeTMDB(backdropImage, to: "w300")), aspect: landscape)
         }
         if let thumbImage {
             variants["thumb"] = ImageInfo(
-                url: thumbImage, placeholder: .url(Self.resizeTMDB(thumbImage, to: "w300")), aspect: landscape)
+                url: thumbImage, placeholder: placeholderMode.placeholder(url: Self.resizeTMDB(thumbImage, to: "w300")), aspect: landscape)
         }
         if let logoImage {
-            variants["logo"] = ImageInfo(url: logoImage, placeholder: .url(Self.resizeTMDB(logoImage, to: "w92")))
+            variants["logo"] = ImageInfo(url: logoImage, placeholder: placeholderMode.placeholder(url: Self.resizeTMDB(logoImage, to: "w92")))
         }
         if let bannerImage {
-            variants["banner"] = ImageInfo(url: bannerImage, placeholder: .url(Self.resizeTMDB(bannerImage, to: "w300")))
+            variants["banner"] = ImageInfo(url: bannerImage, placeholder: placeholderMode.placeholder(url: Self.resizeTMDB(bannerImage, to: "w300")))
         }
         let images: ItemImages? = variants.isEmpty ? nil
             : ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage,
@@ -499,7 +506,7 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             tmdbId: tmdbId,
             year: year,
             images: images,
-            placeholder: placeholderURL.map { .url($0) },
+            placeholder: posterPlaceholder,
             seriesId: seriesId,
             seriesTitle: seriesTitle,
             seasonIndex: seasonIndex,

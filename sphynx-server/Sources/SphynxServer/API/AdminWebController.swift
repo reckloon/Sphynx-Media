@@ -638,6 +638,18 @@ enum AdminWebController {
             <div id="mp-result"></div>
           </div>
         </div>
+
+        <div id="mod-placeholders" class="ext-mod" hidden>
+          <p class="hint" style="margin-top:0;"><strong>BlurHash</strong> (default) sends a compact hash the client paints instantly, with no extra request — hashes are generated and cached during enrichment, so existing titles fill in on their next refresh (until then they fall back to URL). <strong>URL</strong> sends a tiny image link instead (one request per tile, looks like a thumbnail). <strong>Off</strong> sends no placeholder.</p>
+          <label for="ph-mode">Low-res placeholder</label>
+          <select id="ph-mode">
+            <option value="blurhash">BlurHash (default)</option>
+            <option value="url">Image URL</option>
+            <option value="off">Off</option>
+          </select>
+          <button id="ph-save">Save</button>
+          <div id="ph-msg" class="msg"></div>
+        </div>
       </section>
     </div>
   </div>
@@ -1551,6 +1563,7 @@ enum AdminWebController {
     document.querySelectorAll('.ext-mod').forEach(function (m) { m.hidden = (m.id !== 'mod-' + id); });
     if (id === 'diagnostics') showSub(diagState.sub);
     else if (id === 'media-probe') loadProbeConfig();
+    else if (id === 'placeholders') loadPlaceholderConfig();
   }
   $('#ext-nav').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.mod) activateModule(b.dataset.mod); };
 
@@ -1604,6 +1617,22 @@ enum AdminWebController {
       '<div class="tablebox"><table class="db"><thead><tr><th>#</th><th>kind</th><th>codec</th><th>lang</th><th>title</th><th></th></tr></thead><tbody>' + (rows || '<tr><td class="null">no streams</td></tr>') + '</tbody></table></div>' + subs + chapters;
   }
 
+  // ---- module: low-res images (placeholders) ----
+  function loadPlaceholderConfig() {
+    api('/v1/admin/extensions/placeholders', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
+      if (!c) return;
+      $('#ph-mode').value = c.mode || 'blurhash';
+    });
+  }
+  function savePlaceholderConfig() {
+    msg('ph-msg', '');
+    api('/v1/admin/extensions/placeholders', 'PATCH', { mode: $('#ph-mode').value }).then(function (res) {
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { msg('ph-msg', 'Save failed.'); return; }
+      msg('ph-msg', 'Saved.', true); loadPlaceholderConfig(); enterExtensions();
+    }).catch(function () { msg('ph-msg', 'Could not reach the server.'); });
+  }
+
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
@@ -1611,6 +1640,7 @@ enum AdminWebController {
   $('#scan-all-btn').onclick = scanAllSources;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
+  $('#ph-save').onclick = savePlaceholderConfig;
   $('#mp-probe-btn').onclick = runProbe;
   $('#mp-item').addEventListener('keydown', function (e) { if (e.key === 'Enter') runProbe(); });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
