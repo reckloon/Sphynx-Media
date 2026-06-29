@@ -6,17 +6,18 @@
 <title>Sphynx — The Complete Guide</title>
 <style>
   :root {
-    --bg: #0e1116;
-    --bg-alt: #161b22;
-    --bg-code: #11161d;
-    --panel: #1b222c;
-    --border: #2a323d;
-    --text: #c9d4e0;
-    --text-dim: #8a97a6;
-    --heading: #f0f4f8;
-    --accent: #5db0ff;
-    --accent-soft: #1e3a52;
-    --green: #4ec98a;
+    --bg: #000000;          /* AMOLED black */
+    --bg-alt: #0a0a0a;
+    --bg-code: #080808;
+    --panel: #141414;
+    --border: #262626;
+    --text: #d4d4d4;
+    --text-dim: #8a8a8a;
+    --heading: #ffffff;
+    --accent: #FF4D00;      /* traffic-cone orange — the one unified accent */
+    --accent-soft: #2a1000; /* dark orange tint for active states */
+    --on-accent: #000000;   /* black text over orange fills */
+    --green: #3ad57f;
     --amber: #e3b341;
     --red: #f07178;
     --purple: #c792ea;
@@ -156,7 +157,7 @@
   /* Part dividers — the wide split between protocol and reference server */
   .partbanner {
     margin: 64px 0 10px; padding: 26px 30px; border-radius: 14px;
-    background: linear-gradient(135deg, #161d28 0%, #11161d 100%);
+    background: linear-gradient(135deg, #140800 0%, #000 100%);
     border: 1px solid var(--border); border-left: 5px solid var(--accent);
   }
   #part-server.partbanner { border-left-color: var(--purple); }
@@ -173,11 +174,15 @@
 
   /* Hero */
   .hero {
-    background: linear-gradient(135deg, #161d28 0%, #11161d 100%);
-    border: 1px solid var(--border); border-radius: 12px; padding: 32px 34px; margin-bottom: 8px;
+    background: radial-gradient(120% 140% at 50% 0%, #0c0500 0%, #000 60%);
+    border: 1px solid var(--border); border-radius: 12px; padding: 0 34px 32px; margin-bottom: 8px;
+    overflow: hidden;
   }
   .hero h2 { border: none; margin: 0 0 6px; padding: 0; font-size: 32px; }
   .hero .sub { color: var(--text-dim); font-size: 17px; margin: 0; }
+  /* ASCII SPHYNX banner — replaces the hero wordmark */
+  .ascii-hero { margin: 0 -34px 14px; }
+  #sphynx-ascii { display: block; width: 100%; height: clamp(130px, 24vw, 230px); }
   .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
   .pill { font-size: 12.5px; background: var(--panel); border: 1px solid var(--border); color: var(--text-dim); padding: 4px 11px; border-radius: 20px; }
 
@@ -302,7 +307,7 @@
 <main><!-- ========================= INTRO ========================= -->
 <section id="intro">
   <div class="hero">
-    <h2>Sphynx</h2>
+    <div class="ascii-hero"><canvas id="sphynx-ascii" role="img" aria-label="SPHYNX"></canvas></div>
     <p class="sub">An open <strong>media-meta-server</strong> and wire protocol. It indexes media that lives on remote storage or CDNs, identifies and enriches it against TMDB, and hands clients a <strong>direct, playable URL</strong> — without ever proxying, transcoding, or storing a single media byte.</p>
     <div class="pills">
       <span class="pill">Swift 6</span>
@@ -1706,6 +1711,101 @@ item.extra[<span class="str">"subtitles"</span>] = [
     });
   }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
   targets.forEach(function (t) { observer.observe(t); });
+</script>
+<script>
+/* SPHYNX ASCII hero — flowing traffic-cone-orange wordmark (sized to its banner). */
+(() => {
+  const canvas = document.getElementById('sphynx-ascii');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const hi  = document.createElement('canvas'); const hctx = hi.getContext('2d', { willReadFrequently: true });
+  const lo  = document.createElement('canvas'); const lctx = lo.getContext('2d', { willReadFrequently: true });
+  const glow = document.createElement('canvas'); const gctx = glow.getContext('2d');
+
+  const WORD = 'SPHYNX';
+  const RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const MOT = reduce ? 0.18 : 1;
+  let W, H, dpr, cols, rows, cellW, cellH; const SS = 4;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth || canvas.offsetWidth; H = canvas.clientHeight || 200;
+    if (!W) return;
+    cellH = Math.max(7, Math.round(W / 150));
+    cellW = Math.max(5, Math.round(cellH * 0.58));
+    cols = Math.ceil(W / cellW); rows = Math.ceil(H / cellH);
+    canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+    glow.width = canvas.width; glow.height = canvas.height;
+    hi.width = cols * SS; hi.height = rows * SS;
+    lo.width = cols; lo.height = rows;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function renderWord(t) {
+    const WHi = hi.width, HHi = hi.height;
+    hctx.setTransform(1, 0, 0, 1, 0, 0);
+    hctx.fillStyle = '#000'; hctx.fillRect(0, 0, WHi, HHi);
+    let fs = 100;
+    hctx.font = `900 ${fs}px "Arial Black", system-ui, sans-serif`;
+    const tracking = fs * 0.04; let base = 0;
+    for (const ch of WORD) base += hctx.measureText(ch).width;
+    base += tracking * (WORD.length - 1);
+    fs = Math.min(fs * (WHi * 0.86 / base), HHi * 0.62);
+    hctx.font = `900 ${fs}px "Arial Black", system-ui, sans-serif`;
+    const tk = fs * 0.04;
+    const widths = [...WORD].map(ch => hctx.measureText(ch).width);
+    const total = widths.reduce((a, b) => a + b, 0) + tk * (WORD.length - 1);
+    const dx = Math.sin(t * 0.0009 * MOT) * WHi * 0.012 * MOT;
+    const dy = Math.sin(t * 0.0012 * MOT + 1.3) * HHi * 0.04 * MOT;
+    const rot = Math.sin(t * 0.0007 * MOT + 0.5) * 0.03 * MOT;
+    hctx.save();
+    hctx.translate(WHi / 2 + dx, HHi / 2 + dy); hctx.rotate(rot);
+    hctx.textAlign = 'left'; hctx.textBaseline = 'middle'; hctx.fillStyle = '#fff';
+    let cx = -total / 2;
+    for (let i = 0; i < WORD.length; i++) {
+      const ly = Math.sin(t * 0.0016 * MOT + i * 0.9) * fs * 0.03 * MOT;
+      hctx.fillText(WORD[i], cx, ly); cx += widths[i] + tk;
+    }
+    hctx.restore();
+    lctx.imageSmoothingEnabled = true; lctx.clearRect(0, 0, cols, rows);
+    lctx.drawImage(hi, 0, 0, cols, rows);
+    return lctx.getImageData(0, 0, cols, rows).data;
+  }
+
+  function frame(t) {
+    if (!W) { requestAnimationFrame(frame); return; }
+    const px = renderWord(t);
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0); gctx.clearRect(0, 0, W, H);
+    gctx.font = `${cellH}px ui-monospace, Menlo, Consolas, monospace`;
+    gctx.textAlign = 'left'; gctx.textBaseline = 'top';
+    const flowT = t * 0.0011 * MOT, maxI = RAMP.length - 1;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const shape = px[(r * cols + c) * 4] / 255;
+      const field = 0.5 + 0.5 * Math.sin(c * 0.22 - flowT * 1.2) * Math.cos(r * 0.30 + flowT * 0.9 + Math.sin(c * 0.07) * 1.5);
+      let b = shape * (0.82 + 0.18 * field);
+      if (b <= 0.06) continue; if (b > 1) b = 1;
+      const ch = RAMP[Math.round(Math.pow(b, 0.82) * maxI)];
+      if (ch === ' ') continue;
+      const flow = 0.5 + 0.5 * Math.sin(c * 0.05 - flowT * 0.8 + r * 0.025);
+      const hue = 12 + flow * 14;                  // 12–26° centred on #FF4D00 (~18°)
+      const light = 8 + b * 52 + flow * 5;
+      gctx.fillStyle = `hsl(${hue}, 100%, ${Math.min(62, light)}%)`;
+      gctx.fillText(ch, c * cellW, r * cellH);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = `blur(${Math.max(3, cellH * 0.5)}px)`; ctx.globalAlpha = 0.6; ctx.drawImage(glow, 0, 0);
+    ctx.filter = 'none'; ctx.globalAlpha = 1; ctx.drawImage(glow, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(frame);
+  }
+
+  addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+  resize(); requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>

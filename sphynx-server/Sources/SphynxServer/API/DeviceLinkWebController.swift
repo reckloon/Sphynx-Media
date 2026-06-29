@@ -27,15 +27,16 @@ enum DeviceLinkWebController {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Approve a device · Sphynx</title>
 <style>
-  :root { color-scheme: dark light; }
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 28rem; margin: 4rem auto; padding: 0 1rem; }
+  :root { color-scheme: dark; --accent: #FF4D00; }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 28rem; margin: 4rem auto; padding: 0 1rem; background: #000; color: #e6e6e6; }
   h1 { font-size: 1.4rem; }
-  input, button { font: inherit; padding: .55rem .7rem; border-radius: .5rem; border: 1px solid #888; width: 100%; box-sizing: border-box; }
-  button { background: #3b6; color: #fff; border: 0; cursor: pointer; margin-top: .5rem; }
-  button.secondary { background: transparent; color: inherit; border: 1px solid #888; }
+  input, button { font: inherit; padding: .55rem .7rem; border-radius: .5rem; border: 1px solid #333; width: 100%; box-sizing: border-box; }
+  input { background: #0a0a0a; color: #e6e6e6; }
+  button { background: var(--accent); color: #000; border: 0; font-weight: 600; cursor: pointer; margin-top: .5rem; }
+  button.secondary { background: transparent; color: #e6e6e6; border: 1px solid #333; }
   .row { margin: .6rem 0; }
-  .msg { color: #c44; min-height: 1.2em; }
-  .msg.ok { color: #3a7; }
+  .msg { color: #ff7a7a; min-height: 1.2em; }
+  .msg.ok { color: var(--accent); }
   .device { font-weight: 600; }
   .code-in { letter-spacing: .15em; text-transform: uppercase; text-align: center; }
   [hidden] { display: none; }

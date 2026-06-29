@@ -31,7 +31,7 @@ enum UserWebController {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sphynx — My account</title>
 <style>
-  :root { --bg:#0f1115; --card:#171a21; --sub:#1d212b; --line:#262b36; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#6ea8fe; --ok:#54d18c; --err:#ff7a7a; }
+  :root { --bg:#000000; --card:#0e0e0e; --sub:#141414; --line:#262626; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#FF4D00; --ok:#54d18c; --err:#ff7a7a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   .wrap { max-width:560px; margin:6vh auto; padding:0 20px 8vh; }
@@ -44,9 +44,9 @@ enum UserWebController {
   h2 { font-size:16px; margin:0 0 4px; }
   .sub { color:var(--muted); font-size:13px; margin:0 0 14px; }
   label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
-  input { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
+  input { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
   input:focus { outline:none; border-color:var(--accent); }
-  button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#0b1020; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
+  button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#000; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
   button.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); }
   button.danger { color:var(--err); border:1px solid #3a2730; background:transparent; }
   .msg { min-height:18px; margin-top:12px; font-size:13px; color:var(--err); }
@@ -62,7 +62,7 @@ enum UserWebController {
   .row button { margin-top:0; }
   .row2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
   .group-title { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:18px 0 8px; }
-  .item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; background:#0e1117; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
+  .item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; background:#0a0a0a; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
   .item .meta { font-size:13px; color:var(--muted); }
   .empty { color:var(--muted); font-size:14px; padding:6px 0; }
   .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
@@ -73,9 +73,9 @@ enum UserWebController {
   button.mini { margin:0; padding:5px 11px; font-size:13px; font-weight:500; }
   .editor { border-top:1px solid var(--line); margin-top:16px; padding-top:6px; }
   .lockbadge { font-size:11px; color:#e8c468; }
-  textarea { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; resize:vertical; }
+  textarea { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; resize:vertical; }
   textarea:focus { outline:none; border-color:var(--accent); }
-  select { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
+  select { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
 </style>
 </head>
 <body>

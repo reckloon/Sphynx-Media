@@ -35,7 +35,7 @@ enum AdminWebController {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sphynx — Admin</title>
 <style>
-  :root { --bg:#0f1115; --card:#171a21; --sub:#1d212b; --line:#262b36; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#6ea8fe; --ok:#54d18c; --warn:#e8c468; --err:#ff7a7a; --tv:#c89bf0; }
+  :root { --bg:#000000; --card:#0e0e0e; --sub:#141414; --line:#262626; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#FF4D00; --ok:#54d18c; --warn:#e8c468; --err:#ff7a7a; --tv:#c89bf0; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   .wrap { max-width:960px; margin:4vh auto; padding:0 20px 8vh; }
@@ -47,7 +47,7 @@ enum AdminWebController {
   .card + .card { margin-top:16px; }
   h2 { font-size:16px; margin:0 0 16px; }
   label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
-  input, select, textarea { width:100%; padding:9px 11px; background:#0e1117; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
+  input, select, textarea { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
   textarea { resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
   input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
@@ -56,7 +56,7 @@ enum AdminWebController {
   .scanopt input { width:auto; margin:0; padding:0; }
   .scanopt input:disabled + *, .scanopt:has(input:disabled) { color:var(--muted); cursor:not-allowed; }
   .hint { font-size:12px; color:var(--muted); margin-top:6px; }
-  button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#0b1020; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
+  button { margin-top:18px; padding:10px 16px; background:var(--accent); color:#000; border:0; border-radius:9px; font:inherit; font-weight:600; cursor:pointer; }
   button.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); }
   button.mini { margin:0; padding:5px 11px; font-size:13px; font-weight:500; }
   button.danger { color:var(--err); border-color:#3a2730; background:transparent; }
@@ -88,7 +88,7 @@ enum AdminWebController {
   .stat .n { font-size:21px; font-weight:600; }
   .stat .l { font-size:11.5px; color:var(--muted); margin-top:2px; }
   .stat.warn .n { color:var(--err); }
-  .covbar { height:8px; border-radius:5px; background:#0e1117; border:1px solid var(--line); overflow:hidden; display:flex; margin:14px 0 4px; }
+  .covbar { height:8px; border-radius:5px; background:#0a0a0a; border:1px solid var(--line); overflow:hidden; display:flex; margin:14px 0 4px; }
   .covbar .seg-idx { background:var(--accent); } .covbar .seg-enr { background:var(--ok); }
   .coverlegend { display:flex; gap:16px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
   .coverlegend b { color:var(--fg); font-weight:600; }
@@ -106,7 +106,7 @@ enum AdminWebController {
   .bd-row .bd-num b { color:var(--fg); font-weight:600; }
   .bd-row .bd-num .bd-not { color:var(--muted); }
   .bd-row .bd-num .bd-tag { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:0 5px; }
-  .bd-bar { grid-column:1 / -1; height:5px; border-radius:4px; background:#0e1117; border:1px solid var(--line); overflow:hidden; }
+  .bd-bar { grid-column:1 / -1; height:5px; border-radius:4px; background:#0a0a0a; border:1px solid var(--line); overflow:hidden; }
   .bd-bar > span { display:block; height:100%; background:var(--ok); }
   .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
   .chip.movie { color:var(--accent); } .chip.tv { color:var(--tv); } .chip.audio { color:var(--ok); } .chip.subtitle { color:var(--tv); } .chip.video { color:var(--accent); }
