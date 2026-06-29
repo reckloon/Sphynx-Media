@@ -65,6 +65,13 @@ enum UserWebController {
   .item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; background:#0a0a0a; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
   .item .meta { font-size:13px; color:var(--muted); }
   .empty { color:var(--muted); font-size:14px; padding:6px 0; }
+  .uh-rows { display:flex; flex-direction:column; gap:6px; margin:8px 0 4px; }
+  .uh-row { display:flex; align-items:center; gap:10px; padding:8px 11px; background:#0a0a0a; border:1px solid var(--line); border-radius:10px; }
+  .uh-row.disabled { opacity:.5; }
+  .uh-row .ttl { font-weight:600; }
+  .uh-row .kind { color:var(--muted); font-size:12px; }
+  .uh-row .spacer { flex:1; }
+  .uh-row button { margin:0; }
   .chip { display:inline-block; padding:2px 7px; border-radius:6px; font-size:11px; border:1px solid var(--line); background:var(--bg); color:var(--muted); }
   .crumbs { font-size:13px; color:var(--muted); margin:10px 0; }
   .crumbs a { color:var(--accent); cursor:pointer; }
@@ -151,6 +158,37 @@ enum UserWebController {
       <div id="passkeys-list"><div class="empty">Loading…</div></div>
       <div class="row"><button id="pk-add-btn">Add a passkey</button></div>
       <div id="passkeys-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Home screen rows</h2>
+      <p class="sub">Choose the rows on your home screen and their order. This replaces the server default — just for you. Genre or decade rows with nothing in the library are hidden automatically.</p>
+      <div id="uh-rows" class="uh-rows"><div class="empty">Loading…</div></div>
+      <div class="group-title">Add a row</div>
+      <label for="uh-genre">Genre</label>
+      <div class="row2" style="align-items:center;">
+        <select id="uh-genre"><option value="">Loading genres…</option></select>
+        <button id="uh-add-genre" class="mini secondary">Add genre row</button>
+      </div>
+      <label for="uh-decade">Release decade</label>
+      <div class="row2" style="align-items:center;">
+        <select id="uh-decade"></select>
+        <button id="uh-add-decade" class="mini secondary">Add decade row</button>
+      </div>
+      <label for="uh-core">Built-in row</label>
+      <div class="row2" style="align-items:center;">
+        <select id="uh-core">
+          <option value="continueWatching">Continue Watching</option>
+          <option value="recentlyAdded">Recently Added</option>
+          <option value="favorites">Favorites</option>
+        </select>
+        <button id="uh-add-core" class="mini secondary">Add</button>
+      </div>
+      <div class="row" style="margin-top:18px;">
+        <button id="uh-save-btn">Save my layout</button>
+        <button id="uh-reset-btn" class="secondary">Reset to default</button>
+      </div>
+      <div id="uh-msg" class="msg"></div>
     </div>
 
     <div class="card" id="correction-card" hidden>
@@ -267,7 +305,78 @@ enum UserWebController {
       initCorrection(d.permissions || []);
       loadSessions();
       loadPasskeys();
+      loadUserHome();
     });
+  }
+
+  // ---- home-screen rows (per-user layout) ----
+  var uhRows = [];
+  var UH_DECADES = [2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950];
+  function uhSpecCore(kind) {
+    var t = { continueWatching: 'Continue Watching', recentlyAdded: 'Recently Added', favorites: 'Favorites' }[kind];
+    var id = { continueWatching: 'continue', recentlyAdded: 'recent', favorites: 'favorites' }[kind];
+    return { id: id, kind: kind, title: t, aspect: kind === 'continueWatching' ? 'landscape' : 'portrait', enabled: true };
+  }
+  function uhSpecGenre(n) { return { id: 'genre:' + n, kind: 'genre', title: n, genre: n, aspect: 'portrait', enabled: true }; }
+  function uhSpecDecade(d) { return { id: 'decade:' + d, kind: 'releaseDecade', title: d + 's', decade: d, aspect: 'portrait', enabled: true }; }
+  var UH_KIND_LABEL = { genre: 'genre', releaseDecade: 'decade', continueWatching: 'continue watching', recentlyAdded: 'recently added', favorites: 'favorites' };
+  function loadUserHome() {
+    var dsel = $('#uh-decade');
+    if (dsel && !dsel.options.length) dsel.innerHTML = UH_DECADES.map(function (d) { return '<option value="' + d + '">' + d + 's</option>'; }).join('');
+    api('/v1/home/config', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      if (d) { uhRows = d.shelves || []; renderUserHome(); $('#uh-reset-btn').hidden = !d.customized; }
+    });
+    api('/v1/home/genres', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      var gs = (d && d.genres) || [], sel = $('#uh-genre');
+      sel.innerHTML = gs.length ? gs.map(function (g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('')
+        : '<option value="">No genres yet</option>';
+    });
+  }
+  function renderUserHome() {
+    var box = $('#uh-rows');
+    if (!uhRows.length) { box.innerHTML = '<div class="empty">No rows — add some below.</div>'; return; }
+    box.innerHTML = uhRows.map(function (r, i) {
+      return '<div class="uh-row' + (r.enabled ? '' : ' disabled') + '">'
+        + '<input type="checkbox" data-uh-en="' + i + '"' + (r.enabled ? ' checked' : '') + ' style="width:auto;" title="Show this row">'
+        + '<span class="ttl">' + esc(r.title) + '</span>'
+        + '<span class="kind">' + esc(UH_KIND_LABEL[r.kind] || r.kind) + '</span>'
+        + '<span class="spacer"></span>'
+        + '<button class="mini secondary" data-uh-up="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+        + '<button class="mini secondary" data-uh-dn="' + i + '"' + (i === uhRows.length - 1 ? ' disabled' : '') + '>↓</button>'
+        + '<button class="mini secondary" data-uh-rm="' + i + '">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+  function uhAdd(spec) {
+    if (uhRows.some(function (r) { return r.id === spec.id; })) { msg('uh-msg', 'That row is already in your layout.'); return; }
+    uhRows.push(spec); renderUserHome(); msg('uh-msg', '');
+  }
+  function bindUserHome() {
+    $('#uh-add-core').onclick = function () { uhAdd(uhSpecCore($('#uh-core').value)); };
+    $('#uh-add-genre').onclick = function () { var g = $('#uh-genre').value; if (g) uhAdd(uhSpecGenre(g)); };
+    $('#uh-add-decade').onclick = function () { uhAdd(uhSpecDecade(+$('#uh-decade').value)); };
+    $('#uh-rows').addEventListener('click', function (e) {
+      var t = e.target, a;
+      if ((a = t.getAttribute('data-uh-up')) != null) { var i = +a; var x = uhRows[i]; uhRows[i] = uhRows[i - 1]; uhRows[i - 1] = x; renderUserHome(); }
+      else if ((a = t.getAttribute('data-uh-dn')) != null) { var j = +a; var y = uhRows[j]; uhRows[j] = uhRows[j + 1]; uhRows[j + 1] = y; renderUserHome(); }
+      else if ((a = t.getAttribute('data-uh-rm')) != null) { uhRows.splice(+a, 1); renderUserHome(); }
+    });
+    $('#uh-rows').addEventListener('change', function (e) {
+      var a = e.target.getAttribute('data-uh-en'); if (a != null) { uhRows[+a].enabled = e.target.checked; renderUserHome(); }
+    });
+    $('#uh-save-btn').onclick = function () {
+      api('/v1/home/config', 'PUT', { shelves: uhRows }).then(function (res) {
+        if (res.status === 401) { logout(); return; }
+        if (!res.ok) { msg('uh-msg', 'Save failed.'); return; }
+        return res.json().then(function (d) { uhRows = d.shelves || []; renderUserHome(); $('#uh-reset-btn').hidden = false; msg('uh-msg', 'Saved your home layout.', true); });
+      }).catch(function () { msg('uh-msg', 'Could not reach the server.'); });
+    };
+    $('#uh-reset-btn').onclick = function () {
+      api('/v1/home/config', 'DELETE').then(function (res) {
+        if (!res.ok) { msg('uh-msg', 'Reset failed.'); return; }
+        return res.json().then(function (d) { uhRows = d.shelves || []; renderUserHome(); $('#uh-reset-btn').hidden = true; msg('uh-msg', 'Reset to the server default.', true); });
+      }).catch(function () { msg('uh-msg', 'Could not reach the server.'); });
+    };
   }
 
   // ---- signed-in devices (sessions) ----

@@ -13,6 +13,8 @@ struct AdminController: Sendable {
     let enrichment: EnrichmentService?
     /// Persisted runtime settings (server name, TTLs, marker access, …).
     let settings: SettingsStore
+    /// The default home-screen layout (admin-owned) + per-user overrides.
+    let homeConfig: HomeConfigStore
     /// The effective configuration this process booted with (for GET fallback).
     let configuration: ServerConfiguration
     /// Live updates: scans + library edits publish library-scoped `library` events
@@ -23,6 +25,9 @@ struct AdminController: Sendable {
         let admin = group.group("admin")
         admin.get("settings", use: getSettings)
         admin.patch("settings", use: updateSettings)
+        admin.get("home", use: getHomeDefault)
+        admin.put("home", use: setHomeDefault)
+        admin.get("genres", use: listGenres)
         admin.get("tmdb", use: getTMDB)
         admin.patch("tmdb", use: updateTMDB)
         admin.post("libraries", use: createLibrary)
@@ -216,6 +221,35 @@ struct AdminController: Sendable {
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
+    }
+
+    /// The admin **default** home-screen layout (the ordered rows new/unconfigured
+    /// users see). Falls back to the built-in default until an admin saves one.
+    @Sendable
+    func getHomeDefault(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        try requireAdmin(context)
+        let specs = try await homeConfig.defaultShelves()
+        // `customized` here means "an admin has saved a layout" — distinct from the
+        // per-user flag, but the same wire shape so the GUI can reuse it.
+        let stored = try await homeConfig.storedDefaultExists()
+        return HomeConfigResponse(shelves: specs.map(HomeShelfDTO.init), customized: stored)
+    }
+
+    /// Replace the admin default home layout. Malformed rows are dropped server-side.
+    @Sendable
+    func setHomeDefault(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        try requireAdmin(context)
+        let body = try await request.decode(as: HomeConfigRequest.self, context: context)
+        try await homeConfig.setDefaultShelves(body.shelves.map(\.spec))
+        let specs = try await homeConfig.defaultShelves()
+        return HomeConfigResponse(shelves: specs.map(HomeShelfDTO.init), customized: true)
+    }
+
+    /// Distinct genres present in the catalog — to populate the Home-tab row picker.
+    @Sendable
+    func listGenres(_ request: Request, context: SphynxRequestContext) async throws -> GenresResponse {
+        try requireAdmin(context)
+        return GenresResponse(genres: try await catalog.distinctGenres())
     }
 
     /// Persisted-settings key for the TMDB v3 API key. Core metadata config (not an

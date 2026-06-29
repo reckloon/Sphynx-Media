@@ -405,13 +405,74 @@ struct Catalog: Sendable {
 
     /// Top-level items across all libraries, newest first — the "Recently Added"
     /// feed. The caller filters by readability + folds per-user state.
+    ///
+    /// Collection grouping is honored **per library**, exactly as `topLevelItems`
+    /// does for a single library: a `collection` tile that has fewer present members
+    /// than its owning library's `collectionThreshold` is hidden, and those member
+    /// movies/series surface individually instead. So "Recently Added" shows the same
+    /// effective top level a user sees when browsing — a small (sub-threshold) box set
+    /// never appears as a one-item tile here while showing ungrouped in the library.
     func recentItems(limit: Int, offset: Int) async throws -> [ItemRecord] {
         try await db.writer.read { db in
-            try ItemRecord
-                .filter(Column("parentId") == nil)
+            // Collections below their own library's threshold, across all libraries
+            // (the library join supplies each collection's own threshold).
+            let subThreshold = """
+                SELECT c.id FROM item c
+                JOIN library l ON l.id = c.libraryId
+                WHERE c.type = 'collection'
+                  AND (SELECT COUNT(*) FROM item m WHERE m.parentId = c.id) < l.collectionThreshold
+                """
+            return try ItemRecord
+                .filter(sql: """
+                    (parentId IS NULL AND NOT (type = 'collection' AND id IN (\(subThreshold))))
+                    OR parentId IN (\(subThreshold))
+                    """)
                 .order(Column("createdAt").desc, Column("id"))
                 .limit(limit + 1, offset: offset)
                 .fetchAll(db)
+        }
+    }
+
+    /// Top-level items across **all** libraries carrying `genre`, highest-rated
+    /// first (then newest). Powers a configurable "genre" home row; the caller
+    /// filters by readability + folds per-user state. Fetches `limit + 1` so the
+    /// caller can tell whether another page exists.
+    func itemsByGenre(genre: String, limit: Int, offset: Int) async throws -> [ItemRecord] {
+        guard !genre.isEmpty else { return [] }
+        return try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("parentId") == nil)
+                // genresJSON is a JSON array of strings, e.g. ["Action","Drama"].
+                .filter(sql: "genresJSON LIKE ?", arguments: ["%\"\(genre)\"%"])
+                .order(Column("communityRating").desc, Column("createdAt").desc, Column("id"))
+                .limit(limit + 1, offset: offset)
+                .fetchAll(db)
+        }
+    }
+
+    /// Top-level items released in the decade beginning `startYear` (e.g. 1980 ⇒
+    /// 1980–1989), newest first. Powers a configurable "release decade" home row.
+    func itemsByDecade(startYear: Int, limit: Int, offset: Int) async throws -> [ItemRecord] {
+        try await db.writer.read { db in
+            try ItemRecord
+                .filter(Column("parentId") == nil)
+                .filter(Column("year") >= startYear && Column("year") <= startYear + 9)
+                .order(Column("createdAt").desc, Column("id"))
+                .limit(limit + 1, offset: offset)
+                .fetchAll(db)
+        }
+    }
+
+    /// Distinct genres present across the catalog, alphabetically — to populate the
+    /// admin/user home-row genre picker. Uses SQLite's JSON1 `json_each` to unnest
+    /// the per-item `genresJSON` arrays.
+    func distinctGenres() async throws -> [String] {
+        try await db.writer.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT DISTINCT value FROM item, json_each(item.genresJSON)
+                WHERE item.genresJSON IS NOT NULL AND TRIM(value) <> ''
+                ORDER BY value COLLATE NOCASE
+                """)
         }
     }
 

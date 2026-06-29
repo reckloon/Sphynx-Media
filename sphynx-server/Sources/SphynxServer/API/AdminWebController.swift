@@ -73,6 +73,19 @@ enum AdminWebController {
   .muted { color:var(--muted); }
   .empty { color:var(--muted); font-size:14px; padding:6px 0; }
   .addbox { margin-top:18px; padding-top:6px; border-top:1px solid var(--line); }
+  /* ---- home-layout editor ---- */
+  .home-rows { display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+  .home-row { display:flex; align-items:center; gap:10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; }
+  .home-row.disabled { opacity:.5; }
+  .home-row .grip { color:var(--muted); font-size:13px; cursor:default; }
+  .home-row .ttl { font-weight:600; }
+  .home-row .kind { color:var(--muted); font-size:12px; }
+  .home-row .spacer { flex:1; }
+  .home-row button { margin:0; }
+  .home-add { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-end; }
+  .home-add > div { display:flex; flex-direction:column; gap:6px; }
+  .home-add select { width:auto; min-width:170px; }
+  .home-quick { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
   [hidden] { display:none !important; }
   /* ---- persistent activity / dashboard panel ---- */
   #dash { padding:18px 20px; }
@@ -229,6 +242,7 @@ enum AdminWebController {
           <button class="tab active" data-tab="libraries">Libraries</button>
           <button class="tab" data-tab="users">Users</button>
           <button class="tab" data-tab="items">Items</button>
+          <button class="tab" data-tab="home">Home</button>
           <button class="tab" data-tab="settings">Settings</button>
           <button class="tab" data-tab="extensions">Extensions</button>
         </div>
@@ -467,6 +481,42 @@ enum AdminWebController {
       </section>
 
       <!-- ============ SETTINGS ============ -->
+      <!-- ============ HOME (default home-screen layout) ============ -->
+      <section id="tab-home" hidden>
+        <h2>Home screen</h2>
+        <p class="hint" style="margin-top:0;">The default rows every signed-in user sees on their home screen, in order. Users can build their own layout on the <code>/user</code> page; this is what they get until they do. Empty rows (a genre or decade with nothing in the library) are hidden automatically.</p>
+        <div id="home-rows" class="home-rows"><div class="empty">Loading…</div></div>
+        <div class="addbox">
+          <div class="group-title">Add a row</div>
+          <div class="home-add">
+            <div>
+              <label for="home-core">Built-in</label>
+              <select id="home-core">
+                <option value="continueWatching">Continue Watching</option>
+                <option value="recentlyAdded">Recently Added</option>
+                <option value="favorites">Favorites</option>
+              </select>
+              <button class="mini secondary" id="home-add-core">Add</button>
+            </div>
+            <div>
+              <label for="home-genre">Genre</label>
+              <select id="home-genre"><option value="">Loading genres…</option></select>
+              <button class="mini secondary" id="home-add-genre">Add genre row</button>
+            </div>
+            <div>
+              <label for="home-decade">Release decade</label>
+              <select id="home-decade"></select>
+              <button class="mini secondary" id="home-add-decade">Add decade row</button>
+            </div>
+          </div>
+          <p class="hint" style="margin-bottom:0;">Quick add a sensible starter set:</p>
+          <div class="home-quick" id="home-quick"></div>
+        </div>
+        <button id="home-save-btn">Save default layout</button>
+        <button class="secondary" id="home-reset-btn" style="margin-left:8px;">Reset to built-in default</button>
+        <div id="home-msg" class="msg"></div>
+      </section>
+
       <section id="tab-settings" hidden>
         <p class="hint" style="margin-top:0;">All time settings are in <strong>minutes</strong>. Handy conversions: 1 hour = 60 · 1 day = 1440 · 7 days = 10080 · 30 days = 43200 · 1 year = 525600.</p>
         <div class="group-title">Server identity</div>
@@ -605,7 +655,7 @@ enum AdminWebController {
   }
 
   // ---- tabs ----
-  var TABS = ['libraries', 'users', 'items', 'settings', 'extensions'];
+  var TABS = ['libraries', 'users', 'items', 'home', 'settings', 'extensions'];
   var poll = null;
   function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
   function startPoll(fn, ms) { stopPoll(); fn(); poll = setInterval(fn, ms); }
@@ -615,6 +665,7 @@ enum AdminWebController {
     stopPoll();
     if (name === 'extensions') enterExtensions();
     else if (name === 'items') enterItems();
+    else if (name === 'home') enterHome();
   }
   Array.prototype.forEach.call(document.querySelectorAll('.tabs .tab'), function (t) {
     t.onclick = function () { showTab(t.dataset.tab); };
@@ -751,6 +802,112 @@ enum AdminWebController {
       return tmdbSave.then(function () { msg('save-msg', 'Saved. Restart the server for changes to take effect.', true); loadTMDBStatus(); });
     }).catch(function () { msg('save-msg', 'Could not reach the server.'); });
   }
+  // ---- home layout (admin default) ----
+  var homeRows = [];      // current editor state, in order
+  var homeGenres = [];    // distinct genres for the picker
+  var homeLoaded = false;
+  var HOME_DECADES = [2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950];
+  // The sensible starter set offered as one-click chips (kind | genre | decade).
+  var HOME_QUICK = [
+    { kind: 'continueWatching', title: 'Continue Watching' },
+    { kind: 'recentlyAdded', title: 'Recently Added' },
+    { kind: 'favorites', title: 'Favorites' },
+    { genre: 'Action' }, { genre: 'Comedy' }, { genre: 'Drama' }, { genre: 'Horror' },
+    { genre: 'Science Fiction' }, { genre: 'Thriller' }, { genre: 'Documentary' },
+    { genre: 'Animation' }, { genre: 'Family' }, { genre: 'Romance' },
+    { decade: 2020 }, { decade: 2010 }, { decade: 2000 }, { decade: 1990 }, { decade: 1980 }
+  ];
+
+  function enterHome() {
+    var dsel = $('#home-decade');
+    if (dsel && !dsel.options.length) {
+      dsel.innerHTML = HOME_DECADES.map(function (d) { return '<option value="' + d + '">' + d + 's</option>'; }).join('');
+    }
+    if (!homeLoaded) { homeLoaded = true; loadHomeConfig(); loadHomeGenres(); renderHomeQuick(); }
+  }
+  function specCore(kind) {
+    var t = { continueWatching: 'Continue Watching', recentlyAdded: 'Recently Added', favorites: 'Favorites' }[kind];
+    var id = { continueWatching: 'continue', recentlyAdded: 'recent', favorites: 'favorites' }[kind];
+    return { id: id, kind: kind, title: t, aspect: kind === 'continueWatching' ? 'landscape' : 'portrait', enabled: true };
+  }
+  function specGenre(name) { return { id: 'genre:' + name, kind: 'genre', title: name, genre: name, aspect: 'portrait', enabled: true }; }
+  function specDecade(d) { return { id: 'decade:' + d, kind: 'releaseDecade', title: d + 's', decade: d, aspect: 'portrait', enabled: true }; }
+  function loadHomeConfig() {
+    api('/v1/admin/home', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; })
+      .then(function (d) { if (d) { homeRows = d.shelves || []; renderHomeRows(); } });
+  }
+  function loadHomeGenres() {
+    api('/v1/admin/genres', 'GET').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      homeGenres = (d && d.genres) || [];
+      var sel = $('#home-genre');
+      sel.innerHTML = homeGenres.length
+        ? homeGenres.map(function (g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('')
+        : '<option value="">No genres yet — scan a library first</option>';
+    });
+  }
+  var HOME_KIND_LABEL = { genre: 'genre', releaseDecade: 'decade', continueWatching: 'continue watching', recentlyAdded: 'recently added', favorites: 'favorites' };
+  function renderHomeRows() {
+    var box = $('#home-rows');
+    if (!homeRows.length) { box.innerHTML = '<div class="empty">No rows yet — add some below.</div>'; return; }
+    box.innerHTML = homeRows.map(function (r, i) {
+      return '<div class="home-row' + (r.enabled ? '' : ' disabled') + '">'
+        + '<span class="grip">' + (i + 1) + '</span>'
+        + '<input type="checkbox" data-home-en="' + i + '"' + (r.enabled ? ' checked' : '') + ' title="Show this row">'
+        + '<span class="ttl">' + esc(r.title) + '</span>'
+        + '<span class="kind">' + esc(HOME_KIND_LABEL[r.kind] || r.kind) + '</span>'
+        + '<span class="spacer"></span>'
+        + '<button class="mini secondary" data-home-up="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+        + '<button class="mini secondary" data-home-dn="' + i + '"' + (i === homeRows.length - 1 ? ' disabled' : '') + '>↓</button>'
+        + '<button class="mini secondary" data-home-rm="' + i + '">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+  function renderHomeQuick() {
+    var box = $('#home-quick'); if (!box) return;
+    box.innerHTML = HOME_QUICK.map(function (q, i) {
+      var label = q.kind ? q.title : (q.genre || (q.decade + 's'));
+      return '<button class="mini secondary" data-home-q="' + i + '">+ ' + esc(label) + '</button>';
+    }).join('');
+  }
+  function homeHasId(id) { return homeRows.some(function (r) { return r.id === id; }); }
+  function addHomeRow(spec) {
+    if (homeHasId(spec.id)) { msg('home-msg', 'That row is already in the layout.'); return; }
+    homeRows.push(spec); renderHomeRows(); msg('home-msg', '');
+  }
+  function bindHome() {
+    $('#home-add-core').onclick = function () { addHomeRow(specCore($('#home-core').value)); };
+    $('#home-add-genre').onclick = function () { var g = $('#home-genre').value; if (g) addHomeRow(specGenre(g)); };
+    $('#home-add-decade').onclick = function () { addHomeRow(specDecade(+$('#home-decade').value)); };
+    $('#home-save-btn').onclick = function () {
+      api('/v1/admin/home', 'PUT', { shelves: homeRows }).then(function (res) {
+        if (res.status === 401) { logout(); return; }
+        if (!res.ok) { msg('home-msg', 'Save failed.'); return; }
+        return res.json().then(function (d) { homeRows = d.shelves || []; renderHomeRows(); msg('home-msg', 'Saved. This is the default for users who haven\'t customized.', true); });
+      }).catch(function () { msg('home-msg', 'Could not reach the server.'); });
+    };
+    $('#home-reset-btn').onclick = function () {
+      homeRows = [specCore('continueWatching'), specCore('recentlyAdded'), specCore('favorites'),
+                  specGenre('Action'), specGenre('Comedy'), specGenre('Science Fiction'), specDecade(1980)];
+      renderHomeRows(); msg('home-msg', 'Loaded the built-in starter set — press Save to apply it.');
+    };
+    // Row reorder / remove / toggle / quick-add (delegated, since rows re-render).
+    $('#home-rows').addEventListener('click', function (e) {
+      var t = e.target, a;
+      if ((a = t.getAttribute('data-home-up')) != null) { var i = +a; var x = homeRows[i]; homeRows[i] = homeRows[i - 1]; homeRows[i - 1] = x; renderHomeRows(); }
+      else if ((a = t.getAttribute('data-home-dn')) != null) { var j = +a; var y = homeRows[j]; homeRows[j] = homeRows[j + 1]; homeRows[j + 1] = y; renderHomeRows(); }
+      else if ((a = t.getAttribute('data-home-rm')) != null) { homeRows.splice(+a, 1); renderHomeRows(); }
+    });
+    $('#home-rows').addEventListener('change', function (e) {
+      var a = e.target.getAttribute('data-home-en');
+      if (a != null) { homeRows[+a].enabled = e.target.checked; renderHomeRows(); }
+    });
+    $('#home-quick').addEventListener('click', function (e) {
+      var a = e.target.getAttribute('data-home-q'); if (a == null) return;
+      var def = HOME_QUICK[+a];
+      addHomeRow(def.kind ? specCore(def.kind) : def.genre ? specGenre(def.genre) : specDecade(def.decade));
+    });
+  }
+
   function scanAllSources() {
     msg('lib-msg', 'Scanning all sources…');
     api('/v1/admin/scan', 'POST').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
@@ -1362,6 +1519,7 @@ enum AdminWebController {
   $('#login-btn').onclick = login;
   $('#logout-btn').onclick = logout;
   $('#save-btn').onclick = saveSettings;
+  bindHome();
   $('#scan-all-btn').onclick = scanAllSources;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
