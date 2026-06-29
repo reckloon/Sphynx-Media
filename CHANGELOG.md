@@ -10,7 +10,17 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.2] — 2026-06-29
+
 ### Added
+
+- **Web authorization flow (OAuth-style).** A browser/redirect sign-in path for web
+  and embedded clients — `GET /v1/auth/web/start` → `POST /v1/auth/web/authorize` →
+  `POST /v1/auth/web/token` — with PKCE, a single-use ~60-second code, and a
+  `redirect_uri` allowlist (`SPHYNX_WEB_REDIRECT_ALLOWLIST`). Advertised via
+  `capabilities.webAuth`.
 
 - **Collections library (cross-library box-set view).** A library of kind
   `collection` now actually populates: browsing it aggregates every box-set tile
@@ -69,6 +79,12 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ### Changed
 
+- **`ffprobe` now ships in the Docker image.** The runtime image bundles `ffmpeg`,
+  so the **Media probe** extension (real audio/subtitle tracks, external subtitle
+  files, embedded chapters) works the moment you enable it — no custom image or
+  manual install. Running from source still needs `ffmpeg` on the server's `PATH`.
+  The server reports `0.1.2` from `/v1/info`.
+
 - **The home "Recently Added" row now respects the collection minimum.** A
   sub-threshold box set no longer appears there as a one-item tile — its member
   titles surface individually instead, exactly as they already did when browsing the
@@ -102,6 +118,18 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   decodes (`PasskeyRegistrationFinishRequest`). The authenticator created and saved
   the passkey, then enrollment always failed server-side with `400`. The client now
   sends `{ challengeId, credential }`, so passkeys actually enroll.
+
+### Documentation
+
+- New **[docs/passkeys-help.md](docs/passkeys-help.md)** — a passkey implementer's
+  guide: server Relying-Party setup, the WebAuthn ceremony model, and per-platform
+  client methods (browser `navigator.credentials`, Apple `AuthenticationServices`,
+  Android Credential Manager, security keys), plus troubleshooting.
+- Reconciled the guide and `docs/API.md` with everything shipped this cycle — the
+  web authorization flow, the configurable home layout (genre/decade rows + admin
+  default + per-user override), manual collections (`collections.edit`), the
+  profile-picker sign-in, and the low-res-images placeholder modes — and corrected
+  the `placeholder` default (now `blurhash`) and version strings.
 
 ## [0.1.1] — 2026-06-28
 
@@ -255,6 +283,7 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/reckloon/Sphynx-Media/releases/tag/v0.1.0

@@ -46,8 +46,11 @@ RUN swift build -c release --product SphynxServer \
 
 # ---- Runtime stage ---------------------------------------------------------
 FROM swift:6.3-noble-slim AS runtime
-# Runtime needs the SQLite shared lib; ca-certificates for future outbound TLS.
-RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-0 ca-certificates \
+# Runtime needs the SQLite shared lib; ca-certificates for future outbound TLS;
+# ffmpeg ships `ffprobe` so the media-probe extension (audio/subtitle tracks,
+# embedded chapters) works out of the box — MediaProber finds it on $PATH at
+# /usr/bin/ffprobe with no operator setup.
+RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-0 ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 RUN useradd --create-home --shell /usr/sbin/nologin sphynx

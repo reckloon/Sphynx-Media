@@ -45,7 +45,7 @@ Confirm a URL is a Sphynx server and learn its capabilities.
   "product": "Sphynx",
   "serverName": "Sphynx Reference Server",
   "id": "srv_reference",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "protocol": ["v1"],
   "capabilities": {
     "search": false,
@@ -385,6 +385,10 @@ passkeys.
 > e.g. `media.example.com`); the origin defaults to `https://<rpId>`. These must
 > match the client's origin or every ceremony fails — a constraint of WebAuthn,
 > not Sphynx.
+>
+> **Implementing passkeys?** See **[passkeys-help.md](passkeys-help.md)** for a
+> step-by-step guide: server setup, the ceremony model, and per-platform client
+> methods (browser, Apple, Android, security keys).
 
 ---
 
@@ -1056,11 +1060,19 @@ The **typed home feed**: the ordered shelves that make up the user's home screen
 **200** → `{ "shelves": [ { "id", "title", "kind", "aspect", "items": [...] } ] }`.
 
 Each shelf carries a `kind` (open enum: `continueWatching`, `recentlyAdded`,
-`favorites`) and an `aspect` (`portrait` | `landscape` | `square`) telling the
-client the tile shape — so which rows are landscape is **contract, not
-convention**. `continueWatching` is `landscape` (backdrops / episode stills);
-the rest are `portrait`. Empty shelves are omitted. Each shelf shows a capped
-preview (20 items); page a full row via the per-row endpoints below.
+`favorites`, plus the layout kinds `genre` and `releaseDecade`) and an `aspect`
+(`portrait` | `landscape` | `square`) telling the client the tile shape — so which
+rows are landscape is **contract, not convention**. `continueWatching` is
+`landscape` (backdrops / episode stills); the rest are `portrait`. Empty shelves
+are omitted. Each shelf shows a capped preview (20 items); page a full row via the
+per-row endpoints below.
+
+For a `genre` / `releaseDecade` shelf the row parameter rides in `Shelf.id` as
+`genre:<Name>` (e.g. `genre:Action`) or `decade:<startYear>` (e.g. `decade:1980`),
+so a client pages it without extra state. Both are open-enum additions: a client
+that doesn't recognise the kind can still render the shelf's `title` + `items`, or
+skip it. **The home layout is configurable** (see *Configurable home layout*
+below) — the rows above are the default, not a fixed set.
 
 > **Continue Watching is unified — there is no separate "Next Up".** The next
 > unwatched episode of a show you're partway through is merged *into*
@@ -1112,6 +1124,47 @@ level a user gets when browsing that library.
 
 The caller's favourited items, most-recently-played first. Cursor-paginated; same
 `ItemsResponse` shape.
+
+### `GET /v1/home/genre?name=<genre>` — auth required
+
+Page a **genre row** — top-level items tagged with `<genre>`, newest first.
+`name` is required (**400** if absent). Cursor-paginated; `detail` selects
+skeleton/full. Same `ItemsResponse` shape. The list of available genres for the
+caller's libraries is `GET /v1/home/genres` → `{ "genres": ["Action", …] }`.
+
+### `GET /v1/home/decade?start=<year>` — auth required
+
+Page a **decade row** — top-level items released in the ten years from `<year>`
+(e.g. `start=1980` → 1980–1989), newest first. `start` is required (**400** if
+absent). Cursor-paginated; same `ItemsResponse` shape.
+
+### Configurable home layout
+
+The home screen is a layout of ordered shelves. There's an **admin default** every
+user sees, and an optional **per-user override**; both are expressed as a list of
+`HomeShelfDTO`:
+
+```json
+{ "id": "genre:Action", "kind": "genre", "title": "Action",
+  "genre": "Action", "decade": null, "aspect": "portrait", "enabled": true }
+```
+
+`id`/`kind`/`title`/`aspect` mirror the shelf in `GET /v1/home`; `genre` and
+`decade` carry the row parameter for those kinds (null otherwise); `enabled` lets
+a layout keep but hide a row. A config response is
+`{ "shelves": [HomeShelfDTO, …], "customized": <bool> }` — `customized` is `true`
+when a per-user layout overrides the default (drives a "Reset to default" button).
+A request body is `{ "shelves": [HomeShelfDTO, …] }`.
+
+- **`GET /v1/admin/home`** / **`PUT /v1/admin/home`** — read / replace the
+  **default** layout all users see (admin). `GET /v1/admin/genres` →
+  `{ "genres": [String] }` lists every genre present for building genre rows.
+- **`GET /v1/home/config`** / **`PUT /v1/home/config`** / **`DELETE
+  /v1/home/config`** — read / replace / clear the **caller's own** layout. `DELETE`
+  reverts to the admin default (`customized` returns to `false`).
+
+Empty rows (a genre or decade with nothing in the user's libraries) are dropped
+from `GET /v1/home` automatically, so a layout can list more rows than render.
 
 ## Per-user state
 
