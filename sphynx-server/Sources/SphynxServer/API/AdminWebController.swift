@@ -628,6 +628,7 @@ enum AdminWebController {
 
         <div id="mod-media-probe" class="ext-mod" hidden>
           <p class="hint" style="margin-top:0;">Inspect a title's audio, subtitle, and video tracks with ffmpeg's <code>ffprobe</code>, plus any sidecar subtitle files next to a local file. Probing <strong>caches</strong> the result so <code>/v1/resolve</code> serves rich <code>tracks</code>.</p>
+          <p class="hint" style="margin-top:4px;"><strong>Why it matters for playback speed.</strong> Pre-indexing each title's audio and subtitle tracks lets a player show its audio/subtitle picker and <strong>start playback without first probing the file itself</strong>. Clients that lean on this — such as <strong>Ocelot</strong> — load dramatically faster on play, so probing your whole library ahead of time (set a background interval below, or run a pass now) is recommended.</p>
           <div class="mp-row">
             <label class="switch"><input type="checkbox" id="mp-enabled"> Enable media probe</label>
             <span id="mp-avail" class="hint" style="margin:0;"></span>

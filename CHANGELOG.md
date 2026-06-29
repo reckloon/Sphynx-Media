@@ -10,7 +10,14 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Documentation
+
+- **Media probe: document the playback-speed benefit.** The web admin **Extensions
+  → Media probe** panel, the guide, and `docs/API.md` now explain that pre-indexing
+  each title's audio/subtitle tracks lets a player start playback without first
+  probing the file itself — so clients that rely on the advertised `tracks` (e.g.
+  Ocelot) load dramatically faster — and recommend running a background pass over the
+  library when such a client is in use.
 
 ## [0.1.3] — 2026-06-29
 

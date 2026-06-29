@@ -1828,6 +1828,13 @@ default); shelling out only happens when enabled and `ffprobe` is found. It runs
 two modes: probe a single title on demand, or — like the BlurHash backfill — a
 **background pass** that probes every not-yet-probed item on its own interval.
 
+Pre-indexing tracks is also a **playback-speed** lever: with the audio/subtitle
+detail already cached, a player can render its track picker and **start playback
+without probing the file itself first** — a step that otherwise delays the first
+frame, especially for remote sources. Clients that rely on the advertised `tracks`
+(e.g. Ocelot) therefore start dramatically faster on probed titles, so running a
+background pass over the whole library is recommended when such a client is in use.
+
 - **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version", "intervalSeconds"?, "probing"? }`.
   `ffprobePath` is the admin-set path (blank ⇒ auto-discovered); `resolvedPath` is
   the path actually in use. `intervalSeconds` is the background-pass cadence (seconds,
