@@ -124,8 +124,7 @@ fields first and base64url-encode the response before posting it.
 
 ### B. Apple platforms (iOS / iPadOS / macOS / tvOS) — `AuthenticationServices`
 
-This is how **Ocelot** implements it. Use
-`ASAuthorizationPlatformPublicKeyCredentialProvider` (platform passkeys, synced
+Use `ASAuthorizationPlatformPublicKeyCredentialProvider` (platform passkeys, synced
 through iCloud Keychain) and/or `…SecurityKeyPublicKeyCredentialProvider` (hardware
 keys).
 
@@ -141,8 +140,24 @@ keys).
 - **tvOS:** the TV usually can't show a passkey sheet, so prefer the
   [device-code flow](API.md#device-authorization-qr--code-sign-in) — the TV shows a
   QR, and the **phone** completes the passkey there. "Scan → Face ID → signed in."
-- For zero-tap sign-in on app launch, associate your domain with the app via an
-  **Associated Domains** entitlement (`webcredentials:media.example.com`).
+
+> ⚠️ **Associated Domains is mandatory for platform passkeys — not an optional
+> "zero-tap" extra.** `ASAuthorizationPlatformPublicKeyCredentialProvider` only runs
+> when the app's **Associated Domains** entitlement lists the server's host as
+> `webcredentials:<host>` (e.g. `webcredentials:media.example.com`). Without it the
+> ceremony fails with a domain-association error — the entitlement is what makes the
+> platform ceremony work at all. Since that entitlement is baked into the shipped
+> binary, a **single-tenant / first-party build** (one app, one known server domain)
+> can use platform passkeys, but a **general-purpose client that connects to
+> arbitrary self-hosted servers cannot** pre-declare unknown domains.
+>
+> This is why **Ocelot** — which connects to any self-hosted Sphynx server — signs
+> in on Apple platforms via **`ASWebAuthenticationSession`** (a browser-delegated
+> `/user` sign-in that the server's own RP origin satisfies, no app entitlement
+> needed) plus password login, and only exercises the platform-passkey ceremony
+> above when the server's host happens to be an associated domain of that particular
+> build. Hardware security keys (`…SecurityKeyPublicKeyCredentialProvider`) need no
+> entitlement and stay available as the entitlement-free fallback.
 
 ### C. Android — Credential Manager
 
