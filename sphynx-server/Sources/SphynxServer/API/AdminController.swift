@@ -13,6 +13,8 @@ struct AdminController: Sendable {
     let enrichment: EnrichmentService?
     /// Persisted runtime settings (server name, TTLs, marker access, …).
     let settings: SettingsStore
+    /// The default home-screen layout (admin-owned) + per-user overrides.
+    let homeConfig: HomeConfigStore
     /// The effective configuration this process booted with (for GET fallback).
     let configuration: ServerConfiguration
     /// Live updates: scans + library edits publish library-scoped `library` events
@@ -23,6 +25,9 @@ struct AdminController: Sendable {
         let admin = group.group("admin")
         admin.get("settings", use: getSettings)
         admin.patch("settings", use: updateSettings)
+        admin.get("home", use: getHomeDefault)
+        admin.put("home", use: setHomeDefault)
+        admin.get("genres", use: listGenres)
         admin.get("tmdb", use: getTMDB)
         admin.patch("tmdb", use: updateTMDB)
         admin.post("libraries", use: createLibrary)
@@ -44,6 +49,11 @@ struct AdminController: Sendable {
         admin.post("items/:itemId/identity", use: setIdentity)
         admin.post("items/:itemId/enrich", use: enrichItem)
         admin.post("enrich", use: enrichAll)
+        admin.get("collections", use: listCollections)
+        admin.get("collections/candidates", use: collectionCandidates)
+        admin.post("collections", use: createCollection)
+        admin.patch("collections/:collectionId", use: updateCollection)
+        admin.delete("collections/:collectionId", use: deleteCollection)
         admin.get("permissions", use: listPermissions)
         admin.get("users", use: listUsers)
         admin.post("users", use: createUser)
@@ -216,6 +226,35 @@ struct AdminController: Sendable {
         try await settings.set(updates)
         let effective = configuration.applying(try await settings.all())
         return SettingsResponse(from: effective)
+    }
+
+    /// The admin **default** home-screen layout (the ordered rows new/unconfigured
+    /// users see). Falls back to the built-in default until an admin saves one.
+    @Sendable
+    func getHomeDefault(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        try requireAdmin(context)
+        let specs = try await homeConfig.defaultShelves()
+        // `customized` here means "an admin has saved a layout" — distinct from the
+        // per-user flag, but the same wire shape so the GUI can reuse it.
+        let stored = try await homeConfig.storedDefaultExists()
+        return HomeConfigResponse(shelves: specs.map(HomeShelfDTO.init), customized: stored)
+    }
+
+    /// Replace the admin default home layout. Malformed rows are dropped server-side.
+    @Sendable
+    func setHomeDefault(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        try requireAdmin(context)
+        let body = try await request.decode(as: HomeConfigRequest.self, context: context)
+        try await homeConfig.setDefaultShelves(body.shelves.map(\.spec))
+        let specs = try await homeConfig.defaultShelves()
+        return HomeConfigResponse(shelves: specs.map(HomeShelfDTO.init), customized: true)
+    }
+
+    /// Distinct genres present in the catalog — to populate the Home-tab row picker.
+    @Sendable
+    func listGenres(_ request: Request, context: SphynxRequestContext) async throws -> GenresResponse {
+        try requireAdmin(context)
+        return GenresResponse(genres: try await catalog.distinctGenres())
     }
 
     /// Persisted-settings key for the TMDB v3 API key. Core metadata config (not an
@@ -730,6 +769,124 @@ struct AdminController: Sendable {
         return enrichment
     }
 
+    // MARK: - Collections (manual box sets)
+
+    /// Manual collection curation is gated by `collections.edit`, held globally or
+    /// scoped to the target library (admins always pass). Mirrors how `metadata.edit`
+    /// gates the correction endpoints, so curation can be delegated on its own.
+    private func requireCollections(_ context: SphynxRequestContext, inLibrary libraryId: String) throws {
+        let identity = try context.requireIdentity()
+        guard identity.has(Permissions.collectionsEdit, inLibrary: libraryId) else {
+            throw SphynxError.forbidden("You don't have permission to manage collections here")
+        }
+    }
+
+    /// Build the response view of a collection: its tile id/title/library plus the
+    /// members currently nested under it (full projection so the UI shows posters).
+    private func collectionView(_ record: ItemRecord) async throws -> AdminCollection {
+        let members = try await catalog.childItems(parentId: record.id, limit: 1000, offset: 0)
+        return AdminCollection(
+            id: record.id, title: record.title, libraryId: record.libraryId ?? "",
+            memberCount: members.count, members: members.map { $0.toProtocol(full: true) }
+        )
+    }
+
+    /// List a library's collections (manual + TMDB) with their members, for the
+    /// curation UI. `?library=<id>` required; gated by `collections.edit`.
+    @Sendable
+    func listCollections(_ request: Request, context: SphynxRequestContext) async throws -> AdminCollectionsResponse {
+        let query = try request.uri.decodeQuery(as: CollectionsQuery.self, context: context)
+        guard let libraryId = query.library, !libraryId.isEmpty else {
+            throw SphynxError.badRequest("query parameter 'library' is required")
+        }
+        try requireCollections(context, inLibrary: libraryId)
+        let records = try await catalog.collectionsIn(libraryId: libraryId)
+        var collections: [AdminCollection] = []
+        for record in records { collections.append(try await collectionView(record)) }
+        return AdminCollectionsResponse(collections: collections)
+    }
+
+    /// Candidate items to add to a collection: a library's top-level movies/series,
+    /// optionally filtered by `?search=`. `?library=<id>` required; gated the same.
+    @Sendable
+    func collectionCandidates(_ request: Request, context: SphynxRequestContext) async throws -> AdminItemsResponse {
+        let query = try request.uri.decodeQuery(as: CollectionsQuery.self, context: context)
+        guard let libraryId = query.library, !libraryId.isEmpty else {
+            throw SphynxError.badRequest("query parameter 'library' is required")
+        }
+        try requireCollections(context, inLibrary: libraryId)
+        let records = try await catalog.groupableItems(
+            libraryId: libraryId, search: query.search?.trimmingCharacters(in: .whitespaces), limit: 250)
+        return AdminItemsResponse(items: records.map { $0.toProtocol(full: true) })
+    }
+
+    /// Create a manual collection in a library and (optionally) seed its members.
+    @Sendable
+    func createCollection(_ request: Request, context: SphynxRequestContext) async throws -> AdminCollection {
+        let body = try await request.decode(as: CreateCollectionRequest.self, context: context)
+        let title = body.title.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { throw SphynxError.badRequest("title is required") }
+        guard try await catalog.library(id: body.libraryId) != nil else {
+            throw SphynxError.badRequest("No library '\(body.libraryId)'")
+        }
+        try requireCollections(context, inLibrary: body.libraryId)
+        let record = try await catalog.createManualCollection(libraryId: body.libraryId, title: title)
+        if let itemIds = body.itemIds, !itemIds.isEmpty {
+            _ = try await catalog.assignToCollection(record, itemIds: itemIds)
+        }
+        await notifyLibrariesChanged([body.libraryId], action: "updated")
+        return try await collectionView(record)
+    }
+
+    /// Rename a collection and/or add/remove members. Gated on the collection's own
+    /// library; added items must be top-level items of that same library.
+    @Sendable
+    func updateCollection(_ request: Request, context: SphynxRequestContext) async throws -> AdminCollection {
+        guard let collectionId = context.parameters.get("collectionId") else {
+            throw SphynxError.badRequest("Missing collection id")
+        }
+        guard var record = try await catalog.item(id: collectionId), record.type == "collection" else {
+            throw SphynxError.notFound("No collection '\(collectionId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: record) ?? ""
+        try requireCollections(context, inLibrary: libraryId)
+        let body = try await request.decode(as: UpdateCollectionRequest.self, context: context)
+
+        if let title = body.title?.trimmingCharacters(in: .whitespaces) {
+            guard !title.isEmpty else { throw SphynxError.badRequest("title cannot be empty") }
+            record.title = title
+            record.updatedAt = Date().timeIntervalSince1970
+            try await catalog.updateItem(record)
+            // Keep members' denormalized collectionTitle in sync with the rename.
+            let existing = try await catalog.childItems(parentId: record.id, limit: 1000, offset: 0)
+            _ = try await catalog.assignToCollection(record, itemIds: existing.map(\.id))
+        }
+        if let add = body.addItems, !add.isEmpty {
+            _ = try await catalog.assignToCollection(record, itemIds: add)
+        }
+        if let remove = body.removeItems, !remove.isEmpty {
+            _ = try await catalog.removeFromCollection(collectionId: record.id, itemIds: remove)
+        }
+        if !libraryId.isEmpty { await notifyLibrariesChanged([libraryId], action: "updated") }
+        return try await collectionView(record)
+    }
+
+    /// Delete a collection tile, orphaning its members back to the top level.
+    @Sendable
+    func deleteCollection(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        guard let collectionId = context.parameters.get("collectionId") else {
+            throw SphynxError.badRequest("Missing collection id")
+        }
+        guard let record = try await catalog.item(id: collectionId), record.type == "collection" else {
+            throw SphynxError.notFound("No collection '\(collectionId)'")
+        }
+        let libraryId = try await catalog.owningLibraryId(of: record) ?? ""
+        try requireCollections(context, inLibrary: libraryId)
+        try await catalog.deleteCollection(id: collectionId)
+        if !libraryId.isEmpty { await notifyLibrariesChanged([libraryId], action: "updated") }
+        return Response(status: .noContent)
+    }
+
     private func requireAdmin(_ context: SphynxRequestContext) throws {
         guard let identity = context.identity else {
             throw SphynxError.unauthorized("Not authenticated")
@@ -959,6 +1116,42 @@ struct AdminItemsQuery: Codable, Sendable {
 /// The raw (ungrouped) children for the item-correction browser.
 struct AdminItemsResponse: Codable, Sendable, ResponseEncodable {
     var items: [Item]
+}
+
+// MARK: Collections (manual box sets)
+
+/// `?library=&search=` for the collection curation endpoints.
+struct CollectionsQuery: Codable, Sendable {
+    var library: String?
+    var search: String?
+}
+
+/// One collection tile plus its current members (full projection), for the editor.
+struct AdminCollection: Codable, Sendable, ResponseEncodable {
+    var id: String
+    var title: String
+    var libraryId: String
+    var memberCount: Int
+    var members: [Item]
+}
+
+struct AdminCollectionsResponse: Codable, Sendable, ResponseEncodable {
+    var collections: [AdminCollection]
+}
+
+/// `POST /v1/admin/collections` body: make a collection in a library, optionally
+/// seeding it with top-level items of that library.
+struct CreateCollectionRequest: Codable, Sendable {
+    var libraryId: String
+    var title: String
+    var itemIds: [String]?
+}
+
+/// `PATCH /v1/admin/collections/{id}` body: rename and/or add/remove members.
+struct UpdateCollectionRequest: Codable, Sendable {
+    var title: String?
+    var addItems: [String]?
+    var removeItems: [String]?
 }
 
 struct AdminUserResponse: Codable, Sendable, ResponseEncodable {

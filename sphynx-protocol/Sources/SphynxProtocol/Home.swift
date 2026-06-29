@@ -49,6 +49,12 @@ public enum ShelfKind: OpenEnum {
     case recentlyAdded
     /// The user's favorites.
     case favorites
+    /// Top items carrying a particular genre (e.g. "Action"). The genre is named
+    /// by the shelf's `title` and encoded in its `id` as `genre:<Name>`.
+    case genre
+    /// Top items released in a particular decade (e.g. the 1980s). The decade's
+    /// start year is encoded in the shelf's `id` as `decade:<startYear>`.
+    case releaseDecade
     case unknown(String)
 
     public init?(rawValue: String) {
@@ -56,6 +62,8 @@ public enum ShelfKind: OpenEnum {
         case "continueWatching": self = .continueWatching
         case "recentlyAdded": self = .recentlyAdded
         case "favorites": self = .favorites
+        case "genre": self = .genre
+        case "releaseDecade": self = .releaseDecade
         default: return nil
         }
     }
@@ -65,6 +73,8 @@ public enum ShelfKind: OpenEnum {
         case .continueWatching: "continueWatching"
         case .recentlyAdded: "recentlyAdded"
         case .favorites: "favorites"
+        case .genre: "genre"
+        case .releaseDecade: "releaseDecade"
         case .unknown(let value): value
         }
     }

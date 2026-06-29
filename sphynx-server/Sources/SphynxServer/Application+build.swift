@@ -48,6 +48,7 @@ func buildRouter(
     userState: UserStateService,
     policy: AccessPolicy,
     settings: SettingsStore,
+    homeConfig: HomeConfigStore,
     events: EventBus
 ) -> Router<SphynxRequestContext> {
     let router = Router(context: SphynxRequestContext.self)
@@ -91,7 +92,8 @@ func buildRouter(
     passkeyController?.addSecuredRoutes(to: securedV1)
     deviceAuthController.addSecuredRoutes(to: securedV1)
     let home = HomeService(catalog: catalog, playstate: playstate, userState: userState)
-    BrowseController(catalog: catalog, playstate: playstate, userState: userState, home: home).addRoutes(to: securedV1)
+    BrowseController(catalog: catalog, playstate: playstate, userState: userState,
+                     home: home, homeConfig: homeConfig).addRoutes(to: securedV1)
     ChangesController(catalog: catalog, playstate: playstate, userState: userState).addRoutes(to: securedV1)
     PeopleController(catalog: catalog, userState: userState, playstate: playstate).addRoutes(to: securedV1)
     ResolveController(catalog: catalog, resolver: resolver).addRoutes(to: securedV1)
@@ -99,7 +101,8 @@ func buildRouter(
     UserStateController(catalog: catalog, userState: userState, playstate: playstate, events: events).addRoutes(to: securedV1)
     MarkersController(catalog: catalog, policy: policy, staleAfter: configuration.markersStaleAfter, events: events).addRoutes(to: securedV1)
     AdminController(catalog: catalog, indexer: indexer, auth: auth, enrichment: enrichment,
-                    settings: settings, configuration: configuration, events: events).addRoutes(to: securedV1)
+                    settings: settings, homeConfig: homeConfig,
+                    configuration: configuration, events: events).addRoutes(to: securedV1)
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
                           logStore: LogStore.shared).addRoutes(to: securedV1)
@@ -128,6 +131,7 @@ func buildApplication(
     // Persisted settings are the source of truth for runtime-tunable config
     // (server name, TTLs, marker access, …). Env vars only seed them on first run.
     let settingsStore = SettingsStore(db: database)
+    let homeConfigStore = HomeConfigStore(db: database)
     let configuration = try await envConfiguration.resolvingSettings(store: settingsStore)
 
     let auth = AuthService(
@@ -201,6 +205,7 @@ func buildApplication(
         userState: userState,
         policy: policy,
         settings: settingsStore,
+        homeConfig: homeConfigStore,
         events: events
     )
 

@@ -60,7 +60,8 @@ and `audiobook`/`chapter` types with `artistName`/`albumTitle`/`discNumber`/`tra
 **selectable versions/editions** (`Item.versions`/`MediaVersion`), **per-user ratings**
 (`userRating`), `parentId`/`collectionId`, open `extra`), the typed **browse contract**
 (`BrowseCapabilities` sort/filter + `ItemsResponse.totalCount`/`pageSize`), the typed
-home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect`), resolve
+home feed (`HomeResponse`, `Shelf`, `ShelfKind`/`ShelfAspect` — including
+configurable `genre`/`releaseDecade` rows, the parameter carried in `Shelf.id`), resolve
 (`ResolveDescriptor`, tracks incl. **lossless audio detail** `MediaStream.sampleRate`/
 `bitDepth`/`bitRate`, candidates), playstate, bi-directional markers
 (`MarkerContribution`, `MarkersInfo`), the error envelope, and the open-enum

@@ -11,6 +11,7 @@ struct BrowseController: Sendable {
     let playstate: PlaystateService
     let userState: UserStateService
     let home: HomeService
+    let homeConfig: HomeConfigStore
 
     /// Default number of items per shelf on the aggregated home feed.
     private static let shelfLimit = 20
@@ -23,6 +24,14 @@ struct BrowseController: Sendable {
         group.get("home/continue", use: continueWatching)
         group.get("home/recent", use: recentlyAdded)
         group.get("home/favorites", use: favorites)
+        group.get("home/genre", use: genreRow)
+        group.get("home/decade", use: decadeRow)
+        // Each signed-in user's own home layout (replaces the admin default for them).
+        group.get("home/config", use: getHomeConfig)
+        group.put("home/config", use: putHomeConfig)
+        group.delete("home/config", use: resetHomeConfig)
+        // Genres present in the catalog, to populate the user's row picker.
+        group.get("home/genres", use: genresList)
     }
 
     /// §7 the **typed home feed**: the ordered shelves that make up a user's home
@@ -36,25 +45,38 @@ struct BrowseController: Sendable {
         let full = (try request.uri.decodeQuery(as: DetailQuery.self, context: context)).detail == "full"
         let n = Self.shelfLimit
 
+        // The user's effective layout: their saved override if any, else the admin
+        // default (which itself falls back to the built-in default).
+        let specs = try await homeConfig.effective(userId: identity.userId)
+
         var shelves: [Shelf] = []
-        // Continue Watching is landscape (backdrops/episode stills) — this is the
-        // aspect the cropping bug needed stated explicitly. It carries next-up too.
-        let (cont, _) = try await continuePage(identity, full: full, limit: n, offset: 0)
-        if !cont.isEmpty {
-            shelves.append(Shelf(id: "continue", title: "Continue Watching",
-                                 kind: .continueWatching, aspect: .landscape, items: cont))
-        }
-        let (recent, _) = try await recentPage(identity, full: full, limit: n, offset: 0)
-        if !recent.isEmpty {
-            shelves.append(Shelf(id: "recent", title: "Recently Added",
-                                 kind: .recentlyAdded, aspect: .portrait, items: recent))
-        }
-        let (favs, _) = try await favoritesPage(identity, full: full, limit: n, offset: 0)
-        if !favs.isEmpty {
-            shelves.append(Shelf(id: "favorites", title: "Favorites",
-                                 kind: .favorites, aspect: .portrait, items: favs))
+        for spec in specs where spec.enabled {
+            // Build the row's first page; empty rows are omitted (existing contract).
+            let items = try await rowItems(spec, identity, full: full, limit: n, offset: 0).items
+            guard !items.isEmpty, let kind = ShelfKind(rawValue: spec.kind) else { continue }
+            let aspect = ShelfAspect(rawValue: spec.aspect) ?? .portrait
+            shelves.append(Shelf(id: spec.id, title: spec.title, kind: kind, aspect: aspect, items: items))
         }
         return HomeResponse(shelves: shelves)
+    }
+
+    /// Build one page of a configured row, dispatching on its kind. Continue
+    /// Watching carries next-up; genre/decade rows query the catalog cross-library.
+    private func rowItems(_ spec: HomeShelfSpec, _ identity: AuthIdentity,
+                          full: Bool, limit: Int, offset: Int) async throws -> (items: [Item], hasMore: Bool) {
+        switch spec.kind {
+        case "continueWatching": return try await continuePage(identity, full: full, limit: limit, offset: offset)
+        case "recentlyAdded":    return try await recentPage(identity, full: full, limit: limit, offset: offset)
+        case "favorites":        return try await favoritesPage(identity, full: full, limit: limit, offset: offset)
+        case "genre":
+            guard let genre = spec.genre else { return ([], false) }
+            return try await genrePage(genre, identity, full: full, limit: limit, offset: offset)
+        case "releaseDecade":
+            guard let decade = spec.decade else { return ([], false) }
+            return try await decadePage(decade, identity, full: full, limit: limit, offset: offset)
+        default:
+            return ([], false)
+        }
     }
 
     /// §7 "continue watching": the user's in-progress items **plus** the next
@@ -221,6 +243,101 @@ struct BrowseController: Sendable {
         return (try await foldUserData(items, userId: identity.userId), hasMore)
     }
 
+    /// A configured **genre** row: top items carrying `genre`, across all libraries
+    /// the user may read, highest-rated first. Cursor-paginated ("see all").
+    @Sendable
+    func genreRow(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
+        let identity = try context.requireIdentity()
+        let query = try request.uri.decodeQuery(as: RowQuery.self, context: context)
+        guard let name = query.name, !name.isEmpty else {
+            throw SphynxError.badRequest("query parameter 'name' is required")
+        }
+        let limit = Cursor.clampLimit(query.limit)
+        let offset = Cursor.offset(from: query.cursor)
+        let (items, hasMore) = try await genrePage(name, identity, full: query.detail == "full", limit: limit, offset: offset)
+        return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
+    }
+
+    private func genrePage(_ genre: String, _ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
+        let records = try await catalog.itemsByGenre(genre: genre, limit: limit + 1, offset: offset)
+        return try await page(records, identity, full: full, limit: limit)
+    }
+
+    /// A configured **release-decade** row: top items released in the decade that
+    /// begins at `start` (e.g. 1980 ⇒ 1980–1989), newest first. Cursor-paginated.
+    @Sendable
+    func decadeRow(_ request: Request, context: SphynxRequestContext) async throws -> ItemsResponse {
+        let identity = try context.requireIdentity()
+        let query = try request.uri.decodeQuery(as: RowQuery.self, context: context)
+        guard let start = query.start else {
+            throw SphynxError.badRequest("query parameter 'start' is required")
+        }
+        let limit = Cursor.clampLimit(query.limit)
+        let offset = Cursor.offset(from: query.cursor)
+        let (items, hasMore) = try await decadePage(start, identity, full: query.detail == "full", limit: limit, offset: offset)
+        return ItemsResponse(items: items, nextCursor: hasMore ? Cursor.encode(offset: offset + limit) : nil)
+    }
+
+    private func decadePage(_ start: Int, _ identity: AuthIdentity, full: Bool, limit: Int, offset: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
+        let records = try await catalog.itemsByDecade(startYear: start, limit: limit + 1, offset: offset)
+        return try await page(records, identity, full: full, limit: limit)
+    }
+
+    /// Shared paging tail for cross-library rows: take a `limit + 1` fetch,
+    /// permission-filter, project, and fold per-user state. Like `recentPage`,
+    /// `hasMore` reflects the raw fetch before the read-permission filter.
+    private func page(_ records: [ItemRecord], _ identity: AuthIdentity, full: Bool, limit: Int)
+        async throws -> (items: [Item], hasMore: Bool) {
+        let hasMore = records.count > limit
+        let slice = hasMore ? Array(records.prefix(limit)) : records
+        var items: [Item] = []
+        for record in slice where try await canRead(record, identity) {
+            items.append(record.toProtocol(full: full))
+        }
+        return (try await foldUserData(items, userId: identity.userId), hasMore)
+    }
+
+    // MARK: - Per-user home layout
+
+    /// The signed-in user's effective home layout (their saved override, or the
+    /// admin default if they haven't customized) plus whether it is customized.
+    @Sendable
+    func getHomeConfig(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        let identity = try context.requireIdentity()
+        let mine = try await homeConfig.userShelves(userId: identity.userId)
+        let effective: [HomeShelfSpec]
+        if let mine { effective = mine } else { effective = try await homeConfig.defaultShelves() }
+        return HomeConfigResponse(shelves: effective.map(HomeShelfDTO.init), customized: mine != nil)
+    }
+
+    /// Save the user's own home layout (replaces the admin default for them).
+    @Sendable
+    func putHomeConfig(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        let identity = try context.requireIdentity()
+        let body = try await request.decode(as: HomeConfigRequest.self, context: context)
+        try await homeConfig.setUserShelves(userId: identity.userId, body.shelves.map(\.spec))
+        let saved = try await homeConfig.userShelves(userId: identity.userId) ?? []
+        return HomeConfigResponse(shelves: saved.map(HomeShelfDTO.init), customized: true)
+    }
+
+    /// Reset the user's home layout back to the admin default.
+    @Sendable
+    func resetHomeConfig(_ request: Request, context: SphynxRequestContext) async throws -> HomeConfigResponse {
+        let identity = try context.requireIdentity()
+        try await homeConfig.clearUserShelves(userId: identity.userId)
+        let effective = try await homeConfig.defaultShelves()
+        return HomeConfigResponse(shelves: effective.map(HomeShelfDTO.init), customized: false)
+    }
+
+    /// Genres present in the catalog — to populate the user's row picker.
+    @Sendable
+    func genresList(_ request: Request, context: SphynxRequestContext) async throws -> GenresResponse {
+        _ = try context.requireIdentity()
+        return GenresResponse(genres: try await catalog.distinctGenres())
+    }
+
     /// Fold the user's resume position + watched/favorite/play-count onto a page.
     private func foldUserData(_ items: [Item], userId: String) async throws -> [Item] {
         let ids = items.map(\.id)
@@ -291,4 +408,57 @@ struct ContinueQuery: Codable, Sendable {
     var detail: String?
     var limit: Int?
     var cursor: String?
+}
+
+/// Query for the parameterized "see all" rows (`/home/genre`, `/home/decade`).
+struct RowQuery: Codable, Sendable {
+    var detail: String?
+    var limit: Int?
+    var cursor: String?
+    /// Genre name, for `/home/genre`.
+    var name: String?
+    /// Decade start year (e.g. 1980), for `/home/decade`.
+    var start: Int?
+}
+
+// MARK: - Home-config wire types
+
+/// One row in a home-layout payload — the wire shape of `HomeShelfSpec`.
+struct HomeShelfDTO: Codable, Sendable {
+    var id: String
+    var kind: String
+    var title: String
+    var genre: String?
+    var decade: Int?
+    var aspect: String
+    var enabled: Bool
+
+    init(_ spec: HomeShelfSpec) {
+        id = spec.id; kind = spec.kind; title = spec.title
+        genre = spec.genre; decade = spec.decade; aspect = spec.aspect; enabled = spec.enabled
+    }
+
+    /// Back to the persisted spec; `sanitized()` on the store side drops anything
+    /// malformed, so this is a straight projection.
+    var spec: HomeShelfSpec {
+        HomeShelfSpec(id: id, kind: kind, title: title,
+                      genre: genre, decade: decade, aspect: aspect, enabled: enabled)
+    }
+}
+
+/// `GET/PUT/DELETE /v1/home/config` response: the effective layout + whether the
+/// user has customized it (so the GUI can show "Reset to default" only when apt).
+struct HomeConfigResponse: Codable, Sendable, ResponseEncodable {
+    var shelves: [HomeShelfDTO]
+    var customized: Bool
+}
+
+/// `PUT /v1/home/config` body — the user's chosen rows, in order.
+struct HomeConfigRequest: Codable, Sendable {
+    var shelves: [HomeShelfDTO]
+}
+
+/// `GET /v1/home/genres` response: distinct genres present in the catalog.
+struct GenresResponse: Codable, Sendable, ResponseEncodable {
+    var genres: [String]
 }

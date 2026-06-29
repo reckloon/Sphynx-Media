@@ -82,8 +82,15 @@ struct BrowseTypesTests {
                   items: [Item(id: "it_e2", type: .episode, title: "Two")]),
             Shelf(id: "recent", title: "Recently Added", kind: .recentlyAdded, aspect: .portrait,
                   items: [Item(id: "it_m", type: .movie, title: "Heat")]),
+            Shelf(id: "genre:Action", title: "Action", kind: .genre, aspect: .portrait,
+                  items: [Item(id: "it_a", type: .movie, title: "Die Hard")]),
+            Shelf(id: "decade:1980", title: "1980s", kind: .releaseDecade, aspect: .portrait,
+                  items: [Item(id: "it_d", type: .movie, title: "Aliens")]),
         ])
         try assertRoundTrips(response)
+        // Configurable genre/decade rows are first-class kinds, not `.unknown`.
+        #expect(ShelfKind(rawValue: "genre") == .genre)
+        #expect(ShelfKind(rawValue: "releaseDecade") == .releaseDecade)
     }
 
     @Test("Continue Watching is unified: a separate Next Up kind decodes only as unknown")

@@ -418,6 +418,18 @@ struct AppDatabase: Sendable {
             try db.create(indexOn: "device_auth", columns: ["expiresAt"])
         }
 
+        migrator.registerMigration("m26_user_home_config") { db in
+            // Per-user home-screen layout (the ordered shelves a user has chosen).
+            // A row exists only once a user customizes; absent ⇒ they inherit the
+            // admin default (stored as a JSON blob under the `homeShelves` setting).
+            // `configJSON` is the encoded `[HomeShelfSpec]`.
+            try db.create(table: "userhomeconfig") { t in
+                t.column("userId", .text).primaryKey()
+                    .references("user", onDelete: .cascade)
+                t.column("configJSON", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

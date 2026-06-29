@@ -10,6 +10,25 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+### Added
+
+- **Manual collections (box sets), including for series.** Group movies or series
+  into your own collections by hand, in addition to the ones auto-discovered from
+  TMDB (TMDB has no collection data for TV, so series box sets are always manual).
+  Curate them on the **Collections** tab of the admin page, or — once granted the new
+  **Manage collections** (`collections.edit`) permission — the **Collections** panel
+  on `/user`. A manual collection obeys the same per-library minimum
+  (`collectionThreshold`) as an auto one: it surfaces as a tile only once it has
+  enough members, and below that its titles show individually. Deleting a collection
+  keeps its titles and just removes the grouping.
+
+### Changed
+
+- **The home "Recently Added" row now respects the collection minimum.** A
+  sub-threshold box set no longer appears there as a one-item tile — its member
+  titles surface individually instead, exactly as they already did when browsing the
+  library. Collection tiles are also no longer mistakenly re-enriched as movies.
+
 ### Fixed
 
 - **Episodes named `Show.5x09.mkv` are no longer misidentified as movies.** The
