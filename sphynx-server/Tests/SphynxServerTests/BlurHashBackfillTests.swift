@@ -42,11 +42,11 @@ struct BlurHashBackfillTests {
     }
 
     private func makeService(_ catalog: Catalog, _ settings: SettingsStore, _ gen: StubGenerator)
-        -> (BlurHashBackfillService, BlurHashProgress) {
-        let progress = BlurHashProgress()
+        -> (BlurHashBackfillService, BackfillProgress) {
+        let progress = BackfillProgress()
         let service = BlurHashBackfillService(
-            interval: 60, catalog: catalog, generator: gen, settings: settings,
-            progress: progress, logger: Logger(label: "test"))
+            defaultInterval: 60, catalog: catalog, generator: gen, settings: settings,
+            progress: progress, schedule: ScheduleCenter(), logger: Logger(label: "test"))
         return (service, progress)
     }
 

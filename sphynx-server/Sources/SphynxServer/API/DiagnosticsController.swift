@@ -10,6 +10,9 @@ struct DiagnosticsController: Sendable {
     let catalog: Catalog
     let diagnostics: DiagnosticsCenter
     let logStore: LogStore
+    /// Next-run schedule for the background tasks, surfaced on `/status` for the
+    /// Activity panel's "Next runs" indicator. Absent in tests that don't wire it.
+    var schedule: ScheduleCenter? = nil
 
     /// Columns never returned by the DB browser — password hashes, token hashes,
     /// stored credentials, and request headers (which may carry auth).
@@ -31,7 +34,12 @@ struct DiagnosticsController: Sendable {
     @Sendable
     func status(_ request: Request, context: SphynxRequestContext) async throws -> ActivitySnapshot {
         try requireAdmin(context)
-        return await diagnostics.snapshot()
+        var snapshot = await diagnostics.snapshot()
+        if let schedule {
+            let now = Date().timeIntervalSince1970
+            snapshot.schedule = await schedule.snapshot().map { ScheduleView($0, now: now) }
+        }
+        return snapshot
     }
 
     /// Catalog coverage for the always-visible dashboard panel: per-library and

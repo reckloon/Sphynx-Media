@@ -22,14 +22,26 @@ struct ExtensionsController: Sendable {
     let settings: SettingsStore
     /// Live progress of the low-res-images BlurHash backfill, for the status
     /// indicator. Absent in tests / when the backfill service isn't running.
-    var blurHashProgress: BlurHashProgress? = nil
+    var blurHashProgress: BackfillProgress? = nil
+    /// Live progress of the media-probe background pass.
+    var mediaProbeProgress: BackfillProgress? = nil
+    /// "Run now" triggers — kick off a one-off background pass. Absent in tests.
+    var runBlurHashNow: (@Sendable () async -> Void)? = nil
+    var runMediaProbeNow: (@Sendable () async -> Void)? = nil
 
     /// Settings keys for the media-probe extension (stored alongside runtime
     /// settings; read live so config changes apply without a restart).
     enum Key {
         static let probeEnabled = "ext.mediaProbe.enabled"
         static let probePath = "ext.mediaProbe.ffprobePath"
+        /// Background-probe cadence in seconds (fractional allowed); `<= 0`/unset ⇒
+        /// manual-only.
+        static let probeInterval = "ext.mediaProbe.intervalSeconds"
     }
+
+    /// Settings key for the low-res-images background cadence (seconds, fractional;
+    /// `<= 0` ⇒ manual-only; unset ⇒ the maintenance default).
+    static let placeholderIntervalKey = "ext.placeholders.intervalSeconds"
 
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
         let ext = group.group("admin").group("extensions")
@@ -37,8 +49,10 @@ struct ExtensionsController: Sendable {
         ext.get("media-probe", use: getProbeConfig)
         ext.patch("media-probe", use: updateProbeConfig)
         ext.get("media-probe/probe", use: probe)
+        ext.post("media-probe/run", use: runProbePass)
         ext.get("placeholders", use: getPlaceholderConfig)
         ext.patch("placeholders", use: updatePlaceholderConfig)
+        ext.post("placeholders/run", use: runPlaceholderPass)
     }
 
     // MARK: Registry
@@ -76,30 +90,43 @@ struct ExtensionsController: Sendable {
     func updatePlaceholderConfig(_ request: Request, context: SphynxRequestContext) async throws -> PlaceholderConfig {
         try requireAdmin(context)
         let body = try await request.decode(as: PlaceholderConfigUpdate.self, context: context)
+        var updates: [String: String] = [:]
         if let raw = body.mode {
             guard let mode = PlaceholderMode(rawValue: raw) else {
                 throw SphynxError.badRequest("mode must be one of: url, blurhash, off")
             }
-            try await settings.set([PlaceholderMode.settingKey: mode.rawValue])
+            updates[PlaceholderMode.settingKey] = mode.rawValue
         }
+        if let interval = body.intervalSeconds {
+            updates[Self.placeholderIntervalKey] = String(try requireInterval(interval))
+        }
+        if !updates.isEmpty { try await settings.set(updates) }
         return try await placeholderConfig()
     }
 
-    /// The current placeholder mode plus, in `blurhash` mode, the live backfill
-    /// progress that drives the Extensions tab's status indicator.
+    /// Kick off a one-off BlurHash generation pass immediately (the "Run now"
+    /// button). Returns the config with fresh progress; the pass continues in the
+    /// background. **400** if generation isn't wired (no TMDB / tests).
+    @Sendable
+    func runPlaceholderPass(_ request: Request, context: SphynxRequestContext) async throws -> PlaceholderConfig {
+        try requireAdmin(context)
+        guard let trigger = runBlurHashNow else {
+            throw SphynxError.badRequest("BlurHash generation isn't available (configure TMDB first).")
+        }
+        Task { await trigger() }
+        return try await placeholderConfig()
+    }
+
+    /// The current placeholder mode + interval plus, in `blurhash` mode, the live
+    /// backfill progress that drives the Extensions tab's status indicator.
     private func placeholderConfig() async throws -> PlaceholderConfig {
         let mode = try await PlaceholderMode.current(settings)
-        var hashing: BlurHashStatus?
+        let interval = await settings.interval(forKey: Self.placeholderIntervalKey)
+        var hashing: BackfillStatus?
         if mode == .blurhash, let snapshot = await blurHashProgress?.snapshot() {
-            hashing = BlurHashStatus(
-                running: snapshot.running,
-                total: snapshot.total,
-                done: snapshot.done,
-                lastCompletedAt: snapshot.lastCompletedAt.map {
-                    ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0))
-                })
+            hashing = BackfillStatus(snapshot)
         }
-        return PlaceholderConfig(mode: mode.rawValue, hashing: hashing)
+        return PlaceholderConfig(mode: mode.rawValue, intervalSeconds: interval, hashing: hashing)
     }
 
     // MARK: Media probe — config
@@ -117,7 +144,30 @@ struct ExtensionsController: Sendable {
         var updates: [String: String] = [:]
         if let enabled = body.enabled { updates[Key.probeEnabled] = enabled ? "true" : "false" }
         if let path = body.ffprobePath { updates[Key.probePath] = path }
+        if let interval = body.intervalSeconds {
+            updates[Key.probeInterval] = String(try requireInterval(interval))
+        }
         if !updates.isEmpty { try await settings.set(updates) }
+        return try await probeConfig()
+    }
+
+    /// Kick off a one-off background probe pass (the "Run now" button) — probes every
+    /// not-yet-probed item. **400** when the extension is disabled, ffprobe is
+    /// unavailable, or the pass isn't wired (tests).
+    @Sendable
+    func runProbePass(_ request: Request, context: SphynxRequestContext) async throws -> MediaProbeConfig {
+        try requireAdmin(context)
+        let cfg = try await probeConfig()
+        guard cfg.enabled else {
+            throw SphynxError.badRequest("The media-probe extension is disabled. Enable it in Extensions first.")
+        }
+        guard cfg.resolvedPath != nil else {
+            throw SphynxError.badRequest("ffprobe was not found. Install ffmpeg or set its path in the media-probe extension.")
+        }
+        guard let trigger = runMediaProbeNow else {
+            throw SphynxError.badRequest("The media-probe background pass isn't available.")
+        }
+        Task { await trigger() }
         return try await probeConfig()
     }
 
@@ -165,13 +215,26 @@ struct ExtensionsController: Sendable {
         let resolved = FFprobeProber.locate(configured: configuredPath)
         var version: String?
         if let resolved { version = await FFprobeProber(ffprobePath: resolved).version() }
+        let enabled = all[Key.probeEnabled] == "true"
+        let interval = all[Key.probeInterval].flatMap(Double.init)
+        var probing: BackfillStatus?
+        if enabled, let snapshot = await mediaProbeProgress?.snapshot() { probing = BackfillStatus(snapshot) }
         return MediaProbeConfig(
-            enabled: all[Key.probeEnabled] == "true",
+            enabled: enabled,
             ffprobePath: configuredPath,
             resolvedPath: resolved,
             available: resolved != nil,
-            version: version
+            version: version,
+            intervalSeconds: interval,
+            probing: probing
         )
+    }
+
+    /// Validate a background-pass interval (seconds): non-negative; `0` means
+    /// manual-only. Sub-second (fractional) values are allowed.
+    private func requireInterval(_ v: Double) throws -> Double {
+        guard v >= 0, v.isFinite else { throw SphynxError.badRequest("intervalSeconds must be ≥ 0") }
+        return v
     }
 
     private func requireAdmin(_ context: SphynxRequestContext) throws {
@@ -206,11 +269,16 @@ struct MediaProbeConfig: Codable, Sendable, ResponseEncodable {
     var resolvedPath: String?
     var available: Bool
     var version: String?
+    /// Background-probe cadence in seconds (fractional allowed); 0/absent ⇒ manual-only.
+    var intervalSeconds: Double?
+    /// Background-probe progress; present only when the extension is enabled.
+    var probing: BackfillStatus?
 }
 
 struct MediaProbeConfigUpdate: Codable, Sendable {
     var enabled: Bool?
     var ffprobePath: String?
+    var intervalSeconds: Double?
 }
 
 
@@ -221,21 +289,14 @@ struct ProbeQuery: Codable, Sendable {
 struct PlaceholderConfig: Codable, Sendable, ResponseEncodable {
     /// One of `url` | `blurhash` | `off`.
     var mode: String
+    /// Background-generation cadence in seconds (fractional allowed); 0/absent ⇒
+    /// manual-only; falls back to the maintenance interval when unset.
+    var intervalSeconds: Double?
     /// BlurHash backfill progress; present only in `blurhash` mode.
-    var hashing: BlurHashStatus?
-}
-
-/// Progress of the lazy BlurHash backfill, for the Extensions status indicator.
-/// `total`/`done` count images (every role + cast face the current/last pass set out
-/// to hash); `running` is true while a pass is in flight.
-struct BlurHashStatus: Codable, Sendable {
-    var running: Bool
-    var total: Int
-    var done: Int
-    /// RFC 3339 time the last pass finished, if one has.
-    var lastCompletedAt: String?
+    var hashing: BackfillStatus?
 }
 
 struct PlaceholderConfigUpdate: Codable, Sendable {
     var mode: String?
+    var intervalSeconds: Double?
 }

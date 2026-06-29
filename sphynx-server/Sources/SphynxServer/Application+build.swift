@@ -50,7 +50,11 @@ func buildRouter(
     settings: SettingsStore,
     homeConfig: HomeConfigStore,
     events: EventBus,
-    blurHashProgress: BlurHashProgress? = nil
+    blurHashProgress: BackfillProgress? = nil,
+    mediaProbeProgress: BackfillProgress? = nil,
+    scheduleCenter: ScheduleCenter? = nil,
+    runBlurHashNow: (@Sendable () async -> Void)? = nil,
+    runMediaProbeNow: (@Sendable () async -> Void)? = nil
 ) -> Router<SphynxRequestContext> {
     let router = Router(context: SphynxRequestContext.self)
 
@@ -115,8 +119,12 @@ func buildRouter(
                     configuration: configuration, events: events).addRoutes(to: securedV1)
     EventsController(bus: events, heartbeat: configuration.eventsHeartbeat).addRoutes(to: securedV1)
     DiagnosticsController(catalog: catalog, diagnostics: DiagnosticsCenter.shared,
-                          logStore: LogStore.shared).addRoutes(to: securedV1)
-    ExtensionsController(catalog: catalog, resolver: resolver, settings: settings, blurHashProgress: blurHashProgress).addRoutes(to: securedV1)
+                          logStore: LogStore.shared, schedule: scheduleCenter).addRoutes(to: securedV1)
+    ExtensionsController(
+        catalog: catalog, resolver: resolver, settings: settings,
+        blurHashProgress: blurHashProgress, mediaProbeProgress: mediaProbeProgress,
+        runBlurHashNow: runBlurHashNow, runMediaProbeNow: runMediaProbeNow
+    ).addRoutes(to: securedV1)
 
     return router
 }
@@ -190,11 +198,24 @@ func buildApplication(
             settings: settingsStore
         )
     }
-    // Low-res-images BlurHash backfill: shared progress (for the Extensions status
-    // indicator) plus the role-agnostic generator. The background service is wired
-    // below alongside the other maintenance services.
-    let blurHashProgress = BlurHashProgress()
+    // Shared scheduling state: each background task reports its next run here for the
+    // Activity panel's "Next runs" indicator. Plus the two extension backfills' live
+    // progress (for their Extensions-tab status indicators) and the image generator.
+    let scheduleCenter = ScheduleCenter()
+    let blurHashProgress = BackfillProgress()
+    let mediaProbeProgress = BackfillProgress()
     let blurHashGenerator = ImageBlurHashGenerator(fetcher: fetcher)
+    // The two extension backfills are constructed up front so the Extensions
+    // controller can trigger a one-off "Run now" pass even when the periodic loop
+    // isn't registered (and so the loops, registered below, share these instances).
+    let blurHashBackfill = BlurHashBackfillService(
+        defaultInterval: configuration.maintenanceInterval,
+        catalog: catalog, generator: blurHashGenerator, settings: settingsStore,
+        progress: blurHashProgress, schedule: scheduleCenter, logger: logger)
+    let mediaProbeBackfill = MediaProbeBackfillService(
+        defaultInterval: 0,  // opt-in: manual-only until an admin sets an interval
+        catalog: catalog, resolver: resolver, settings: settingsStore,
+        progress: mediaProbeProgress, schedule: scheduleCenter, logger: logger)
     if enrichment == nil {
         logger.warning("TMDB not configured — items will not be identified/enriched (set SPHYNX_TMDB_API_KEY).")
     }
@@ -223,34 +244,34 @@ func buildApplication(
         settings: settingsStore,
         homeConfig: homeConfigStore,
         events: events,
-        blurHashProgress: blurHashProgress
+        blurHashProgress: blurHashProgress,
+        mediaProbeProgress: mediaProbeProgress,
+        scheduleCenter: scheduleCenter,
+        runBlurHashNow: { await blurHashBackfill.runTracked() },
+        runMediaProbeNow: { await mediaProbeBackfill.runTracked() }
     )
 
-    // Background maintenance: TTL-refresh stale enrichment + purge old playstate.
-    // Disabled when the interval is 0 (e.g. tests / one-shot runs).
+    // Background tasks. Each reads its own interval live from settings; this gate is
+    // the master switch that keeps tests / one-shot runs loop-free.
     var services: [any Service] = []
     if configuration.maintenanceInterval > 0 {
+        // Enrichment refresh (TTL-gated) + playstate purge; interval read live.
         services.append(MaintenanceService(
-            interval: configuration.maintenanceInterval,
+            defaultInterval: configuration.maintenanceInterval,
             enrichment: enrichment,
             playstate: playstate,
             playstateRetention: configuration.playstateRetention,
+            settings: settingsStore,
+            schedule: scheduleCenter,
             logger: logger
         ))
-        // Per-source auto-refresh: re-scan each source on its own interval. Shares
-        // the maintenance gate so tests / one-shot runs stay loop-free.
+        // Per-source auto-refresh (index): re-scan each source on its own interval.
         services.append(SourceRefreshService(
-            tick: 60, catalog: catalog, indexer: indexer, logger: logger))
-        // Lazy BlurHash backfill for every image role + cast face (low-res-images
-        // extension, `blurhash` mode). Bounded concurrency so it never hammers the
-        // image CDN, and decoupled from enrichment so it never stalls it.
-        services.append(BlurHashBackfillService(
-            interval: configuration.maintenanceInterval,
-            catalog: catalog,
-            generator: blurHashGenerator,
-            settings: settingsStore,
-            progress: blurHashProgress,
-            logger: logger))
+            tick: 60, catalog: catalog, indexer: indexer, schedule: scheduleCenter, logger: logger))
+        // Lazy BlurHash backfill (low-res-images extension) and the opt-in media-probe
+        // background pass — each on its own live interval.
+        services.append(blurHashBackfill)
+        services.append(mediaProbeBackfill)
     }
 
     return Application(

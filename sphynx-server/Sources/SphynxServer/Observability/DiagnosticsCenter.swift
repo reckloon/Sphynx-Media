@@ -170,4 +170,7 @@ struct ActivitySnapshot: Codable, Sendable {
     var jobs: [JobView]        // currently active
     var recent: [JobView]      // recently finished, newest first
     var scans: [ScanView]      // recent scans, newest first
+    /// Next-run schedule for each background task (filled in by the controller from
+    /// the `ScheduleCenter`); absent when no scheduler is wired (e.g. some tests).
+    var schedule: [ScheduleView]? = nil
 }

@@ -441,7 +441,10 @@ proper "Audio: English 5.1 / Subtitles: Spanish" picker.
    audio/video/subtitle stream (codec, language, channels), any sidecar subtitle
    files, and embedded chapters.
 
-Once enabled, probed track info rides along when a player resolves a title.
+To probe your **whole library** instead of one title at a time, click **Run probe
+pass now**, or set a **background probe interval** (seconds; `0` = manual only) so
+Sphynx quietly probes not-yet-probed titles on a schedule. Once cached, probed track
+info rides along whenever a player resolves a title.
 
 ---
 
@@ -452,10 +455,11 @@ empty. **Extensions → Low-res images** picks the form Sphynx sends:
 
 - **BlurHash** *(default)* — a compact hash the app paints *instantly*, with no extra
   request, as a soft blur of the image's colors. Sphynx generates one for **every**
-  image — poster, backdrop, episode still, logo, banner, and cast faces — in a
+  photographic image — poster, backdrop, episode still, banner, and cast faces — in a
   background pass that fills in lazily without slowing enrichment, so titles gain
-  hashes over time (until then they fall back to the URL form automatically). A
-  status indicator on the module shows the pass's progress.
+  hashes over time (until then they fall back to the URL form automatically;
+  transparent logos always use the URL form). A status indicator on the module shows
+  the pass's progress, and you can set its **interval** or hit **Generate now**.
 - **Image URL** — a tiny image link the app loads and blurs. Looks like a pixelated
   thumbnail, but it's one more image request per tile.
 - **Off** — send nothing; apps just show a plain background.
@@ -469,7 +473,9 @@ with a small, fixed concurrency so it never hammers the image source. Choose
 image work; **Off** if you want no placeholder at all.
 
 Pick one and **Save** — it applies immediately. BlurHash generation then proceeds in
-the background; the module's status line shows how far along it is.
+the background; the module's status line shows how far along it is. The **Activity**
+panel's "Next runs" indicator shows when each scheduled task (enrichment refresh,
+library index, BlurHash generation, media probe) fires next.
 
 ---
 

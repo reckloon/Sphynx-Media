@@ -105,6 +105,10 @@ enum AdminWebController {
   .covbar .seg-idx { background:var(--accent); } .covbar .seg-enr { background:var(--ok); }
   .coverlegend { display:flex; gap:16px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
   .coverlegend b { color:var(--fg); font-weight:600; }
+  .schedrow { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:12px; font-size:12px; color:var(--muted); }
+  .schedrow .sched { display:flex; align-items:center; gap:6px; }
+  .schedrow .sched b { color:var(--fg); font-weight:600; }
+  .schedrow .sched .dot { width:7px; height:7px; }
   .swatch { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle; }
   .swatch.idx { background:var(--accent); } .swatch.enr { background:var(--ok); } .swatch.src { background:var(--muted); }
   details.scans { margin-top:14px; } details.scans > summary { cursor:pointer; font-size:12px; color:var(--muted); }
@@ -218,6 +222,7 @@ enum AdminWebController {
         <span class="spacer"></span>
         <span id="act-uptime"></span>
       </div>
+      <div id="act-schedule" class="schedrow" hidden></div>
       <details class="breakdown" open>
         <summary>Breakdown</summary>
         <div class="bd-cols">
@@ -629,9 +634,14 @@ enum AdminWebController {
           </div>
           <label for="mp-path">ffprobe path <span class="muted">(blank = auto-discover on PATH)</span></label>
           <input id="mp-path" placeholder="/usr/local/bin/ffprobe">
+          <label for="mp-interval">Background probe interval <span class="muted">(seconds; 0 = manual only; decimals allowed, e.g. 0.5)</span></label>
+          <input id="mp-interval" type="number" min="0" step="any" placeholder="0">
+          <p class="hint" style="margin-top:4px;">When set above 0, Sphynx probes not-yet-probed titles in the background on this cadence. Leave at 0 to only probe on demand.</p>
           <button id="mp-save">Save</button>
+          <button id="mp-run" class="secondary">Run probe pass now</button>
+          <div id="mp-status" class="hint" style="margin-top:10px;" hidden></div>
           <div class="addbox">
-            <div class="group-title">Probe a title</div>
+            <div class="group-title">Probe a single title</div>
             <label for="mp-item">Item id</label><input id="mp-item" placeholder="it_…">
             <button id="mp-probe-btn">Probe</button>
             <div id="mp-msg" class="msg"></div>
@@ -640,14 +650,17 @@ enum AdminWebController {
         </div>
 
         <div id="mod-placeholders" class="ext-mod" hidden>
-          <p class="hint" style="margin-top:0;"><strong>BlurHash</strong> (default) sends a compact hash the client paints instantly, with no extra request. Hashes are generated for <em>every</em> image — poster, backdrop, still, logo, banner, and cast faces — by a background pass that fills in lazily without slowing enrichment, so titles gain hashes over time (until then they fall back to URL). <strong>URL</strong> sends a tiny image link instead (one request per tile, looks like a thumbnail). <strong>Off</strong> sends no placeholder.</p>
+          <p class="hint" style="margin-top:0;"><strong>BlurHash</strong> (default) sends a compact hash the client paints instantly, with no extra request. Hashes are generated for <em>every</em> photographic image — poster, backdrop, still, banner, and cast faces — by a background pass that fills in lazily without slowing enrichment, so titles gain hashes over time (until then they fall back to URL; transparent logos always use the URL form). <strong>URL</strong> sends a tiny image link instead (one request per tile, looks like a thumbnail). <strong>Off</strong> sends no placeholder.</p>
           <label for="ph-mode">Low-res placeholder</label>
           <select id="ph-mode">
             <option value="blurhash">BlurHash (default)</option>
             <option value="url">Image URL</option>
             <option value="off">Off</option>
           </select>
+          <label for="ph-interval">BlurHash generation interval <span class="muted">(seconds; 0 = manual only; decimals allowed; blank = default)</span></label>
+          <input id="ph-interval" type="number" min="0" step="any" placeholder="default">
           <button id="ph-save">Save</button>
+          <button id="ph-run" class="secondary">Generate now</button>
           <div id="ph-status" class="hint" style="margin-top:10px;" hidden></div>
           <div id="ph-msg" class="msg"></div>
         </div>
@@ -725,7 +738,15 @@ enum AdminWebController {
   // Catch up instantly when the tab regains focus.
   document.addEventListener('visibilitychange', function () { if (!document.hidden && token) startDash(); });
   function fmtMs(ms) { if (ms == null) return ''; return ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's'; }
-  function fmtDur(s) { s = Math.floor(s); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + x + 's'; }
+  function fmtDur(s) {
+    if (s == null) return '';
+    // Sub-minute: keep one decimal so fractional intervals (e.g. 0.2s) never show as 0.
+    if (s < 60) { var r = Math.round(s * 10) / 10; return (Number.isInteger(r) ? r : r.toFixed(1)) + 's'; }
+    s = Math.floor(s); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + x + 's';
+  }
+  // Show a stored interval value without flooring (0.2 stays "0.2", not "0").
+  function fmtNum(n) { if (n == null) return ''; var r = Math.round(n * 1000) / 1000; return String(r); }
   var RESULT_LABELS = { enriched: 'enriched', alreadyComplete: 'already complete', skipped: 'skipped (unidentified)', failed: 'failed' };
   function jobRow(j) {
     var label = j.result ? (RESULT_LABELS[j.result] || j.result) : '';
@@ -740,6 +761,18 @@ enum AdminWebController {
       $('#act-phase').innerHTML = '<span class="dot ' + esc(s.phase) + (live ? ' pulse' : '') + '"></span> ' + s.phase.charAt(0).toUpperCase() + s.phase.slice(1);
       $('#act-uptime').textContent = 'uptime ' + fmtDur(s.uptimeSeconds) + ' · ' + s.processed + ' processed';
       $('#act-active').textContent = s.active; $('#act-queued').textContent = s.queued; $('#act-failed').textContent = s.failed;
+      // Schedule indicator: when each background task next runs.
+      var sched = s.schedule || [];
+      if (sched.length) {
+        $('#act-schedule').hidden = false;
+        $('#act-schedule').innerHTML = '<span style="color:var(--fg);font-weight:600;">Next runs:</span> ' + sched.map(function (t) {
+          var state;
+          if (t.running) state = '<span class="dot enriching pulse"></span> running now';
+          else if (t.nextRunInSeconds == null) state = 'manual only';
+          else state = 'in <b>' + fmtDur(t.nextRunInSeconds) + '</b>';
+          return '<span class="sched">' + esc(t.label) + ': ' + state + '</span>';
+        }).join('');
+      } else { $('#act-schedule').hidden = true; }
       // "In progress" lists only jobs actively being worked. Finished jobs
       // (enriched / already complete / skipped) must NOT linger here — when
       // nothing is active the list clears to the placeholder.
@@ -1583,21 +1616,52 @@ enum AdminWebController {
   }
   $('#diag-subtabs').onclick = function (e) { var b = e.target.closest('button'); if (b && b.dataset.sub) showSub(b.dataset.sub); };
 
+  // ---- shared: background-pass status line (BlurHash / media probe) ----
+  function renderBackfillStatus(el, st, opts) {
+    if (!st) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    if (st.running) {
+      var pct = st.total > 0 ? Math.floor((st.done / st.total) * 100) : 0;
+      el.innerHTML = '<strong>' + esc(opts.running) + '…</strong> ' + st.done.toLocaleString() + ' / ' +
+        st.total.toLocaleString() + ' ' + esc(opts.unit) + ' (' + pct + '%).';
+    } else if (st.lastCompletedAt) {
+      el.innerHTML = '<strong>' + esc(opts.done) + '</strong> Last pass finished ' + new Date(st.lastCompletedAt).toLocaleString() + '.';
+    } else {
+      el.textContent = opts.idle;
+    }
+  }
+
   // ---- module: media probe ----
+  var mpPollTimer = null;
   function loadProbeConfig() {
     api('/v1/admin/extensions/media-probe', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
       if (!c) return;
       $('#mp-enabled').checked = c.enabled; $('#mp-path').value = c.ffprobePath || '';
+      $('#mp-interval').value = c.intervalSeconds != null ? fmtNum(c.intervalSeconds) : '';
       var badge = c.available ? '<span class="ok-badge">' + esc(c.version || 'ffprobe found') + '</span>' : '<span class="off-badge">ffprobe not found</span>';
       $('#mp-avail').innerHTML = badge + (c.resolvedPath ? ' <span class="meta">' + esc(c.resolvedPath) + '</span>' : '');
+      renderBackfillStatus($('#mp-status'), c.probing, { running: 'Probing titles', unit: 'items', done: 'Media probe up to date.', idle: 'The background probe runs on the interval above (or "Run probe pass now").' });
+      if (mpPollTimer) { clearTimeout(mpPollTimer); mpPollTimer = null; }
+      if (c.probing && c.probing.running && !$('#mod-media-probe').hidden) { mpPollTimer = setTimeout(loadProbeConfig, 2000); }
     });
   }
   function saveProbeConfig() {
     msg('mp-msg', '');
-    api('/v1/admin/extensions/media-probe', 'PATCH', { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value }).then(function (res) {
+    var body = { enabled: $('#mp-enabled').checked, ffprobePath: $('#mp-path').value };
+    var iv = $('#mp-interval').value; if (iv !== '') body.intervalSeconds = Math.max(0, Number(iv));
+    api('/v1/admin/extensions/media-probe', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { msg('mp-msg', 'Save failed.'); return; }
       msg('mp-msg', 'Saved.', true); loadProbeConfig(); enterExtensions();
+    }).catch(function () { msg('mp-msg', 'Could not reach the server.'); });
+  }
+  function runProbePass() {
+    msg('mp-msg', '');
+    api('/v1/admin/extensions/media-probe/run', 'POST', {}).then(function (res) {
+      return res.json().then(function (b) { return { ok: res.ok, body: b }; }).catch(function () { return { ok: res.ok, body: null }; });
+    }).then(function (r) {
+      if (!r.ok) { msg('mp-msg', (r.body && r.body.error && r.body.error.message) || 'Could not start a probe pass.'); return; }
+      msg('mp-msg', 'Probe pass started.', true); loadProbeConfig();
     }).catch(function () { msg('mp-msg', 'Could not reach the server.'); });
   }
   function runProbe() {
@@ -1625,26 +1689,12 @@ enum AdminWebController {
 
   // ---- module: low-res images (placeholders) ----
   var phPollTimer = null;
-  function renderHashStatus(h) {
-    var el = $('#ph-status');
-    if (!h) { el.hidden = true; el.textContent = ''; return; }
-    el.hidden = false;
-    if (h.running) {
-      var pct = h.total > 0 ? Math.floor((h.done / h.total) * 100) : 0;
-      el.innerHTML = '<strong>Generating BlurHashes…</strong> ' + h.done.toLocaleString() + ' / ' +
-        h.total.toLocaleString() + ' images (' + pct + '%).';
-    } else if (h.lastCompletedAt) {
-      el.innerHTML = '<strong>BlurHashes up to date.</strong> Last pass finished ' +
-        new Date(h.lastCompletedAt).toLocaleString() + '. New titles fill in on the next pass.';
-    } else {
-      el.textContent = 'BlurHash generation runs in the background; progress will appear here.';
-    }
-  }
   function loadPlaceholderConfig() {
     api('/v1/admin/extensions/placeholders', 'GET').then(function (res) { if (res.status === 401) { logout(); return null; } return res.ok ? res.json() : null; }).then(function (c) {
       if (!c) return;
       $('#ph-mode').value = c.mode || 'blurhash';
-      renderHashStatus(c.hashing);
+      $('#ph-interval').value = c.intervalSeconds != null ? fmtNum(c.intervalSeconds) : '';
+      renderBackfillStatus($('#ph-status'), c.hashing, { running: 'Generating BlurHashes', unit: 'images', done: 'BlurHashes up to date.', idle: 'BlurHash generation runs in the background; progress will appear here.' });
       // Poll while a pass is in flight and the module is on screen.
       if (phPollTimer) { clearTimeout(phPollTimer); phPollTimer = null; }
       if (c.hashing && c.hashing.running && !$('#mod-placeholders').hidden) {
@@ -1654,10 +1704,21 @@ enum AdminWebController {
   }
   function savePlaceholderConfig() {
     msg('ph-msg', '');
-    api('/v1/admin/extensions/placeholders', 'PATCH', { mode: $('#ph-mode').value }).then(function (res) {
+    var body = { mode: $('#ph-mode').value };
+    var iv = $('#ph-interval').value; if (iv !== '') body.intervalSeconds = Math.max(0, Number(iv));
+    api('/v1/admin/extensions/placeholders', 'PATCH', body).then(function (res) {
       if (res.status === 401) { logout(); return; }
       if (!res.ok) { msg('ph-msg', 'Save failed.'); return; }
       msg('ph-msg', 'Saved.', true); loadPlaceholderConfig(); enterExtensions();
+    }).catch(function () { msg('ph-msg', 'Could not reach the server.'); });
+  }
+  function runPlaceholderPass() {
+    msg('ph-msg', '');
+    api('/v1/admin/extensions/placeholders/run', 'POST', {}).then(function (res) {
+      return res.json().then(function (b) { return { ok: res.ok, body: b }; }).catch(function () { return { ok: res.ok, body: null }; });
+    }).then(function (r) {
+      if (!r.ok) { msg('ph-msg', (r.body && r.body.error && r.body.error.message) || 'Could not start generation.'); return; }
+      msg('ph-msg', 'Generation started.', true); loadPlaceholderConfig();
     }).catch(function () { msg('ph-msg', 'Could not reach the server.'); });
   }
 
@@ -1668,7 +1729,9 @@ enum AdminWebController {
   $('#scan-all-btn').onclick = scanAllSources;
   $('#usr-add-btn').onclick = addUser;
   $('#mp-save').onclick = saveProbeConfig;
+  $('#mp-run').onclick = runProbePass;
   $('#ph-save').onclick = savePlaceholderConfig;
+  $('#ph-run').onclick = runPlaceholderPass;
   $('#mp-probe-btn').onclick = runProbe;
   $('#mp-item').addEventListener('keydown', function (e) { if (e.key === 'Enter') runProbe(); });
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });

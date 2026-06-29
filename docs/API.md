@@ -1759,7 +1759,20 @@ These power the web admin's activity dashboard, log viewer, and database browser
 They are server-specific (not part of the wire protocol).
 
 - **`GET /v1/admin/status`** → an activity snapshot (current parse/enrich activity
-  and recent counters).
+  and recent counters). Includes a **`schedule`** array — the next run of each
+  background task for the Activity panel's "Next runs" indicator:
+  ```json
+  "schedule": [
+    { "name": "enrich", "label": "Enrichment refresh", "intervalSeconds": 86400,
+      "running": false, "nextRunInSeconds": 5400, "lastRunSecondsAgo": 81000 },
+    { "name": "index",  "label": "Library index", "running": false, "nextRunInSeconds": 42 },
+    { "name": "blurhash", "label": "BlurHash generation", "running": true },
+    { "name": "mediaProbe", "label": "Media probe", "running": false }
+  ]
+  ```
+  Times are **relative** (so a client needn't sync clocks): `nextRunInSeconds == null`
+  ⇒ the task is manual-only (interval 0 / extension off); `running` is true while a
+  pass is in flight.
 - **`GET /v1/admin/overview`** → catalog coverage for the always-visible dashboard
   panel: items **in source** (from the last scan) vs **indexed** (in the DB) vs
   **enriched**, both as overall totals and broken down per library, per source, and
@@ -1811,13 +1824,22 @@ module per entry. Server-specific — a client never needs these.
 **Media probe** (`id: media-probe`) — inspects a title's tracks with ffmpeg's
 `ffprobe`, surfacing the language / codec / channel detail the protocol's bare
 `tracks` indices can't carry, plus sidecar subtitle files. Opt-in (disabled by
-default); shelling out only happens when enabled and `ffprobe` is found.
+default); shelling out only happens when enabled and `ffprobe` is found. It runs in
+two modes: probe a single title on demand, or — like the BlurHash backfill — a
+**background pass** that probes every not-yet-probed item on its own interval.
 
-- **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version" }`.
+- **`GET /v1/admin/extensions/media-probe`** → `{ "enabled", "ffprobePath", "resolvedPath", "available", "version", "intervalSeconds"?, "probing"? }`.
   `ffprobePath` is the admin-set path (blank ⇒ auto-discovered); `resolvedPath` is
-  the path actually in use.
-- **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"? }` →
-  the updated config. Persisted; applied live (no restart).
+  the path actually in use. `intervalSeconds` is the background-pass cadence (seconds,
+  fractional allowed; `0`/absent ⇒ **manual-only**, the default). `probing` carries
+  background-pass progress (`{ "running", "total", "done", "lastCompletedAt"? }`,
+  `total`/`done` counting items) when the extension is enabled.
+- **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"?, "intervalSeconds"? }`
+  → the updated config. Persisted; applied live (no restart). A negative
+  `intervalSeconds` is **400**.
+- **`POST /v1/admin/extensions/media-probe/run`** → kick off a one-off background
+  probe pass immediately (probes every not-yet-probed item, bounded concurrency).
+  Returns the config; **400** when the extension is disabled or `ffprobe` isn't found.
 - **`GET /v1/admin/extensions/media-probe/probe?itemId=<id>`** → resolves the item
   to its direct location (as a player would), runs `ffprobe`, and returns
   `{ "itemId", "probedURL", "prober", "formatName", "durationSeconds", "streams": [ { "index", "kind", "codec", "language", "title", "channels", "isDefault", "isForced" } ], "externalSubtitles": [ { "url", "language", "format" } ], "chapters": [ { "start", "title" } ] }`.
@@ -1825,7 +1847,8 @@ default); shelling out only happens when enabled and `ffprobe` is found.
   The result is **cached on the item**, so [`GET /v1/resolve/{id}`](#resolve) then
   serves the streams + external subtitles as its `tracks`, and the item's full
   detail carries the embedded `chapters` — all without re-probing. (TMDB has no
-  chapter data; `ffprobe -show_chapters` is the only source.)
+  chapter data; `ffprobe -show_chapters` is the only source.) The background pass
+  caches results identically, so the whole library fills in over time.
 
 **Low-res images** (`id: placeholders`) — controls the low-res `placeholder` form
 the server emits on every item's images (the blur-up stand-in a client paints
@@ -1874,13 +1897,17 @@ underlying URL placeholder regardless.
 enrichment** so a slow image fetch never stalls identification/enrich, and runs as a
 background service:
 
-- It hashes **every** image the server serves — the five item roles (`primary`,
-  `backdrop`, `thumb`, `logo`, `banner`) plus up to **30 cast faces** per item — for
-  every item type (movies, series, seasons, episodes, people).
+- It hashes every photographic image the server serves — the item roles `primary`,
+  `backdrop`, `thumb`, `banner` plus up to **30 cast faces** per item — for every
+  item type (movies, series, seasons, episodes, people). Transparent **logos** are
+  excluded (a BlurHash of a logo blurs to mud); they keep the `url` form.
 - It runs with **bounded concurrency** (≤4 image fetches in flight at once) so it
   never hammers the image CDN, and is **lazy**: each pass only hashes what's still
   missing, so it resumes across passes and quiesces once everything is hashed. Faces
   without a photo simply have nothing to fetch.
+- Its cadence is read **live** from `intervalSeconds` (seconds, fractional allowed;
+  `0` ⇒ manual-only); unset falls back to the maintenance interval. Each task's next
+  run is reported in [`GET /v1/admin/status`](#diagnostics--admin-only)'s `schedule`.
 - Hashes are persisted **without** bumping the item's `updatedAt` — a backfill is a
   progressive enhancement, not a content change, so it doesn't invalidate every
   client's cache at once. Fresh fetches serve the hash immediately; existing caches
@@ -1889,13 +1916,16 @@ background service:
 Progress is reported on the config endpoint so the admin UI can show a status
 indicator:
 
-- **`GET /v1/admin/extensions/placeholders`** → `{ "mode", "hashing"? }`. `mode` is
-  `url` | `blurhash` | `off`. In `blurhash` mode `hashing` carries
+- **`GET /v1/admin/extensions/placeholders`** → `{ "mode", "intervalSeconds"?, "hashing"? }`.
+  `mode` is `url` | `blurhash` | `off`. In `blurhash` mode `hashing` carries
   `{ "running", "total", "done", "lastCompletedAt"? }`, where `total`/`done` count
   **images** (every role + face the current/last pass set out to hash) so a client
   can render "1,234 / 1,500 (82%)".
-- **`PATCH /v1/admin/extensions/placeholders`** `{ "mode"? }` → the updated config.
-  Persisted; applied live. An unrecognised `mode` is **400**.
+- **`PATCH /v1/admin/extensions/placeholders`** `{ "mode"?, "intervalSeconds"? }` →
+  the updated config. Persisted; applied live. An unrecognised `mode` — or a negative
+  `intervalSeconds` — is **400**.
+- **`POST /v1/admin/extensions/placeholders/run`** → kick off a one-off generation
+  pass immediately ("Generate now"); returns the config with fresh progress.
 
 ---
 

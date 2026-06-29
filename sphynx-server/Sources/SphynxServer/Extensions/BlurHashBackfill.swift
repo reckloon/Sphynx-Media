@@ -2,44 +2,6 @@ import Foundation
 import Logging
 import ServiceLifecycle
 
-/// Live progress of the BlurHash backfill, for the Extensions tab's status
-/// indicator (`GET /v1/admin/extensions/placeholders`). An actor so the running
-/// backfill and the admin request can read/write it without races.
-///
-/// `total`/`done` count **images** (every role + cast face the current pass set out
-/// to hash), so a client can show "1,234 / 1,500 (82%)". They hold the last pass's
-/// figures while idle so the UI can show "complete"; `beginPass` resets them.
-actor BlurHashProgress {
-    private(set) var running = false
-    private(set) var total = 0
-    private(set) var done = 0
-    private(set) var lastCompletedAt: Double?
-
-    struct Snapshot: Sendable {
-        var running: Bool
-        var total: Int
-        var done: Int
-        var lastCompletedAt: Double?
-    }
-
-    func beginPass(total: Int) {
-        running = true
-        self.total = total
-        done = 0
-    }
-
-    func advance(by n: Int = 1) { done += n }
-
-    func endPass() {
-        running = false
-        lastCompletedAt = Date().timeIntervalSince1970
-    }
-
-    func snapshot() -> Snapshot {
-        Snapshot(running: running, total: total, done: done, lastCompletedAt: lastCompletedAt)
-    }
-}
-
 /// Lazily backfills BlurHashes for the photographic images — poster, backdrop,
 /// thumb, banner, and each cast face — for the low-res-images extension's `blurhash`
 /// mode. Transparent logos are excluded (`ItemRecord.nonBlurHashableRoles`) and keep
@@ -53,38 +15,39 @@ actor BlurHashProgress {
 /// flight against TMDB. Each pass hashes only what's still missing, so it resumes
 /// across passes and quiesces once everything is hashed.
 ///
+/// The interval is read **live** from the placeholders extension config
+/// (`ext.placeholders.intervalSeconds`, in seconds, fractional allowed): `<= 0` means
+/// manual-only (run via the Extensions tab's "Run now"); unset falls back to the
+/// maintenance interval. It registers its next run with the `ScheduleCenter` for the
+/// Activity panel's "Next runs" indicator.
+///
 /// Hashes are persisted **without** bumping `updatedAt`: a backfill is a progressive
 /// enhancement, not a content change, so it must not invalidate every client's cache
 /// at once. Fresh fetches serve the hash immediately; existing caches pick it up on
 /// their next natural refresh. Honors the per-item `placeholder` lock for the poster.
-struct BlurHashBackfillService: Service {
-    let interval: Double
+struct BlurHashBackfillService: Service, ScheduledBackfill {
+    /// Default cadence when `ext.placeholders.intervalSeconds` is unset (seconds).
+    let defaultInterval: Double
     let catalog: Catalog
     let generator: any BlurHashGenerating
     let settings: SettingsStore
-    let progress: BlurHashProgress
+    let progress: BackfillProgress
+    let schedule: ScheduleCenter
     let logger: Logger
     /// Max items hashed concurrently ⇒ max image fetches in flight against TMDB.
     /// Deliberately small so the backfill never hammers the image CDN.
     var maxConcurrentItems = 4
 
+    var task: (name: String, label: String) { ScheduledTask.blurhash }
+    var intervalKey: String { "ext.placeholders.intervalSeconds" }
+
     func run() async throws {
-        logger.info("BlurHash backfill scheduled every \(Int(interval))s (≤\(maxConcurrentItems) concurrent)")
-        // Run once shortly after start so a fresh/just-switched server fills in
-        // without waiting a whole interval, then on the regular cadence.
-        await runOnce()
-        while !Task.isCancelled {
-            do {
-                try await Task.sleep(for: .seconds(interval))
-            } catch {
-                break  // cancelled on graceful shutdown
-            }
-            await runOnce()
-        }
+        logger.info("BlurHash backfill registered (≤\(maxConcurrentItems) concurrent)")
+        await runSchedule()
     }
 
-    /// One backfill pass (also callable directly in tests). No-op unless the
-    /// extension is in `blurhash` mode.
+    /// One backfill pass (also callable directly, e.g. "Run now" / tests). No-op
+    /// unless the extension is in `blurhash` mode.
     func runOnce() async {
         guard !Task.isCancelled else { return }
         guard (try? await PlaceholderMode.current(settings)) == .blurhash else { return }
