@@ -72,7 +72,9 @@ struct URLSessionFetcher: HTTPFetching {
                 // Prefer the server's own backoff hint; else exponential with jitter.
                 let exponential = min(maxBackoff, baseBackoff * pow(2, Double(attempt - 1)))
                 let jitter = Double.random(in: 0...(exponential / 2))
-                let delay = retry.retryAfter ?? (exponential + jitter)
+                // Cap even a server-supplied Retry-After at `maxBackoff`, so a large
+                // hint can't park a worker for minutes (attempts are bounded anyway).
+                let delay = min(maxBackoff, retry.retryAfter ?? (exponential + jitter))
                 try await Task.sleep(for: .seconds(delay))
             }
         }

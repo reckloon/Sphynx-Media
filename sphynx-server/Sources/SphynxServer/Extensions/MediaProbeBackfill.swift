@@ -24,7 +24,11 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     let schedule: ScheduleCenter
     let logger: Logger
     /// Concurrent probes ⇒ concurrent `ffprobe` processes / resolves. Small on purpose.
-    var maxConcurrentItems = 2
+    var maxConcurrentItems = 4
+    /// Hard cap per item (resolve + ffprobe). A stuck remote source can't park a
+    /// worker beyond this — the item is dropped to a future pass instead of freezing
+    /// the whole backfill. Comfortably above a healthy resolve+probe.
+    var perItemTimeout: Double = 90
 
     var task: (name: String, label: String) { ScheduledTask.mediaProbe }
     var intervalKey: String { "ext.mediaProbe.intervalSeconds" }
@@ -86,19 +90,46 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     private func probe(_ item: ItemRecord, with prober: FFprobeProber) async {
         guard !Task.isCancelled else { return }
         do {
-            let descriptor = try await resolver.resolve(itemId: item.id)
-            let result = try await prober.probe(url: descriptor.url, headers: descriptor.headers, itemId: item.id)
-            var updated = item
-            let stored = StoredProbe(
-                streams: result.streams, externalSubtitles: result.externalSubtitles,
-                chapters: result.chapters, probedAt: Date().timeIntervalSince1970)
-            if let data = try? JSONEncoder().encode(stored) {
-                updated.probedTracksJSON = String(data: data, encoding: .utf8)
-                try await catalog.updateItem(updated)
+            // Bound the whole item (resolve + ffprobe). On timeout the operation task
+            // is cancelled (resolve back-off is cancellable; the ffprobe watchdog kills
+            // the process), so the worker slot is always freed.
+            try await withTimeout(perItemTimeout) {
+                let descriptor = try await resolver.resolve(itemId: item.id)
+                let result = try await prober.probe(url: descriptor.url, headers: descriptor.headers, itemId: item.id)
+                var updated = item
+                let stored = StoredProbe(
+                    streams: result.streams, externalSubtitles: result.externalSubtitles,
+                    chapters: result.chapters, probedAt: Date().timeIntervalSince1970)
+                if let data = try? JSONEncoder().encode(stored) {
+                    updated.probedTracksJSON = String(data: data, encoding: .utf8)
+                    try await catalog.updateItem(updated)
+                }
             }
+        } catch is ProbeTimedOut {
+            // Visible (not .debug): a slow/offline source is the usual reason a pass
+            // doesn't reach 100%, so surface it rather than hide it.
+            logger.info("Media-probe backfill: \(item.id) timed out after \(Int(perItemTimeout))s — left for a future pass")
         } catch {
-            logger.debug("Media-probe backfill: \(item.id) skipped: \(error)")
+            logger.info("Media-probe backfill: \(item.id) skipped: \(error)")
         }
         await progress.advance()
+    }
+}
+
+/// Raised when an operation overruns its deadline in `withTimeout`.
+private struct ProbeTimedOut: Error {}
+
+/// Run `operation`, throwing `ProbeTimedOut` (and cancelling it) if it doesn't finish
+/// within `seconds`. The loser of the race is cancelled, so a cancellation-aware
+/// operation stops promptly.
+private func withTimeout(_ seconds: Double, _ operation: @escaping @Sendable () async throws -> Void) async throws {
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(seconds))
+            throw ProbeTimedOut()
+        }
+        defer { group.cancelAll() }
+        try await group.next()
     }
 }

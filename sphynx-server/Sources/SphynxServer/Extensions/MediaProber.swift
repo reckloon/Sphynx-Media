@@ -128,14 +128,21 @@ struct FFprobeProber: MediaProber {
 
     func probe(url: String, headers: [String: String], itemId: String) async throws -> ProbeResult {
         var args = ["-v", "quiet", "-print_format", "json", "-show_streams", "-show_format", "-show_chapters"]
-        // HTTP(S) sources may need auth headers; ffprobe takes them before the input.
-        if !headers.isEmpty, url.hasPrefix("http") {
-            let blob = headers.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"
-            args += ["-headers", blob]
+        if url.hasPrefix("http") {
+            // Bound network reads so a stalled remote stream fails fast instead of
+            // hanging ffprobe forever (microseconds). Belt-and-suspenders with the
+            // ProcessRunner watchdog below.
+            args += ["-rw_timeout", "20000000"]  // 20s
+            // HTTP(S) sources may need auth headers; ffprobe takes them before the input.
+            if !headers.isEmpty {
+                let blob = headers.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"
+                args += ["-headers", blob]
+            }
         }
         args.append(Self.inputArgument(for: url))
 
-        let out = try await ProcessRunner.run(ffprobePath, args)
+        // Hard cap on the probe itself; the watchdog kills a hung ffprobe.
+        let out = try await ProcessRunner.run(ffprobePath, args, timeout: 45)
         guard out.exitCode == 0, !out.stdout.isEmpty else {
             let err = String(data: out.stderr, encoding: .utf8) ?? ""
             throw SphynxError.serverError("ffprobe failed (exit \(out.exitCode))\(err.isEmpty ? "" : ": \(err)")")

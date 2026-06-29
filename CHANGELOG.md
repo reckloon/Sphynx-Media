@@ -12,7 +12,21 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
-## [0.1.4] — 2026-06-29
+## [0.1.5] — 2026-06-29
+
+### Fixed
+
+- **Media-probe background pass no longer stalls on a slow or offline source.** With
+  only two workers and no timeout anywhere, a couple of items whose resolve or
+  `ffprobe` hung (common for remote/TorBox links) could occupy both slots forever, so
+  the probe count plateaued (e.g. "stuck at 488/939") while still reporting
+  *running*. Now: `ProcessRunner` enforces a hard timeout and kills an overrunning
+  `ffprobe`; the prober passes `-rw_timeout` so a stalled network read fails fast;
+  each item gets a **90s overall budget** (resolve + probe) after which it's dropped
+  to a future pass instead of parking a worker; a server-supplied `Retry-After` is
+  capped at the normal max back-off; background concurrency is raised 2 → 4; and a
+  skipped/timed-out item is now logged at `info` (was hidden at `debug`) so the
+  reason a pass doesn't reach 100% is visible.
 
 ### Added
 

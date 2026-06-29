@@ -108,7 +108,7 @@ struct ServerConfiguration: Sendable {
             port: env["SPHYNX_PORT"].flatMap(Int.init) ?? 9410,
             serverName: env["SPHYNX_SERVER_NAME"] ?? "Sphynx Reference Server",
             serverID: env["SPHYNX_SERVER_ID"] ?? "srv_reference",
-            version: env["SPHYNX_VERSION"] ?? "0.1.4",
+            version: env["SPHYNX_VERSION"] ?? "0.1.5",
             databasePath: env["SPHYNX_DB_PATH"] ?? "data/sphynx.sqlite",
             adminUsername: env["SPHYNX_ADMIN_USERNAME"] ?? "admin",
             // No default: an unset password makes the bootstrap generate a strong
