@@ -40,8 +40,10 @@ actor BlurHashProgress {
     }
 }
 
-/// Lazily backfills BlurHashes for **every** image — poster, backdrop, thumb, logo,
-/// banner, and each cast face — for the low-res-images extension's `blurhash` mode.
+/// Lazily backfills BlurHashes for the photographic images — poster, backdrop,
+/// thumb, banner, and each cast face — for the low-res-images extension's `blurhash`
+/// mode. Transparent logos are excluded (`ItemRecord.nonBlurHashableRoles`) and keep
+/// the URL placeholder form.
 ///
 /// Decoupled from enrichment on purpose: a slow image fetch must never stall
 /// identification/enrichment, and the work is large (up to ~5 roles + 30 faces per
@@ -196,6 +198,7 @@ private struct ItemHashPlan {
         let placeholderLocked = item.lockedFields().contains(LockableField.placeholder)
         var roles: [String: String] = [:]
         for (role, url) in item.placeholderSourceURLs() where existing[role] == nil {
+            if ItemRecord.nonBlurHashableRoles.contains(role) { continue }  // e.g. logos — URL form only
             if role == "primary" && placeholderLocked { continue }
             roles[role] = url
         }

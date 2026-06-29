@@ -50,7 +50,7 @@ struct BlurHashBackfillTests {
         return (service, progress)
     }
 
-    @Test("hashes every image role + photo'd cast face; serving then uses the hashes")
+    @Test("hashes every hashable image role + photo'd cast face (not logos); serving then uses the hashes")
     func backfillsAllImages() async throws {
         let db = try AppDatabase.makeInMemory()
         let catalog = Catalog(db: db)
@@ -64,27 +64,31 @@ struct BlurHashBackfillTests {
 
         let item = try #require(try await catalog.item(id: seeded.id))
         let hashes = item.imageBlurHashes()
-        // Every image role with a URL got a hash, keyed by role.
+        // Every hashable image role with a URL got a hash, keyed by role.
         #expect(hashes["primary"] == "H(https://image.tmdb.org/t/p/w92/poster.jpg)")
         #expect(hashes["backdrop"] == "H(https://image.tmdb.org/t/p/w300/back.jpg)")
-        #expect(hashes["logo"] == "H(https://image.tmdb.org/t/p/w92/logo.png)")
+        // Transparent logos are deliberately excluded — they keep the URL form.
+        #expect(hashes["logo"] == nil)
         // The photo'd cast face got a hash; the photoless one stayed nil.
         let cast = try JSONDecoder().decode(
             [StoredCast].self, from: Data(try #require(item.castJSON).utf8))
         #expect(cast[0].blurHash == "H(https://image.tmdb.org/t/p/w92/keanu.jpg)")
         #expect(cast[1].blurHash == nil)
 
-        // Progress: a finished pass with done == total (3 roles + 1 face = 4).
+        // Progress: a finished pass with done == total (2 hashable roles + 1 face = 3;
+        // the logo is excluded).
         let snap = await progress.snapshot()
         #expect(snap.running == false)
-        #expect(snap.total == 4)
-        #expect(snap.done == 4)
+        #expect(snap.total == 3)
+        #expect(snap.done == 3)
         #expect(snap.lastCompletedAt != nil)
 
         // Serving in blurhash mode now uses the stored hashes for each role + face.
         let projected = item.toProtocol(full: true, placeholderMode: .blurhash)
         #expect(projected.placeholder == .blurHash(hashes["primary"]!))
         #expect(projected.images?.variants?["backdrop"]?.placeholder == .blurHash(hashes["backdrop"]!))
+        // Logo is never a BlurHash — it serves the plain URL form even in blurhash mode.
+        #expect(projected.images?.variants?["logo"]?.placeholder == .url("https://image.tmdb.org/t/p/w92/logo.png"))
         #expect(projected.cast?.first?.placeholder == .blurHash(cast[0].blurHash!))
         #expect(projected.cast?.last?.placeholder == nil)  // photoless ⇒ nothing to serve
     }
@@ -121,8 +125,8 @@ struct BlurHashBackfillTests {
         let firstCount = await gen.urls().count
         await service.runOnce()
         let secondCount = await gen.urls().count
-        #expect(firstCount == 4)
-        #expect(secondCount == 4)  // nothing left to hash ⇒ no further fetches
+        #expect(firstCount == 3)   // primary + backdrop + 1 cast face (logo excluded)
+        #expect(secondCount == 3)  // nothing left to hash ⇒ no further fetches
     }
 
     @Test("no generation unless the mode is blurhash")

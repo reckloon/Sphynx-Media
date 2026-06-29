@@ -59,7 +59,7 @@ struct ExtensionsController: Sendable {
                 kind: "optional", enabled: cfg.enabled, available: cfg.available, configurable: true),
             ExtensionInfo(
                 id: "placeholders", name: "Low-res images",
-                description: "How tiles blur up before artwork loads: a tiny image URL, a generated BlurHash, or off. BlurHashes are generated for every image (poster, backdrop, still, logo, banner, cast faces) by a lazy background pass.",
+                description: "How tiles blur up before artwork loads: a tiny image URL, a generated BlurHash, or off. BlurHashes are generated for every image (poster, backdrop, still, banner, cast faces) by a lazy background pass. Transparent logos always use the URL form.",
                 kind: "optional", enabled: placeholderMode != .off, available: true, configurable: true),
         ])
     }
