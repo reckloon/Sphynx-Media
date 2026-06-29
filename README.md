@@ -554,3 +554,8 @@ how to extend it all live in the
 ## License
 
 [MIT](LICENSE) — free to use, change, and share.
+
+Third-party components (its Swift dependencies, and the `ffmpeg`/`ffprobe` bundled
+in the Docker image for the media-probe extension) keep their own licenses — see
+**[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)**. Sphynx invokes `ffprobe` as a
+separate process, so its GPL terms don't extend to Sphynx's MIT code.

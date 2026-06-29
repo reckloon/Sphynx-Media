@@ -38,6 +38,14 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   button only appears when the browser supports WebAuthn, and falls back cleanly when
   passkeys aren't enabled on the server.
 
+### Documentation
+
+- Added **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)** — the licenses of the
+  Swift dependencies (all permissive: Apache-2.0 / MIT / Unlicense) and of the
+  `ffmpeg`/`ffprobe` bundled in the Docker image. Notes that `ffprobe` is invoked
+  as a separate process, so its GPL terms are mere aggregation and don't extend to
+  Sphynx's MIT code; points to the in-image `copyright` and upstream source.
+
 ## [0.1.2] — 2026-06-29
 
 ### Added
