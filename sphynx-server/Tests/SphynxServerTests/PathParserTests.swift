@@ -196,6 +196,15 @@ struct PathParserTests {
         #expect(p == .episode(series: "The Boys", season: 1, episode: 1, episodeTitle: nil, year: nil))
     }
 
+    @Test("a dotted single-digit NxNN marker isn't eaten as a file extension")
+    func dottedSingleDigitNxNNMarker() {
+        // `.5x09` is 4 chars with an `x`, so the extension stripper used to eat it,
+        // dropping the marker and misparsing the episode as a movie. The episode
+        // must survive (regression: only `12x09`-style two-digit forms worked).
+        let p = PathParser.parse("Plush Estuary/Season 5/Plush Estuary.5x09.mkv")
+        #expect(p == .episode(series: "Plush Estuary", season: 5, episode: 9, episodeTitle: nil, year: nil))
+    }
+
     @Test("an embedded 'Season N' folder with loose 'Episode N' is detected")
     func embeddedSeasonFolderLooseEpisode() {
         let p = PathParser.parse("Scooby-Doo! Mystery Incorporated Complete Season 1 (2010-11)/Episode 1 Beware the Beast from Below.mp4.strm")

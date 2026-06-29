@@ -12,6 +12,16 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ### Fixed
 
+- **Episodes named `Show.5x09.mkv` are no longer misidentified as movies.** The
+  extension stripper treated a trailing `NxNN` token (`.5x09`) as a second file
+  extension — it's short, alphanumeric, and contains an `x` — so it was dropped,
+  the season/episode marker vanished, and the file fell through to movie parsing.
+  Two-digit forms (`.12x09`) happened to survive on length alone. A `\d+x\d+`
+  token is now never stripped as an extension. Also, a yearless scene release
+  (`Lunar.Monolith.2160p.REMUX.TrueHD.Atmos-YTS.mkv`) no longer leaks the release
+  group into the title: with no year to bound the title, it is cut at the first
+  release-junk token instead of merely filtering junk tokens out.
+
 - **Title matching no longer loses to longer, padded titles.** The candidate
   ranker stripped `&` entirely (rather than reading it as "and") and gave a longer
   title that merely *contained* the query the same weight as an exact hit — so

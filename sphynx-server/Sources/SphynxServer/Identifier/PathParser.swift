@@ -501,6 +501,10 @@ enum PathParser {
             let looksLikeExt = (1...4).contains(ext.count)
                 && ext.allSatisfy { $0.isLetter || $0.isNumber }
                 && ext.contains(where: \.isLetter)
+                // A `NxNN` episode/resolution token (`5x09`, `1x05`) is short and
+                // contains the letter `x`, so it trips the extension heuristic — but
+                // it's an episode marker, never a file extension. Never strip it.
+                && ext.range(of: #"^\d+[xX]\d+$"#, options: .regularExpression) == nil
             if looksLikeExt { result = String(result[..<dot]) } else { break }
         }
         return result

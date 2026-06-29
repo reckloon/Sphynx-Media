@@ -25,6 +25,25 @@ struct FilenameParserTests {
         #expect(p.year == nil)
     }
 
+    @Test("a yearless scene name doesn't leak the release group into the title")
+    func yearlessReleaseGroupNotInTitle() {
+        // No year to bound the title, so the trailing group (`-YTS`) must not leak.
+        // The title is cut at the first junk token (`2160p`).
+        let p = FilenameParser.parse("Lunar Monolith.2160p.REMUX.TrueHD.Atmos-YTS.mkv")
+        #expect(p.title == "Lunar Monolith")
+        #expect(p.year == nil)
+    }
+
+    @Test("a trailing NxNN token is not stripped as a file extension")
+    func nxnnNotExtension() {
+        // `.5x09` is a 4-char alphanumeric token containing `x`, so the extension
+        // stripper used to eat it. It's an episode/resolution marker, not an
+        // extension, and must survive into the title.
+        let p = FilenameParser.parse("Foundry.5x09")
+        #expect(p.title == "Foundry 5x09")
+        #expect(p.year == nil)
+    }
+
     @Test("path components are ignored; only the filename matters")
     func pathStripped() {
         let p = FilenameParser.parse("movies/scifi/Arrival.2016.2160p.HDR.mkv")

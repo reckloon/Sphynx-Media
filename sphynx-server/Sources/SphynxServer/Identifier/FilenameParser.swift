@@ -81,8 +81,17 @@ enum FilenameParser {
         let titleTokens = yearIndex.map { Array(tokens[..<$0]) } ?? tokens
         // Drop release junk — but if that leaves nothing, the title *is* a
         // junk-vocabulary word (`Cam`, `Web`, `Cut`), so keep it unfiltered.
-        let filtered = titleTokens.filter { !isJunk($0) }
-        let kept = filtered.isEmpty ? titleTokens : filtered
+        let kept: [String]
+        if yearIndex == nil, let firstJunk = titleTokens.firstIndex(where: isJunk), firstJunk > 0 {
+            // With no year to bound the title, a trailing release-group token after
+            // the junk block (`Lunar Monolith.2160p.REMUX…-YTS` → `… YTS`) would
+            // otherwise leak in, since the group is not itself a junk token. Cut at
+            // the first junk token: in a scene name, everything after it is metadata.
+            kept = Array(titleTokens[..<firstJunk])
+        } else {
+            let filtered = titleTokens.filter { !isJunk($0) }
+            kept = filtered.isEmpty ? titleTokens : filtered
+        }
 
         let title = kept.joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return Parsed(title: title.isEmpty ? noExtension : title, year: year)
@@ -120,6 +129,10 @@ enum FilenameParser {
         let looksLikeExtension = (1...4).contains(ext.count)
             && ext.allSatisfy { $0.isLetter || $0.isNumber }
             && ext.contains(where: \.isLetter)
+            // A `NxNN` episode/resolution token (`5x09`, `1x05`) is short and
+            // contains `x`, so it trips the heuristic — but it's a marker, never a
+            // file extension. Never strip it (mirrors PathParser.stripExtensions).
+            && ext.range(of: #"^\d+[xX]\d+$"#, options: .regularExpression) == nil
         return looksLikeExtension ? String(name[..<dot]) : name
     }
 }
