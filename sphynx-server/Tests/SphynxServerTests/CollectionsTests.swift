@@ -146,6 +146,33 @@ struct CollectionsTests {
         }
     }
 
+    @Test("Recently Added honors collectionThreshold, just like the library view")
+    func recentlyAddedHonorsThreshold() async throws {
+        try await loginCreateScan { client, token, libraryId in
+            // Default threshold 2 → the 2-member saga groups. "Recently Added" shows
+            // the box-set tile, not the individual movies (matching browse).
+            let grouped: ItemsResponse = try await client.execute(
+                uri: "/v1/home/recent", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(grouped.items.contains { $0.type == .collection })
+            #expect(grouped.items.filter { $0.type == .movie }.isEmpty)
+
+            // Raise the bar above this saga's size → it ungroups, and its members now
+            // surface individually in Recently Added (no stale one-item tile).
+            _ = try await client.execute(
+                uri: "/v1/admin/libraries/\(libraryId)", method: .patch, headers: jsonHeaders(bearer: token),
+                body: try jsonBody(UpdateLibraryRequest(title: nil, kind: nil, collectionThreshold: 3))
+            ) { try $0.decoded(LibraryResponse.self) }
+
+            let ungrouped: ItemsResponse = try await client.execute(
+                uri: "/v1/home/recent", method: .get, headers: jsonHeaders(bearer: token)
+            ) { try $0.decoded() }
+            #expect(ungrouped.items.filter { $0.type == .collection }.isEmpty)
+            #expect(Set(ungrouped.items.filter { $0.type == .movie }.map(\.title))
+                == ["Glass Horizon", "Glass Horizon Reckoning"])
+        }
+    }
+
     @Test("metadata fills: logo, banner, trailers, tags, sortTitle on detail=full")
     func metadataFillsProject() async throws {
         try await loginCreateScan { client, token, libraryId in

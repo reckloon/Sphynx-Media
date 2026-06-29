@@ -12,6 +12,24 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ### Added
 
+- **Collections library (cross-library box-set view).** A library of kind
+  `collection` now actually populates: browsing it aggregates every box-set tile
+  across the server — movie and series collections alike — instead of showing
+  empty. The tiles still live in their own movie/TV library (alongside their
+  members); the Collections library is a read-through view over them, scoped to
+  the libraries you're allowed to read. Previously the kind was selectable but
+  never filled, so collections looked enriched yet the library stayed empty.
+
+- **Manual collections (box sets), including for series.** Group movies or series
+  into your own collections by hand, in addition to the ones auto-discovered from
+  TMDB (TMDB has no collection data for TV, so series box sets are always manual).
+  Curate them on the **Collections** tab of the admin page, or — once granted the new
+  **Manage collections** (`collections.edit`) permission — the **Collections** panel
+  on `/user`. A manual collection obeys the same per-library minimum
+  (`collectionThreshold`) as an auto one: it surfaces as a tile only once it has
+  enough members, and below that its titles show individually. Deleting a collection
+  keeps its titles and just removes the grouping.
+
 - **Configurable home screen.** The home feed (`GET /v1/home`) is no longer three
   fixed rows — it is now driven by a layout of ordered shelves. Two new shelf
   kinds, `genre` and `releaseDecade`, let a row be "Action" or "the 1980s"
@@ -26,6 +44,24 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   - Genre/decade rows are paginated via `GET /v1/home/genre?name=` and
     `GET /v1/home/decade?start=`. Empty rows (a genre or decade with nothing in the
     library) are omitted automatically.
+
+- **Profile-picker sign-in on `/user`** (opt-in). A Jellyfin-style "who's
+  watching" chooser: the page shows everyone's avatar and name, you tap a face to
+  pick the account (no username typing), then enter a password or sign in with a
+  passkey. Backed by a new pre-auth endpoint `GET /v1/auth/directory` (plus
+  `…/directory/{id}/avatar` for the pictures), gated by a new `signInUserList`
+  setting — **off by default**, since it lists accounts before sign-in. Enable it
+  in **Settings → "Show a profile picker on the sign-in page"** (or seed
+  `SPHYNX_SIGN_IN_USER_LIST=true`). When off, the page falls back to manual
+  username entry exactly as before. This also wires up **passwordless passkey
+  sign-in** in the web UI (previously only passkey *enrollment* existed there).
+
+### Changed
+
+- **The home "Recently Added" row now respects the collection minimum.** A
+  sub-threshold box set no longer appears there as a one-item tile — its member
+  titles surface individually instead, exactly as they already did when browsing the
+  library. Collection tiles are also no longer mistakenly re-enriched as movies.
 
 ### Fixed
 

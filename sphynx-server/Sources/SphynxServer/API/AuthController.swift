@@ -7,6 +7,9 @@ import SphynxProtocol
 struct AuthController: Sendable {
     let auth: AuthService
     let policy: AccessPolicy
+    /// Whether the pre-auth profile chooser (`auth/directory` + its avatars) is
+    /// served. Off ⇒ both routes `404`, and no user list leaks before sign-in.
+    let signInUserList: Bool
 
     /// Public routes (no bearer token required).
     func addRoutes(to group: RouterGroup<SphynxRequestContext>) {
@@ -14,6 +17,43 @@ struct AuthController: Sendable {
         authGroup.post("login", use: login)
         authGroup.post("refresh", use: refresh)
         authGroup.post("logout", use: logout)
+        // The sign-in profile chooser (opt-in via the `signInUserList` setting):
+        // a credential-free user list and their avatars, served pre-auth so the
+        // /user page can show a "who's watching" picker.
+        authGroup.get("directory", use: directory)
+        authGroup.get("directory/:userId/avatar", use: directoryAvatar)
+    }
+
+    /// Public profile list for the sign-in chooser. **404** when the list is
+    /// disabled, so a server that opts out never enumerates its accounts.
+    @Sendable
+    func directory(_ request: Request, context: SphynxRequestContext) async throws -> UserDirectoryResponse {
+        guard signInUserList else { throw SphynxError.notFound("User directory is disabled") }
+        let users = try await auth.directory()
+        return UserDirectoryResponse(users: users.map {
+            UserDirectoryEntry(
+                username: $0.username,
+                displayName: $0.displayName,
+                avatarURL: $0.hasAvatar ? "/v1/auth/directory/\($0.id)/avatar" : nil
+            )
+        })
+    }
+
+    /// A user's avatar bytes, served pre-auth for the chooser. Gated by the same
+    /// setting as the directory; **404** when disabled or when there's no avatar.
+    @Sendable
+    func directoryAvatar(_ request: Request, context: SphynxRequestContext) async throws -> Response {
+        guard signInUserList else { throw SphynxError.notFound("User directory is disabled") }
+        guard let userId = context.parameters.get("userId") else {
+            throw SphynxError.badRequest("Missing user id")
+        }
+        guard let stored = auth.avatars.read(userId: userId) else {
+            throw SphynxError.notFound("No avatar for '\(userId)'")
+        }
+        var headers = HTTPFields()
+        headers[.contentType] = stored.contentType
+        headers[.cacheControl] = "public, max-age=300"
+        return Response(status: .ok, headers: headers, body: .init(byteBuffer: ByteBuffer(data: stored.data)))
     }
 
     /// Secured routes (require a valid bearer token).
@@ -162,4 +202,19 @@ struct AuthController: Sendable {
         try await auth.logout(refreshToken: body.refreshToken, allDevices: body.allDevices ?? false)
         return Response(status: .noContent)
     }
+}
+
+/// One profile in the sign-in chooser — never includes credentials or roles.
+struct UserDirectoryEntry: Codable, Sendable {
+    /// The login name, prefilled when a profile is picked so the username field
+    /// can be bypassed.
+    var username: String
+    var displayName: String
+    /// A pre-auth URL for the avatar bytes, or `nil` for an initial placeholder.
+    var avatarURL: String?
+}
+
+/// `GET /v1/auth/directory` response: the pickable profiles, in display order.
+struct UserDirectoryResponse: Codable, Sendable, ResponseEncodable {
+    var users: [UserDirectoryEntry]
 }

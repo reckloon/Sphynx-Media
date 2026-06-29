@@ -138,6 +138,33 @@ re-login instead of failing on first use. Both `login` and `refresh` return them
 
 **401** `unauthorized` — invalid username or password.
 
+### `GET /v1/auth/directory` — unauthenticated, **opt-in**
+
+A pre-auth list of pickable profiles, for a "who's watching" sign-in chooser
+(the `/user` page renders avatars to tap instead of typing a username). Served
+**only** when the admin enables the `signInUserList` setting — otherwise **404**,
+so a server never enumerates its accounts before sign-in. Credentials, roles, and
+admin status are never included.
+
+**200**
+```json
+{ "users": [
+  { "username": "alice", "displayName": "Alice", "avatarURL": "/v1/auth/directory/u_…/avatar" }
+] }
+```
+`avatarURL` is absent when the user has no avatar (the client shows an initial).
+Sorted by display name (case-insensitive). Picking a profile prefills `username`
+for `POST /v1/auth/login`; passwordless sign-in still goes through the discoverable
+passkey ceremony (`POST /v1/auth/passkeys/authenticate/begin`).
+
+**404** `not_found` — the directory is disabled (`signInUserList` off).
+
+### `GET /v1/auth/directory/{userId}/avatar` — unauthenticated, **opt-in**
+
+The profile picture for a chooser entry, served without a token so the picker can
+render it pre-auth. Gated by the same `signInUserList` setting. **404** when the
+directory is disabled or the user has no avatar.
+
 ### `POST /v1/auth/refresh`
 
 **Body** `{ "refreshToken": "..." }`
@@ -632,19 +659,37 @@ by collection id) a `collection`-typed item in that movie's library and links th
 movie to it via `collectionId`/`collectionTitle` **and** the generic `parentId`. The
 collection then appears at the library's top level; its members are browsed with the
 existing `GET /v1/items?parent=<collectionId>`. No new endpoint — a collection is
-just another container. Libraries may use the `boxSets`/`collection` kinds.
+just another container.
+
+**Collections library.** A library of kind `collection` holds no items of its own —
+it's a **cross-library view**. Browsing it with `GET /v1/items?parent=<collectionLibraryId>`
+aggregates every box-set tile across the server (movie and series collections alike),
+newest first, paginated like any top level. The aggregate is scoped to the libraries
+the caller may read, so a box set whose titles live in an off-limits library never
+surfaces there. Each tile still opens to its members via `?parent=<collectionId>` as
+usual. Enable it like the other server libraries (one per kind).
+
+**Manual collections.** Collections can also be curated **by hand**, in any library
+and for **series** as well as movies (TMDB has no collection data for TV, so series
+box sets are always manual). A manual collection is the same `collection`-typed item,
+just with no `tmdbId`; its members are linked exactly like auto-discovered ones, so it
+groups, browses, and obeys the threshold identically. Curated via the
+`/v1/admin/collections` endpoints (see *Admin → collections*), gated by the
+`collections.edit` permission so curation can be delegated independently of metadata
+editing. Collection tiles are never enriched/identified on their own.
 
 **Grouping threshold.** Whether a collection actually surfaces as a box-set tile is
 governed **server-side** by the owning library's `collectionThreshold` (set via the
 admin API; see *Admin → libraries*). A collection appears at the top level only when
 it has at least `collectionThreshold` present members; below that, the tile is hidden
-and its member movies are listed individually at the top level instead. The default
-is `2` (so a single owned movie isn't shown as a one-item box set); set it to `1` to
-group any non-empty collection. Raising it ungroups small box sets with no
+and its member movies/series are listed individually at the top level instead. The
+default is `2` (so a single owned title isn't shown as a one-item box set); set it to
+`1` to group any non-empty collection. Raising it ungroups small box sets with no
 re-indexing — the `collectionId`/`parentId` links are untouched, so the collection is
 still directly browsable via `?parent=<collectionId>`. Clients do nothing here: they
 render whatever the top-level browse returns. The threshold is **not** carried on the
-wire `Library` object — grouping is resolved before items are projected.
+wire `Library` object — grouping is resolved before items are projected. The same
+grouping applies to the **Recently Added** home row (`GET /v1/home/recent`).
 
 ### `GET /v1/people/{personId}/items` — auth required
 
@@ -1056,6 +1101,13 @@ A client that wants raw timestamps for its own logic can read them via
 tiles) newest first, per-user state folded in. Cursor-paginated; `detail` selects
 skeleton/full. Same `ItemsResponse` shape.
 
+Collection grouping is honored here exactly as in the per-library browse: a
+collection whose present-member count is below its owning library's
+`collectionThreshold` is hidden and its member movies/series surface individually
+instead (see *Collections / box sets*). So a small (sub-threshold) box set never
+appears as a one-item tile in Recently Added — it shows the same effective top
+level a user gets when browsing that library.
+
 ### `GET /v1/home/favorites` — auth required
 
 The caller's favourited items, most-recently-played first. Cursor-paginated; same
@@ -1170,6 +1222,7 @@ env vars only seed them on first run). **200** →
   "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "metadataLanguage": "en-US",
   "markersAccess": "readwrite", "markersStaleAfter": 604800,
   "playstateRetention": 31536000, "maintenanceInterval": 86400, "avatarMaxBytes": 2000000,
+  "signInUserList": false,
   "passkeyRelyingPartyID": "", "passkeyRelyingPartyName": "", "passkeyRelyingPartyOrigin": "" }
 ```
 
@@ -1186,6 +1239,11 @@ Update any subset of the runtime settings. **Body** e.g.
 → **200** with the full updated settings. Persisted; applies on the next restart.
 **400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
 (host, port, DB path, admin bootstrap) remain environment variables.
+
+`signInUserList` (default `false`) turns on the pre-auth profile chooser
+([`GET /v1/auth/directory`](#get-v1authdirectory--unauthenticated-opt-in)). It
+exposes the account list — display names + avatars — before sign-in, so it is
+opt-in. Seeds once from `SPHYNX_SIGN_IN_USER_LIST`. Applies on the next restart.
 
 **Passkeys** ([WebAuthn](#passkeys-webauthn)) are configured here too:
 `passkeyRelyingPartyID` is the registrable domain the server is reached at — a bare
@@ -1387,6 +1445,7 @@ forward-compatible — unknown keys are tolerated. Well-known keys:
 | `metadata.markers.write` | Contribute intro/credit markers | `PUT /v1/items/{id}/markers` |
 | `metadata.images.write` | Contribute artwork *(reserved — no wire endpoint yet; see note below)* | — |
 | `metadata.edit` | Read/edit item metadata, lock fields, **re-identify / re-enrich**, and **re-map** a title (move library / re-parent / set type & season-episode) | `GET`/`PATCH /v1/admin/items*`, `POST /v1/admin/items/{id}/identity`, `POST /v1/admin/items/{id}/enrich` |
+| `collections.edit` | Create **manual collections** (box sets) and add/remove movies or series, rename, or delete them | `GET`/`POST`/`PATCH`/`DELETE /v1/admin/collections*` |
 | `catalog.scan` | Trigger a re-scan/refresh of a source or library (not its config/credentials) | `POST /v1/admin/sources/{id}/scan`, `POST /v1/admin/libraries/{id}/scan`, `POST /v1/admin/scan` |
 
 A key may be **scoped to one library or one item** with a `:<id>` suffix, e.g.
@@ -1401,10 +1460,12 @@ admin always passes. `POST /v1/admin/scan` (whole catalog) needs the **unscoped*
 config/credentials, libraries CRUD, users, diagnostics) require the **admin role** —
 there is exactly one admin (the bootstrap account). The exceptions are delegable to
 non-admins via permissions: **item correction** (`metadata.edit`, incl. re-identify,
-re-enrich, and re-mapping placement) and **scanning** (`catalog.scan`). A user who
-holds `metadata.edit` gets a **Library correction** panel on the [`/user`](#discovery)
-page that mirrors the admin tools (browse/search, "needs metadata" filter, edit +
-lock, re-identify, re-enrich, and re-map). Re-mapping that moves an item across
+re-enrich, and re-mapping placement), **collection curation** (`collections.edit`),
+and **scanning** (`catalog.scan`). A user who holds `metadata.edit` gets a **Library
+correction** panel on the [`/user`](#discovery) page that mirrors the admin tools
+(browse/search, "needs metadata" filter, edit + lock, re-identify, re-enrich, and
+re-map); a user who holds `collections.edit` gets a **Collections** panel on the same
+page (and admins get a **Collections** tab). Re-mapping that moves an item across
 libraries needs `metadata.edit` on **both** the current and destination library.
 
 **Permission denied is a clean `403`.** A gated action the caller may not perform
@@ -1597,6 +1658,47 @@ use it to backfill new artwork roles after a server upgrade ("refresh all artwor
 episodes), then prunes any container the deletion leaves empty. **204** on success.
 An item still listed by its source reappears on the next scan — the source is the
 source of truth.
+
+### Collections — `collections.edit`
+
+Curate **manual collections** (box sets) — see *Collections / box sets*. All four
+endpoints are gated by `collections.edit`, held globally or scoped to the target
+library (`collections.edit:lib_…`); admins always pass. A collection here is the same
+`collection`-typed container browsed via `GET /v1/items?parent=<id>`, so once it
+reaches its library's `collectionThreshold` it groups like any other.
+
+#### `GET /v1/admin/collections?library=<libraryId>`
+
+List a library's collections with their members. **200** →
+```json
+{ "collections": [
+  { "id": "it_…", "title": "The Wormhole Saga", "libraryId": "lib_…",
+    "memberCount": 2, "members": [ <Item>, … ] }
+] }
+```
+
+#### `GET /v1/admin/collections/candidates?library=<libraryId>&search=<text>`
+
+The library's top-level movies/series available to add (already-nested items are
+excluded). Optional case-insensitive `search`. **200** → `{ "items": [ <Item>, … ] }`.
+
+#### `POST /v1/admin/collections`
+
+Create a collection, optionally seeding members. **Body**
+`{ "libraryId": "lib_…", "title": "The Wormhole Saga", "itemIds": ["it_…", …] }`
+(`itemIds` optional). Only top-level items of that same library are linked. **200** →
+the created collection (same shape as a `collections` list entry).
+
+#### `PATCH /v1/admin/collections/{collectionId}`
+
+Rename and/or add/remove members in one call. **Body** (any subset)
+`{ "title": "…", "addItems": ["it_…"], "removeItems": ["it_…"] }`. A rename keeps
+members' denormalized `collectionTitle` in sync. **200** → the updated collection.
+
+#### `DELETE /v1/admin/collections/{collectionId}`
+
+Delete the collection tile, **orphaning** its members back to the library's top level
+(the movies/series are kept; only the grouping is removed). **204** on success.
 
 ### Diagnostics — all `GET`, admin-only
 

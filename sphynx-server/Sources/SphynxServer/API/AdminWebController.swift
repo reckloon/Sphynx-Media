@@ -147,6 +147,10 @@ enum AdminWebController {
   .it-thumb { width:34px; height:50px; object-fit:cover; border-radius:4px; background:var(--bg); border:1px solid var(--line); flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; font-size:18px; }
   .lockrow label { display:flex; align-items:center; justify-content:space-between; }
   .lockbadge { font-size:11px; color:var(--warn); }
+  /* ---- collections ---- */
+  .col-box { border:1px solid var(--line); border-radius:10px; padding:13px; margin-bottom:12px; }
+  .col-box .bar { margin-bottom:10px; }
+  .col-cand:not(:empty) { margin-top:8px; }
   /* ---- diagnostics: database + logs ---- */
   .subtabs { display:flex; gap:6px; margin:0 0 16px; }
   .subtab { margin:0; padding:7px 14px; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:9px; font-weight:500; cursor:pointer; font:inherit; }
@@ -242,6 +246,7 @@ enum AdminWebController {
           <button class="tab active" data-tab="libraries">Libraries</button>
           <button class="tab" data-tab="users">Users</button>
           <button class="tab" data-tab="items">Items</button>
+          <button class="tab" data-tab="collections">Collections</button>
           <button class="tab" data-tab="home">Home</button>
           <button class="tab" data-tab="settings">Settings</button>
           <button class="tab" data-tab="extensions">Extensions</button>
@@ -480,6 +485,19 @@ enum AdminWebController {
         </div>
       </section>
 
+      <!-- ============ COLLECTIONS (manual box sets) ============ -->
+      <section id="tab-collections" hidden>
+        <h2>Collections</h2>
+        <p class="hint" style="margin-top:0;">Group movies or series into <strong>box sets</strong> by hand. A collection surfaces as one tile only once it reaches its library's <strong>minimum members</strong> (set per library on the Libraries tab) — smaller ones stay ungrouped, exactly like auto-discovered collections. Delete keeps the titles; it just removes the grouping.</p>
+        <div class="toolbar">
+          <select id="col-lib" style="width:auto; min-width:170px;"></select>
+          <input id="col-new" placeholder="New collection name…" style="flex:1; min-width:160px;">
+          <button id="col-create-btn" class="mini">Create collection</button>
+        </div>
+        <div id="col-list" style="margin-top:14px;"><div class="empty">Pick a library to manage its collections.</div></div>
+        <div id="col-msg" class="msg"></div>
+      </section>
+
       <!-- ============ SETTINGS ============ -->
       <!-- ============ HOME (default home-screen layout) ============ -->
       <section id="tab-home" hidden>
@@ -528,6 +546,7 @@ enum AdminWebController {
         <div class="row">
           <div><label for="accessTokenTTL">Login session length</label><input id="accessTokenTTL" type="number" min="0"><p class="hint">How long the app stays signed in before it quietly re-authenticates. e.g. 60 = 1 hour.</p></div>
           <div><label for="refreshTokenTTL">Time before sign-in is required again</label><input id="refreshTokenTTL" type="number" min="0"><p class="hint">After this, the user must type their password again. e.g. 43200 = 30 days.</p></div>
+          <div><label><input id="signInUserList" type="checkbox" style="width:auto;margin-right:8px;vertical-align:middle;">Show a profile picker on the sign-in page</label><p class="hint">Lists everyone's name &amp; picture on <code>/user</code> so people tap a face instead of typing a username (like Jellyfin). This reveals who has an account before sign-in — leave off if that's not OK. Passwords/passkeys are still required.</p></div>
         </div>
         <div class="group-title">Library &amp; upkeep</div>
         <div class="row">
@@ -655,7 +674,7 @@ enum AdminWebController {
   }
 
   // ---- tabs ----
-  var TABS = ['libraries', 'users', 'items', 'home', 'settings', 'extensions'];
+  var TABS = ['libraries', 'users', 'items', 'collections', 'home', 'settings', 'extensions'];
   var poll = null;
   function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
   function startPoll(fn, ms) { stopPoll(); fn(); poll = setInterval(fn, ms); }
@@ -665,6 +684,7 @@ enum AdminWebController {
     stopPoll();
     if (name === 'extensions') enterExtensions();
     else if (name === 'items') enterItems();
+    else if (name === 'collections') enterCollections();
     else if (name === 'home') enterHome();
   }
   Array.prototype.forEach.call(document.querySelectorAll('.tabs .tab'), function (t) {
@@ -778,7 +798,7 @@ enum AdminWebController {
       if (res.status === 401) { logout(); return null; }
       if (res.status === 403) { msg('login-msg', 'That account is not the admin.'); logout(); return null; }
       return res.ok ? res.json() : null;
-    }).then(function (s) { if (s) sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); });
+    }).then(function (s) { if (!s) return; sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); var su = $('#signInUserList'); if (su) su.checked = !!s.signInUserList; });
     loadTMDBStatus();
   }
   function loadTMDBStatus() {
@@ -794,6 +814,7 @@ enum AdminWebController {
     msg('save-msg', '');
     var body = {};
     sfields.forEach(function (f) { var el = $('#' + f); if (!el) return; body[f] = snumbers.indexOf(f) >= 0 ? Math.round(Number(el.value) * 60) : (f === 'avatarMaxBytes' ? Math.max(0, Math.round(Number(el.value))) : el.value); });
+    var su = $('#signInUserList'); if (su) body.signInUserList = su.checked;
     var tmdbKey = ($('#tmdb-key') ? $('#tmdb-key').value : '').trim();
     var tmdbSave = tmdbKey ? api('/v1/admin/tmdb', 'PATCH', { apiKey: tmdbKey }) : Promise.resolve(null);
     api('/v1/admin/settings', 'PATCH', body).then(function (res) {
@@ -978,6 +999,7 @@ enum AdminWebController {
       cb.parentNode.title = tvOn ? '' : 'Turn on the TV Shows library first';
     });
     var itLib = $('#it-lib'); if (itLib) { var cur = itLib.value; itLib.innerHTML = '<option value="">— pick —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join(''); itLib.value = cur; }
+    var colLib = $('#col-lib'); if (colLib) { var cc = colLib.value; colLib.innerHTML = '<option value="">— pick a library —</option>' + libraries.map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.title) + '</option>'; }).join(''); colLib.value = cc; }
   }
   function toggleLibrary(kind, on, id, checkbox) {
     msg('lib-msg', '');
@@ -1182,6 +1204,72 @@ enum AdminWebController {
   var itEditing = null;
   var itOriginal = {};  // loaded field values, so Save only locks what changed
   function enterItems() { refreshLibPickers(); }
+
+  // ---- collections (manual box sets) ----
+  function enterCollections() { refreshLibPickers(); }
+  function colPoster(it) {
+    return (it.images && it.images.primary)
+      ? '<img class="it-thumb" loading="lazy" src="' + esc(it.images.primary) + '" alt="">'
+      : '<span class="it-thumb">' + (it.type === 'series' ? '📺' : '🎞️') + '</span>';
+  }
+  function colMemberRow(c, m, add) {
+    return '<div class="item"><span class="it-row">' + colPoster(m) +
+      '<span><span class="chip ' + (m.type === 'series' ? 'tv' : 'movie') + '">' + esc(m.type || 'item') + '</span> ' + esc(m.title) + '</span></span>' +
+      '<span class="acts"><button class="mini ' + (add ? '' : 'danger') + '" data-col-' + (add ? 'add' : 'remove') + '="' + esc(c) + '" data-item="' + esc(m.id) + '">' + (add ? 'Add' : 'Remove') + '</button></span></div>';
+  }
+  function colLoad() {
+    var id = $('#col-lib').value;
+    if (!id) { $('#col-list').innerHTML = '<div class="empty">Pick a library to manage its collections.</div>'; return; }
+    api('/v1/admin/collections?library=' + encodeURIComponent(id), 'GET').then(function (res) { return res.ok ? res.json() : { collections: [] }; }).then(function (d) {
+      var cols = d.collections || [];
+      if (!cols.length) { $('#col-list').innerHTML = '<div class="empty">No collections yet. Name one above and click Create.</div>'; return; }
+      $('#col-list').innerHTML = cols.map(function (c) {
+        var members = (c.members || []).map(function (m) { return colMemberRow(c.id, m, false); }).join('');
+        return '<div class="col-box">' +
+          '<div class="bar"><span><strong>' + esc(c.title) + '</strong> <span class="meta">' + c.memberCount + ' item' + (c.memberCount === 1 ? '' : 's') + '</span></span>' +
+          '<span class="acts"><button class="mini secondary" data-col-rename="' + esc(c.id) + '" data-title="' + esc(c.title) + '">Rename</button>' +
+          '<button class="mini danger" data-col-delete="' + esc(c.id) + '">Delete</button></span></div>' +
+          (members || '<div class="empty">No members yet — add some below.</div>') +
+          '<div class="toolbar" style="margin-top:8px;"><input class="col-add-search" data-col="' + esc(c.id) + '" placeholder="Search movies or series to add…" style="flex:1; min-width:160px;">' +
+          '<button class="mini secondary" data-col-find="' + esc(c.id) + '">Find</button></div>' +
+          '<div class="col-cand" data-col="' + esc(c.id) + '"></div></div>';
+      }).join('');
+    });
+  }
+  function colFind(colId) {
+    var box = document.querySelector('.col-add-search[data-col="' + colId + '"]');
+    var q = box ? box.value.trim() : '', lib = $('#col-lib').value;
+    api('/v1/admin/collections/candidates?library=' + encodeURIComponent(lib) + (q ? '&search=' + encodeURIComponent(q) : ''), 'GET')
+      .then(function (res) { return res.ok ? res.json() : { items: [] }; }).then(function (d) {
+        var cand = document.querySelector('.col-cand[data-col="' + colId + '"]'); if (!cand) return;
+        var items = d.items || [];
+        cand.innerHTML = items.length ? items.map(function (m) { return colMemberRow(colId, m, true); }).join('') : '<div class="empty">No matching top-level titles.</div>';
+      });
+  }
+  function colCreate() {
+    var lib = $('#col-lib').value; if (!lib) { msg('col-msg', 'Pick a library first.'); return; }
+    var title = $('#col-new').value.trim(); if (!title) { msg('col-msg', 'Enter a collection name.'); return; }
+    api('/v1/admin/collections', 'POST', { libraryId: lib, title: title }).then(function (res) { return res.ok ? res.json() : null; }).then(function (r) {
+      if (!r) { msg('col-msg', 'Could not create the collection.'); return; }
+      $('#col-new').value = ''; msg('col-msg', 'Created.', true); colLoad();
+    }).catch(function () { msg('col-msg', 'Could not reach the server.'); });
+  }
+  $('#col-lib').onchange = function () { msg('col-msg', ''); colLoad(); };
+  $('#col-create-btn').onclick = colCreate;
+  $('#col-list').onclick = function (e) {
+    var t = e.target;
+    var del = t.getAttribute('data-col-delete');
+    if (del) { if (confirm('Delete this collection? Its movies and series stay in the library.')) api('/v1/admin/collections/' + del, 'DELETE').then(function () { msg('col-msg', 'Deleted.', true); colLoad(); }); return; }
+    var ren = t.getAttribute('data-col-rename');
+    if (ren) { var nv = prompt('Rename collection', t.getAttribute('data-title') || ''); if (nv && nv.trim()) api('/v1/admin/collections/' + ren, 'PATCH', { title: nv.trim() }).then(function () { colLoad(); }); return; }
+    var rem = t.getAttribute('data-col-remove');
+    if (rem) { api('/v1/admin/collections/' + rem, 'PATCH', { removeItems: [t.getAttribute('data-item')] }).then(function () { colLoad(); }); return; }
+    var add = t.getAttribute('data-col-add');
+    if (add) { api('/v1/admin/collections/' + add, 'PATCH', { addItems: [t.getAttribute('data-item')] }).then(function () { colLoad(); }); return; }
+    var find = t.getAttribute('data-col-find');
+    if (find) colFind(find);
+  };
+
   var EMPTY_ITEMS = '<div class="empty">Search, tick <strong>Needs metadata</strong>, or pick a library to begin.</div>';
   $('#it-lib').onchange = function () {
     itNav = []; closeEditor();

@@ -83,6 +83,12 @@ enum UserWebController {
   textarea { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; resize:vertical; }
   textarea:focus { outline:none; border-color:var(--accent); }
   select { width:100%; padding:9px 11px; background:#0a0a0a; color:var(--fg); border:1px solid var(--line); border-radius:9px; font:inherit; }
+  .picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:16px 12px; margin-top:6px; }
+  .pick { background:transparent; border:0; padding:6px; margin:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--fg); }
+  .pick .avatar { width:80px; height:80px; font-size:30px; transition:border-color .12s, transform .12s; }
+  .pick:hover .avatar, .pick:focus-visible .avatar { border-color:var(--accent); transform:translateY(-2px); }
+  .pick .pname { font-size:13px; color:var(--fg); text-align:center; max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pick:focus-visible { outline:none; }
 </style>
 </head>
 <body>
@@ -90,14 +96,30 @@ enum UserWebController {
   <div class="brand"><span class="logo">🐈‍⬛</span><h1>Sphynx</h1></div>
   <p class="tag">My account</p>
 
-  <div id="login" class="card">
-    <h2>Sign in</h2>
-    <p class="sub">Sign in to manage your profile and watch history.</p>
-    <label for="u">Username</label>
-    <input id="u" autocomplete="username" autofocus>
+  <div id="picker" class="card" hidden>
+    <h2>Who's watching?</h2>
+    <p class="sub">Pick your profile to sign in.</p>
+    <div id="picker-grid" class="picker-grid"></div>
+    <div class="row" style="margin-top:18px;">
+      <button id="picker-manual" class="secondary" style="margin-top:0;">Use a different account</button>
+    </div>
+  </div>
+
+  <div id="login" class="card" hidden>
+    <h2 id="login-title">Sign in</h2>
+    <p class="sub" id="login-sub">Sign in to manage your profile and watch history.</p>
+    <div id="login-as" class="me" hidden>
+      <span class="avatar" id="login-as-avatar"></span>
+      <div class="who"><div class="name" id="login-as-name"></div><div class="u">Not you? <a id="login-back" style="color:var(--accent);cursor:pointer;">Choose another profile</a></div></div>
+    </div>
+    <div id="u-field">
+      <label for="u">Username</label>
+      <input id="u" autocomplete="username">
+    </div>
     <label for="p">Password</label>
     <input id="p" type="password" autocomplete="current-password">
     <button id="login-btn">Sign in</button>
+    <button id="passkey-signin-btn" class="secondary" hidden>Sign in with a passkey</button>
     <div id="login-msg" class="msg"></div>
   </div>
 
@@ -263,6 +285,7 @@ enum UserWebController {
   var token = sessionStorage.getItem('sphynxUserToken') || '';
   var refreshToken = sessionStorage.getItem('sphynxUserRefresh') || '';
   var me = null;
+  var dirUsers = null;
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function msg(id, text, ok) { var e = $('#' + id); if (e) { e.textContent = text || ''; e.className = 'msg' + (ok ? ' ok' : ''); } }
@@ -280,8 +303,73 @@ enum UserWebController {
       .then(function (data) { if (!data) return; token = data.accessToken; refreshToken = data.refreshToken; sessionStorage.setItem('sphynxUserToken', token); sessionStorage.setItem('sphynxUserRefresh', refreshToken); enter(); })
       .catch(function () { msg('login-msg', 'Could not reach the server.'); });
   }
-  function logout() { token = ''; refreshToken = ''; sessionStorage.removeItem('sphynxUserToken'); sessionStorage.removeItem('sphynxUserRefresh'); $('#app').hidden = true; $('#login').hidden = false; }
-  function enter() { $('#login').hidden = true; $('#app').hidden = false; loadMe(); }
+  function logout() { token = ''; refreshToken = ''; sessionStorage.removeItem('sphynxUserToken'); sessionStorage.removeItem('sphynxUserRefresh'); $('#app').hidden = true; msg('login-msg', ''); $('#p').value = ''; loadDirectory(); }
+  function enter() { $('#picker').hidden = true; $('#login').hidden = true; $('#app').hidden = false; loadMe(); }
+
+  // ---- sign-in profile chooser (the /v1/auth/directory list; opt-in server-side) ----
+  function showLogin() { $('#picker').hidden = true; $('#login').hidden = false; }
+  function loadDirectory() {
+    fetch('/v1/auth/directory').then(function (res) { return res.ok ? res.json() : null; }).then(function (d) {
+      var users = (d && d.users) || [];
+      dirUsers = users.length ? users : null;
+      if (dirUsers) { renderPicker(dirUsers); $('#login').hidden = true; $('#picker').hidden = false; }
+      else { showManual(); }
+    }).catch(showManual);
+  }
+  function renderPicker(users) {
+    $('#picker-grid').innerHTML = users.map(function (u, i) {
+      var av = u.avatarURL
+        ? '<img class="avatar" src="' + esc(u.avatarURL) + '" alt="">'
+        : '<span class="avatar">' + esc((u.displayName || u.username || '?').charAt(0).toUpperCase()) + '</span>';
+      return '<button class="pick" type="button" data-i="' + i + '">' + av + '<span class="pname">' + esc(u.displayName || u.username) + '</span></button>';
+    }).join('');
+  }
+  function selectProfile(u) {
+    msg('login-msg', '');
+    $('#u').value = u.username;
+    $('#u-field').hidden = true;
+    $('#login-as').hidden = false;
+    $('#login-as-name').textContent = u.displayName || u.username;
+    var av = $('#login-as-avatar');
+    if (u.avatarURL) { av.outerHTML = '<img class="avatar" id="login-as-avatar" src="' + esc(u.avatarURL) + '" alt="">'; }
+    else { av.outerHTML = '<span class="avatar" id="login-as-avatar">' + esc((u.displayName || '?').charAt(0).toUpperCase()) + '</span>'; }
+    $('#passkey-signin-btn').hidden = !window.PublicKeyCredential;
+    showLogin();
+    $('#p').value = ''; $('#p').focus();
+  }
+  // Manual entry: typed username (+ optional passkey). Used when the list is
+  // disabled/empty, or via "Use a different account".
+  function showManual() {
+    msg('login-msg', '');
+    $('#u-field').hidden = false; $('#login-as').hidden = true;
+    $('#u').value = '';
+    $('#passkey-signin-btn').hidden = !window.PublicKeyCredential;
+    showLogin();
+    $('#u').focus();
+  }
+  // Passwordless sign-in: the server's authenticate options are discoverable (no
+  // allowCredentials), so the platform offers whatever passkey is enrolled for
+  // this site — no username needed.
+  function signInWithPasskey() {
+    if (!window.PublicKeyCredential) { msg('login-msg', 'This browser does not support passkeys.'); return; }
+    msg('login-msg', 'Follow your device prompt…');
+    fetch('/v1/auth/passkeys/authenticate/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (res) { if (res.status === 404) { msg('login-msg', 'Passkeys aren’t enabled on this server.'); return null; } return res.ok ? res.json() : null; })
+      .then(function (opts) {
+        if (!opts) { if (!$('#login-msg').textContent) msg('login-msg', 'Could not start passkey sign-in.'); return; }
+        var pk = opts.publicKey || opts;
+        pk.challenge = b64urlToBuf(pk.challenge);
+        if (pk.allowCredentials) pk.allowCredentials = pk.allowCredentials.map(function (c) { return { id: b64urlToBuf(c.id), type: c.type, transports: c.transports }; });
+        return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
+          var r = cred.response;
+          var body = { challengeId: opts.challengeId, credential: { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+            response: { clientDataJSON: bufToB64url(r.clientDataJSON), authenticatorData: bufToB64url(r.authenticatorData), signature: bufToB64url(r.signature), userHandle: r.userHandle ? bufToB64url(r.userHandle) : null } } };
+          return fetch('/v1/auth/passkeys/authenticate/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (rr) { if (!rr.ok) { msg('login-msg', 'Passkey sign-in failed.'); return null; } return rr.json(); })
+            .then(function (data) { if (!data) return; token = data.accessToken; refreshToken = data.refreshToken; sessionStorage.setItem('sphynxUserToken', token); sessionStorage.setItem('sphynxUserRefresh', refreshToken); enter(); });
+        });
+      }).catch(function () { msg('login-msg', 'Passkey sign-in was cancelled or failed.'); });
+  }
 
   function renderAvatar() {
     var el = $('#avatar');
@@ -662,6 +750,10 @@ enum UserWebController {
   }
 
   $('#login-btn').onclick = login;
+  $('#picker-grid').onclick = function (e) { var b = e.target.closest ? e.target.closest('[data-i]') : null; if (!b) return; selectProfile(dirUsers[Number(b.getAttribute('data-i'))]); };
+  $('#picker-manual').onclick = showManual;
+  $('#login-back').onclick = function () { msg('login-msg', ''); if (dirUsers) loadDirectory(); };
+  $('#passkey-signin-btn').onclick = signInWithPasskey;
   $('#logout-btn').onclick = logout;
   $('#save-name-btn').onclick = saveName;
   $('#upload-btn').onclick = uploadAvatar;
@@ -671,7 +763,7 @@ enum UserWebController {
   $('#logout-all-btn').onclick = logoutEverywhere;
   $('#pk-add-btn').onclick = addPasskey;
   $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
-  if (token) enter();
+  if (token) enter(); else loadDirectory();
 </script>
 </body>
 </html>

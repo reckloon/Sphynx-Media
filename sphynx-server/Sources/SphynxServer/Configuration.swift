@@ -61,6 +61,14 @@ struct ServerConfiguration: Sendable {
     /// before the image is stored. Runtime-tunable via Settings. Default 2 MB.
     var avatarMaxBytes: Int = 2_000_000
 
+    /// Whether the public sign-in page (`/user`) may list user profiles — display
+    /// name + avatar — so people pick a face instead of typing a username (a
+    /// Jellyfin-style chooser). When `false` the `/v1/auth/directory` endpoint
+    /// `404`s and the page falls back to manual username entry. This intentionally
+    /// exposes *who has an account* on the server pre-auth, so it is **off by
+    /// default** and opt-in. Runtime-tunable via Settings.
+    var signInUserList: Bool = false
+
     /// Preferred client playback-report cadence advertised in `/v1/info`, seconds.
     /// Default 5. Push-only: clients SHOULD report progress this often; the server
     /// never polls.
@@ -116,6 +124,7 @@ struct ServerConfiguration: Sendable {
             playstateRetention: env["SPHYNX_PLAYSTATE_RETENTION"].flatMap(Double.init) ?? 31_536_000, // 365 days
             maintenanceInterval: env["SPHYNX_MAINTENANCE_INTERVAL"].flatMap(Double.init) ?? 86_400,   // 1 day
             avatarMaxBytes: env["SPHYNX_AVATAR_MAX_BYTES"].flatMap(Int.init) ?? 2_000_000,            // 2 MB
+            signInUserList: env["SPHYNX_SIGN_IN_USER_LIST"].map { $0 == "true" || $0 == "1" } ?? false,
             playstateReportInterval: env["SPHYNX_PLAYSTATE_REPORT_INTERVAL"].flatMap(Double.init) ?? 5,
             eventsHeartbeat: env["SPHYNX_EVENTS_HEARTBEAT"].flatMap(Double.init) ?? 15,
             passkeyRelyingPartyID: env["SPHYNX_PASSKEY_RP_ID"] ?? "",
