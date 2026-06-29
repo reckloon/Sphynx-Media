@@ -546,6 +546,7 @@ enum AdminWebController {
         <div class="row">
           <div><label for="accessTokenTTL">Login session length</label><input id="accessTokenTTL" type="number" min="0"><p class="hint">How long the app stays signed in before it quietly re-authenticates. e.g. 60 = 1 hour.</p></div>
           <div><label for="refreshTokenTTL">Time before sign-in is required again</label><input id="refreshTokenTTL" type="number" min="0"><p class="hint">After this, the user must type their password again. e.g. 43200 = 30 days.</p></div>
+          <div><label><input id="signInUserList" type="checkbox" style="width:auto;margin-right:8px;vertical-align:middle;">Show a profile picker on the sign-in page</label><p class="hint">Lists everyone's name &amp; picture on <code>/user</code> so people tap a face instead of typing a username (like Jellyfin). This reveals who has an account before sign-in — leave off if that's not OK. Passwords/passkeys are still required.</p></div>
         </div>
         <div class="group-title">Library &amp; upkeep</div>
         <div class="row">
@@ -797,7 +798,7 @@ enum AdminWebController {
       if (res.status === 401) { logout(); return null; }
       if (res.status === 403) { msg('login-msg', 'That account is not the admin.'); logout(); return null; }
       return res.ok ? res.json() : null;
-    }).then(function (s) { if (s) sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); });
+    }).then(function (s) { if (!s) return; sfields.forEach(function (f) { var el = $('#' + f); if (el && s[f] != null) el.value = snumbers.indexOf(f) >= 0 ? Math.round(Number(s[f]) / 60) : s[f]; }); var su = $('#signInUserList'); if (su) su.checked = !!s.signInUserList; });
     loadTMDBStatus();
   }
   function loadTMDBStatus() {
@@ -813,6 +814,7 @@ enum AdminWebController {
     msg('save-msg', '');
     var body = {};
     sfields.forEach(function (f) { var el = $('#' + f); if (!el) return; body[f] = snumbers.indexOf(f) >= 0 ? Math.round(Number(el.value) * 60) : (f === 'avatarMaxBytes' ? Math.max(0, Math.round(Number(el.value))) : el.value); });
+    var su = $('#signInUserList'); if (su) body.signInUserList = su.checked;
     var tmdbKey = ($('#tmdb-key') ? $('#tmdb-key').value : '').trim();
     var tmdbSave = tmdbKey ? api('/v1/admin/tmdb', 'PATCH', { apiKey: tmdbKey }) : Promise.resolve(null);
     api('/v1/admin/settings', 'PATCH', body).then(function (res) {

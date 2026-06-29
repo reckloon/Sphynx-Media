@@ -9,6 +9,14 @@ import SphynxProtocol
 ///   on every use (the old one is invalidated).
 /// - Sessions are **device-scoped**, so one device can be revoked alone.
 /// - Per-user data is row-scoped to the token subject.
+/// A public, credential-free profile entry for the sign-in chooser.
+struct DirectoryUser: Sendable {
+    let id: String
+    let username: String
+    let displayName: String
+    let hasAvatar: Bool
+}
+
 struct AuthService: Sendable {
     let db: AppDatabase
     let hasher: PasswordHasher
@@ -74,6 +82,17 @@ struct AuthService: Sendable {
             throw SphynxError.unauthorized("Invalid username or password")
         }
         return try await issueSession(for: user, deviceId: deviceId)
+    }
+
+    /// A minimal public profile listing for the sign-in chooser: every account's
+    /// id, username, display name, and whether it has an avatar — and nothing else
+    /// (no credentials, permissions, or admin flag). Sorted for a stable display
+    /// order. The caller decides whether exposing this pre-auth is allowed.
+    func directory() async throws -> [DirectoryUser] {
+        let users = try await db.writer.read { db in try UserRecord.fetchAll(db) }
+        return users
+            .map { DirectoryUser(id: $0.id, username: $0.username, displayName: $0.displayName, hasAvatar: $0.avatarURL != nil) }
+            .sorted { ($0.displayName.lowercased(), $0.username) < ($1.displayName.lowercased(), $1.username) }
     }
 
     /// Rotate a refresh token: validate it, issue a brand-new pair, invalidate

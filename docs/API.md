@@ -133,6 +133,33 @@ re-login instead of failing on first use. Both `login` and `refresh` return them
 
 **401** `unauthorized` — invalid username or password.
 
+### `GET /v1/auth/directory` — unauthenticated, **opt-in**
+
+A pre-auth list of pickable profiles, for a "who's watching" sign-in chooser
+(the `/user` page renders avatars to tap instead of typing a username). Served
+**only** when the admin enables the `signInUserList` setting — otherwise **404**,
+so a server never enumerates its accounts before sign-in. Credentials, roles, and
+admin status are never included.
+
+**200**
+```json
+{ "users": [
+  { "username": "alice", "displayName": "Alice", "avatarURL": "/v1/auth/directory/u_…/avatar" }
+] }
+```
+`avatarURL` is absent when the user has no avatar (the client shows an initial).
+Sorted by display name (case-insensitive). Picking a profile prefills `username`
+for `POST /v1/auth/login`; passwordless sign-in still goes through the discoverable
+passkey ceremony (`POST /v1/auth/passkeys/authenticate/begin`).
+
+**404** `not_found` — the directory is disabled (`signInUserList` off).
+
+### `GET /v1/auth/directory/{userId}/avatar` — unauthenticated, **opt-in**
+
+The profile picture for a chooser entry, served without a token so the picker can
+render it pre-auth. Gated by the same `signInUserList` setting. **404** when the
+directory is disabled or the user has no avatar.
+
 ### `POST /v1/auth/refresh`
 
 **Body** `{ "refreshToken": "..." }`
@@ -1092,6 +1119,7 @@ env vars only seed them on first run). **200** →
   "refreshTokenTTL": 2592000, "enrichmentTTL": 7776000, "metadataLanguage": "en-US",
   "markersAccess": "readwrite", "markersStaleAfter": 604800,
   "playstateRetention": 31536000, "maintenanceInterval": 86400, "avatarMaxBytes": 2000000,
+  "signInUserList": false,
   "passkeyRelyingPartyID": "", "passkeyRelyingPartyName": "", "passkeyRelyingPartyOrigin": "" }
 ```
 
@@ -1108,6 +1136,11 @@ Update any subset of the runtime settings. **Body** e.g.
 → **200** with the full updated settings. Persisted; applies on the next restart.
 **400** if `markersAccess` isn't `none`/`read`/`readwrite`. Startup/secret values
 (host, port, DB path, admin bootstrap) remain environment variables.
+
+`signInUserList` (default `false`) turns on the pre-auth profile chooser
+([`GET /v1/auth/directory`](#get-v1authdirectory--unauthenticated-opt-in)). It
+exposes the account list — display names + avatars — before sign-in, so it is
+opt-in. Seeds once from `SPHYNX_SIGN_IN_USER_LIST`. Applies on the next restart.
 
 **Passkeys** ([WebAuthn](#passkeys-webauthn)) are configured here too:
 `passkeyRelyingPartyID` is the registrable domain the server is reached at — a bare
