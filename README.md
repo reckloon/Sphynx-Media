@@ -10,14 +10,6 @@
 
 ---
 
-## Screenshots
-
-| Sexy Library View | Continue Watching : Home Row Support |
-| :---: | :---: |
-| ![Sexy Library View](screenshots/sexy-library-view.png) | ![Continue Watching : Home Row Support](screenshots/continue-watching-home-row-support.png) |
-
----
-
 ## What is Sphynx?
 
 Sphynx keeps the **catalog** of your movies and shows — the posters, descriptions,
