@@ -27,6 +27,23 @@ struct OfficialRatingTests {
         #expect(TMDBHTTPClient.movieCertification(from: results) == "R")
     }
 
+    @Test("logo picker prefers a raster (PNG) logo over an SVG that TMDB lists first")
+    func logoPrefersRaster() {
+        // TMDB's vote order can put a vector logo first (e.g. Maniac); SVG renders blank
+        // on raster-only clients, so the PNG must win.
+        let logos = [
+            RawImage(file_path: "/vector.svg"),
+            RawImage(file_path: "/raster.png"),
+        ]
+        #expect(TMDBHTTPClient.logoPath(from: logos) == "/raster.png")
+        // All-SVG ⇒ fall back to the first rather than dropping the logo entirely.
+        #expect(TMDBHTTPClient.logoPath(from: [RawImage(file_path: "/only.svg")]) == "/only.svg")
+        // PNG already first ⇒ unchanged; empty/nil ⇒ nil.
+        #expect(TMDBHTTPClient.logoPath(from: [RawImage(file_path: "/a.png"), RawImage(file_path: "/b.svg")]) == "/a.png")
+        #expect(TMDBHTTPClient.logoPath(from: []) == nil)
+        #expect(TMDBHTTPClient.logoPath(from: nil) == nil)
+    }
+
     @Test("tv rating picks the country's content rating")
     func tvRating() {
         let results = [

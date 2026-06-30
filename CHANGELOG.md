@@ -16,6 +16,12 @@ _Nothing yet._
 
 ### Fixed
 
+- **Title logos that TMDB only lists as SVG now resolve to a PNG.** TMDB orders a
+  title's logos by vote, and the top entry is sometimes a vector `.svg` (e.g. *Maniac*),
+  which raster-only clients can't render — so the logo came up blank. Enrichment now
+  prefers the first non-SVG (PNG/JPG) logo, falling back to SVG only when that's all
+  TMDB has. Existing items keep their stored logo until re-enriched (use **Reset
+  enrichment** or re-scan to refresh them).
 - **Media-probe backfill no longer hammers a doomed item every pass.** An item that
   fails to resolve or probe (e.g. a source that momentarily returns no URL) is now put
   in a **24-hour cooldown** and skipped until it elapses, instead of being re-attempted

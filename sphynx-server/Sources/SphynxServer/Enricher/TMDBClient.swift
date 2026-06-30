@@ -215,7 +215,7 @@ struct TMDBHTTPClient: TMDBClient {
             collection: raw.belongs_to_collection.map {
                 TMDBCollection(id: $0.id, name: $0.name, posterPath: $0.poster_path, backdropPath: $0.backdrop_path)
             },
-            logoPath: raw.images?.logos?.first?.file_path,
+            logoPath: Self.logoPath(from: raw.images?.logos),
             bannerPath: Self.bannerPath(from: raw.images?.backdrops),
             trailers: Self.trailerURLs(from: raw.videos?.results ?? []),
             tags: (raw.keywords?.keywords ?? []).map(\.name),
@@ -233,6 +233,16 @@ struct TMDBHTTPClient: TMDBClient {
         let any = rels.first { !($0.certification ?? "").isEmpty }
         let cert = (theatrical ?? any)?.certification?.trimmingCharacters(in: .whitespaces)
         return (cert?.isEmpty ?? true) ? nil : cert
+    }
+
+    /// Pick a title logo, **preferring a raster (PNG/JPG) file over an SVG**. TMDB
+    /// orders `logos` by vote, and the top entry is sometimes a `.svg` (vector) — which
+    /// many clients can't render, so the title logo comes up blank (e.g. *Maniac*). We
+    /// take the first non-SVG logo and only fall back to an SVG if that's all there is.
+    static func logoPath(from logos: [RawImage]?) -> String? {
+        guard let logos, !logos.isEmpty else { return nil }
+        let raster = logos.first { !(($0.file_path ?? "").lowercased().hasSuffix(".svg")) }
+        return (raster ?? logos.first)?.file_path
     }
 
     /// Pick a banner-ish image: a backdrop explicitly flagged wide (aspect ≥ 2.0,
@@ -302,7 +312,7 @@ struct TMDBHTTPClient: TMDBClient {
                 TMDBCastMember(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profile_path)
             },
             officialRating: Self.tvRating(from: raw.content_ratings?.results),
-            logoPath: raw.images?.logos?.first?.file_path,
+            logoPath: Self.logoPath(from: raw.images?.logos),
             bannerPath: Self.bannerPath(from: raw.images?.backdrops)
         )
     }
