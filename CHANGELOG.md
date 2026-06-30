@@ -12,6 +12,19 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.6] — 2026-06-29
+
+### Fixed
+
+- **Media-probe backfill no longer hammers a doomed item every pass.** An item that
+  fails to resolve or probe (e.g. a source that momentarily returns no URL) is now put
+  in a **24-hour cooldown** and skipped until it elapses, instead of being re-attempted
+  on every pass. Previously a short probe interval would re-resolve hundreds of
+  transiently-failing items each pass, flooding the provider with doomed requests and
+  starving the items that *could* be probed — so the backfill crawled. Cooldowns clear
+  automatically on a later success, and the pass log now reports how many items are
+  cooling down.
+
 ## [0.2.5] — 2026-06-29
 
 ### Fixed

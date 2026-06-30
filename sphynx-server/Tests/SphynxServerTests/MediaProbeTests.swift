@@ -187,6 +187,28 @@ struct MediaProbeTests {
         }
     }
 
+    @Test("failure cooldown: a failed item is skipped until the window elapses, then retried; success clears it")
+    func probeCooldownWindow() async {
+        let cd = ProbeCooldown()
+        let id = "it_fail"
+        let t0 = 1_000_000.0
+        let window = 86_400.0  // 24h
+
+        // Fresh item: not skipped.
+        #expect(await cd.shouldSkip(id, now: t0, window: window) == false)
+
+        // After a failure: skipped within the window, retried once it elapses.
+        await cd.recordFailure(id, now: t0)
+        #expect(await cd.shouldSkip(id, now: t0 + 3_600, window: window) == true)        // +1h
+        #expect(await cd.shouldSkip(id, now: t0 + window - 1, window: window) == true)   // just inside
+        #expect(await cd.shouldSkip(id, now: t0 + window, window: window) == false)      // elapsed ⇒ retry
+
+        // A success clears the cooldown immediately.
+        await cd.recordFailure(id, now: t0)
+        await cd.clearFailure(id)
+        #expect(await cd.shouldSkip(id, now: t0 + 1, window: window) == false)
+    }
+
     private func adminToken(_ client: some TestClientProtocol) async throws -> String {
         try await client.execute(
             uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),
