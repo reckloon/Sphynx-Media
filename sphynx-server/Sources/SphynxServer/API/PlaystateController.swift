@@ -72,7 +72,10 @@ struct PlaystateController: Sendable {
             try await playstate.clear(userId: userId, itemId: itemId)
             resumeAfter = 0
         case .abandoned:
-            state = try await userState.update(userId: userId, itemId: itemId, watched: false, isFavorite: nil)
+            // Stopping in the first 5% means "didn't really watch it" → reset to
+            // pristine unwatched (no watched mark, no play count, no last-played) so
+            // there's no lingering "in progress" indicator, not just a cleared resume.
+            state = try await userState.resetPlayback(userId: userId, itemId: itemId)
             try await playstate.clear(userId: userId, itemId: itemId)
             resumeAfter = 0
         case .partial:

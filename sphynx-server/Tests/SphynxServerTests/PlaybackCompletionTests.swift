@@ -106,6 +106,47 @@ struct PlaybackCompletionTests {
         }
     }
 
+    @Test("abandon resets a previously-PLAYED item to pristine — no lingering 'watching' indicator")
+    func abandonResetsPlayedItem() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { c in
+            let t = try await login(c); let lib = try await library(c, t)
+            let id = try await movie(c, t, lib, runtime: 100)
+            // A real play first: complete it → watched + playCount + lastPlayedAt set.
+            try await stop(c, t, id, at: 96)
+            var it = try await item(c, t, id)
+            #expect(it.watched == true); #expect(it.playCount == 1); #expect(it.lastPlayedAt != nil)
+            // Re-open and bail in the first 5% → must reset to COMPLETELY unwatched,
+            // not just drop the resume (which used to leave playCount/lastPlayedAt set,
+            // so the client still showed an "in progress / watching" state).
+            try await progress(c, t, id, to: 40)
+            try await stop(c, t, id, at: 3)
+            #expect(try await resume(c, t, id) == 0)
+            #expect(try await inContinue(c, t, id) == false)
+            it = try await item(c, t, id)
+            #expect(it.watched == nil)         // no watched mark
+            #expect(it.playCount == nil)       // no play count
+            #expect(it.lastPlayedAt == nil)    // no "watching" signal at all
+        }
+    }
+
+    @Test("abandon keeps an explicit favorite while resetting playback")
+    func abandonPreservesFavorite() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { c in
+            let t = try await login(c); let lib = try await library(c, t)
+            let id = try await movie(c, t, lib, runtime: 100)
+            try await stop(c, t, id, at: 96)                       // played
+            try await c.execute(uri: "/v1/items/\(id)/state", method: .put, headers: jsonHeaders(bearer: t),
+                body: try jsonBody(ItemStateUpdate(isFavorite: true))) { #expect($0.status == .ok) }
+            try await stop(c, t, id, at: 2)                        // abandon
+            let it = try await item(c, t, id)
+            #expect(it.isFavorite == true)                         // favorite kept
+            #expect(it.watched == nil)                             // playback reset
+            #expect(it.playCount == nil)
+        }
+    }
+
     @Test("a normal partial stop is unchanged: keeps resume, counts the play, stays in Continue")
     func partialStop() async throws {
         let app = try await buildApplication(configuration: testConfiguration())

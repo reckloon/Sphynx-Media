@@ -41,6 +41,29 @@ struct UserStateService: Sendable {
         }
     }
 
+    /// Reset the **playback** state of an item to pristine — not watched, no plays,
+    /// no last-played — so it reads as *completely unwatched* with no "in progress" /
+    /// "watching" signal (e.g. a stop in the first few percent). The user's explicit
+    /// choices (favorite, rating) are preserved; if nothing meaningful is left, the
+    /// row is dropped entirely. Returns the resulting state.
+    @discardableResult
+    func resetPlayback(userId: String, itemId: String) async throws -> UserStateRecord {
+        try await db.writer.write { db in
+            guard var record = try Self.fetch(db, userId: userId, itemId: itemId) else {
+                return UserStateRecord.empty(userId: userId, itemId: itemId)   // already pristine
+            }
+            record.watched = false
+            record.playCount = 0
+            record.lastPlayedAt = nil
+            if !record.isFavorite, record.rating == nil {
+                try record.delete(db)
+                return UserStateRecord.empty(userId: userId, itemId: itemId)
+            }
+            try record.save(db)
+            return record
+        }
+    }
+
     /// The state for one item, or nil if nothing is recorded.
     func get(userId: String, itemId: String) async throws -> UserStateRecord? {
         try await db.writer.read { db in try Self.fetch(db, userId: userId, itemId: itemId) }

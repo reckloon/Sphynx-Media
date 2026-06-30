@@ -12,6 +12,17 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.4] — 2026-06-29
+
+### Fixed
+
+- **Stopping in the first 5% now resets an item to *completely* unwatched.** It
+  cleared the resume point but left the play count and last-played time, so a client
+  still showed an "in progress / watching" indicator on a title you'd barely opened.
+  A sub-5% stop now resets the whole playback state (not watched, no plays, no
+  last-played) — your explicit **favorite**/**rating** are kept — so it reads as
+  pristine. (Stopping past 95% still marks it fully watched + clears resume.)
+
 ## [0.2.3] — 2026-06-29
 
 ### Fixed
@@ -580,7 +591,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...v0.2.1
