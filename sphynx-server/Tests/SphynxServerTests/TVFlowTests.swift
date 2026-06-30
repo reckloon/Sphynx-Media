@@ -138,7 +138,7 @@ struct TVFlowTests {
             #expect(seriesFull.cast?.first?.role == "Mark S.")
             #expect(seriesFull.cast?.first?.imageURL == "https://image.tmdb.org/t/p/w185/adam.jpg")
             // …and its title logo (clearlogo) — series used to get none, only movies did.
-            #expect(seriesFull.images?.logo == "https://image.tmdb.org/t/p/w500/sevlogo.png")
+            #expect(seriesFull.images?.logo == "https://image.tmdb.org/t/p/original/sevlogo.png")
 
             // An episode resolves to its direct URL; a container does not.
             let descriptor: ResolveDescriptor = try await client.execute(

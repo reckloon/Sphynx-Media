@@ -91,7 +91,7 @@ struct Enricher: Sendable {
             writers: details.writers,
             countries: details.countries,
             externalIds: details.imdbId.map { ["imdb": $0] } ?? [:],
-            logoImage: TMDBImage.url(details.logoPath, size: "w500"),
+            logoImage: TMDBImage.url(details.logoPath, size: "original"),   // logos are small PNGs; serve full-res
             bannerImage: TMDBImage.url(details.bannerPath, size: "w1280"),
             trailers: details.trailers,
             tags: details.tags,

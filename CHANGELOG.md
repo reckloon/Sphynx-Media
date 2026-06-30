@@ -12,6 +12,16 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.5] — 2026-06-29
+
+### Fixed
+
+- **Title logos are now full-resolution.** They were fetched and served at TMDB's
+  `w500` (500px wide), which looks soft on large / retina / TV screens. Logos are now
+  served at `original` — done at serve time, so existing libraries get crisp logos
+  immediately without a re-enrich (a title logo is a small transparent PNG, so the
+  bandwidth cost is negligible). New enrichments also store `original`.
+
 ## [0.2.4] — 2026-06-29
 
 ### Fixed
@@ -591,7 +601,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...v0.2.2

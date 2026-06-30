@@ -559,7 +559,7 @@ You don't need any of this to *run* Sphynx, but if you're curious:
 | [`sphynx-server/`](sphynx-server) | The actual server you just ran. |
 | [`sphynx-protocol/`](sphynx-protocol) | The "language" servers and players speak — written once so the two sides can never disagree. |
 | [`docs/`](docs/API.md) | The full menu of everything the server can do, request by request. |
-| [`CHANGELOG.md`](CHANGELOG.md) | What landed in each release. Currently **v0.2.4**. |
+| [`CHANGELOG.md`](CHANGELOG.md) | What landed in each release. Currently **v0.2.5**. |
 
 **Want the deep version?** The protocol, how to build your own client or server, and
 how to extend it all live in the

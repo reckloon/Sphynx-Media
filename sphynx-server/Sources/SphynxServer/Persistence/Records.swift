@@ -509,15 +509,20 @@ struct ItemRecord: Codable, Sendable, FetchableRecord, PersistableRecord {
             variants["thumb"] = ImageInfo(
                 url: thumbImage, placeholder: placeholderMode.placeholder(url: sources["thumb"], blurHash: hashes["thumb"]), aspect: landscape)
         }
-        if let logoImage {
-            variants["logo"] = ImageInfo(url: logoImage, placeholder: placeholderMode.placeholder(url: sources["logo"], blurHash: hashes["logo"]))
+        // TMDB title logos top out at `w500` / `original`; `w500` (500px wide) looks
+        // soft on large/retina/TV screens, so serve the full-resolution `original` (a
+        // small transparent PNG). Done at serve time so existing items get it too,
+        // without a re-enrich.
+        let logoFull = logoImage.map { Self.resizeTMDB($0, to: "original") }
+        if let logoFull {
+            variants["logo"] = ImageInfo(url: logoFull, placeholder: placeholderMode.placeholder(url: sources["logo"], blurHash: hashes["logo"]))
         }
         if let bannerImage {
             variants["banner"] = ImageInfo(url: bannerImage, placeholder: placeholderMode.placeholder(url: sources["banner"], blurHash: hashes["banner"]))
         }
         let images: ItemImages? = variants.isEmpty ? nil
             : ItemImages(primary: primaryImage, backdrop: backdropImage, thumb: thumbImage,
-                         logo: logoImage, banner: bannerImage, variants: variants)
+                         logo: logoFull, banner: bannerImage, variants: variants)
 
         var item = Item(
             id: id,

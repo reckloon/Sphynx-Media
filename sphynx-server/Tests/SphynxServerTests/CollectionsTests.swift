@@ -186,7 +186,7 @@ struct CollectionsTests {
             ) { try $0.decoded() }
             let first = try #require(members.items.first { $0.title == "Glass Horizon" })
 
-            #expect(first.images?.logo == "https://image.tmdb.org/t/p/w500/gh1logo.png")
+            #expect(first.images?.logo == "https://image.tmdb.org/t/p/original/gh1logo.png")
             #expect(first.images?.banner == "https://image.tmdb.org/t/p/w1280/gh1banner.jpg")
             #expect(first.trailers == ["https://www.youtube.com/watch?v=abc123"])
             #expect(first.tags == ["heist", "near future"])
@@ -219,7 +219,7 @@ struct CollectionsTests {
             // Collection membership is structural → present even on skeleton.
             #expect(first.collectionId == collection.id)
             // Tile-level artwork (incl. logo/banner) is present on skeleton.
-            #expect(first.images?.logo == "https://image.tmdb.org/t/p/w500/gh1logo.png")
+            #expect(first.images?.logo == "https://image.tmdb.org/t/p/original/gh1logo.png")
             // Full-only enrichment is absent.
             #expect(first.trailers == nil)
             #expect(first.tags == nil)
