@@ -12,6 +12,20 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.3] — 2026-06-29
+
+### Fixed
+
+- **The Restart button left the server half-dead instead of restarting it.** It
+  signalled `SIGTERM` and waited for a graceful shutdown to re-exec, but in a
+  container the background tasks (auto-refresh, backfills) keep the process alive
+  after the HTTP listener closes — so the server became **unreachable** (a white
+  page) while the process stayed "Up", which Docker never restarts and
+  `docker compose up -d` won't recreate. Restart now **re-execs the process directly**
+  (closing inherited descriptors so the fresh process can re-bind the port), with an
+  `exit`-and-let-the-restart-policy-relaunch fallback if `exec` ever fails — so it
+  can no longer get stuck, with or without a supervisor.
+
 ## [0.2.2] — 2026-06-29
 
 ### Changed
@@ -566,7 +580,8 @@ a **published Docker image**.
   **[Ocelot client notes](docs/OCELOT_CLIENT.md)**.
 - A **plain-English, GUI-first** root README.
 
-[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/reckloon/Sphynx-Media/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/reckloon/Sphynx-Media/compare/v0.1.8...v0.2.0

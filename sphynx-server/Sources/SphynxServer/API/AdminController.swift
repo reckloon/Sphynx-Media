@@ -259,10 +259,12 @@ struct AdminController: Sendable {
     @Sendable
     func restart(_ request: Request, context: SphynxRequestContext) async throws -> Response {
         try requireAdmin(context)
+        // Re-exec just after this 202 flushes. We exec directly rather than signalling
+        // a graceful shutdown: background tasks keep the process alive after SIGTERM,
+        // leaving it half-dead (HTTP down, process up) so nothing restarts it.
         Task.detached {
             try? await Task.sleep(for: .milliseconds(300))
-            await RestartCoordinator.shared.request()
-            kill(getpid(), SIGTERM)
+            SphynxServerCommand.reexec()
         }
         return Response(status: .accepted)
     }

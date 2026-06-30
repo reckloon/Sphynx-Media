@@ -5,14 +5,6 @@ import Glibc
 import Darwin
 #endif
 
-/// Records an admin "Restart" request so the executable can re-exec itself once the
-/// server has cleanly shut down. See `restart` in `AdminController`.
-actor RestartCoordinator {
-    static let shared = RestartCoordinator()
-    private(set) var isRequested = false
-    func request() { isRequested = true }
-}
-
 /// Executable entry point for the Sphynx reference server.
 @main
 struct SphynxServerCommand {
@@ -20,28 +12,34 @@ struct SphynxServerCommand {
         let configuration = ServerConfiguration.fromEnvironment()
         let app = try await buildApplication(configuration: configuration)
         try await app.runService()
-        // The admin "Restart" button sets this flag and then signals a graceful
-        // shutdown; `runService()` returns once the server has stopped cleanly (its
-        // listener closed and the port freed). We then re-exec this same binary in
-        // place — so restart works whether or not a supervisor would relaunch us. A
-        // plain `SIGTERM` alone only *stops* the process when run from source (no
-        // Docker `restart:` policy / systemd to bring it back).
-        if await RestartCoordinator.shared.isRequested {
-            reexec()
-        }
     }
 
-    /// Replace this process image with a fresh instance of the same binary and args.
-    /// Returns only if `execv` fails, after which `main` returns and the process exits.
-    static func reexec() {
+    /// Restart the server **in place**: replace this process image with a fresh
+    /// instance of the same binary + args. Called by the admin "Restart" endpoint
+    /// (from a detached task, just after the `202` is sent).
+    ///
+    /// This deliberately does NOT go through a graceful `SIGTERM` shutdown: in a
+    /// container the background tasks (auto-refresh, backfills) keep the process
+    /// alive after the HTTP listener closes, so `SIGTERM` left it half-dead — HTTP
+    /// down but the process running, which Docker sees as "Up" and never restarts.
+    /// `execv` atomically swaps the whole process (all threads), so it doesn't depend
+    /// on any of that. Inherited descriptors above stdio — including the open
+    /// listening socket — are closed first so the fresh process can re-`bind` the
+    /// port. If `execv` fails, we `exit` non-zero so a supervisor (Docker's
+    /// `restart:` policy / systemd) relaunches us.
+    static func reexec() -> Never {
+        // SQLite (WAL) is durable per-transaction, so an abrupt swap is safe; only
+        // in-flight requests are lost, which is expected for a restart.
+        for fd in Int32(3) ..< 1024 { close(fd) }   // EBADF on unopened fds is harmless
+
         let args = CommandLine.arguments
         #if os(Linux)
         let path = "/proc/self/exe"   // the kernel's canonical path to this binary
         #else
         let path = args.first ?? ""
         #endif
-        var cArgs: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) }
-        cArgs.append(nil)
+        let cArgs: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
         execv(path, cArgs)
+        exit(EXIT_FAILURE)            // only reached if execv failed
     }
 }
