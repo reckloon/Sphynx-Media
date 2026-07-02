@@ -6,7 +6,9 @@ import SphynxProtocol
 /// Accounts, sessions, and tokens (§3, §9 of the server doc).
 ///
 /// - Access tokens are short-lived; refresh tokens are long-lived and **rotate**
-///   on every use (the old one is invalidated).
+///   on every use (the old one is invalidated, with a short reuse grace so a
+///   concurrent race or a lost response can't strand the session — see
+///   `RefreshGraceWindow`).
 /// - Sessions are **device-scoped**, so one device can be revoked alone.
 /// - Per-user data is row-scoped to the token subject.
 /// A public, credential-free profile entry for the sign-in chooser.
@@ -24,6 +26,24 @@ struct AuthService: Sendable {
     let refreshTokenTTL: Double
     /// On-disk store for server-hosted profile pictures.
     let avatars: AvatarStore
+    /// Reuse grace for just-rotated refresh tokens (concurrent race / lost response).
+    /// A reference type, so every copy of this struct shares the one window.
+    let grace = RefreshGraceWindow()
+    let logger = Logger(label: "sphynx.auth")
+
+    /// The TTLs to mint tokens with **right now**. The admin tunes these at runtime
+    /// (Settings), so read the stored values per issue/refresh instead of freezing the
+    /// boot-time configuration — a GUI change applies to the next token, no restart.
+    /// Falls back to the boot-time values if the store is unreadable.
+    private func currentTTLs() async -> (access: Double, refresh: Double) {
+        guard let stored = try? await SettingsStore(db: db).all() else {
+            return (accessTokenTTL, refreshTokenTTL)
+        }
+        return (
+            stored[SettingKey.accessTokenTTL.rawValue].flatMap(Double.init) ?? accessTokenTTL,
+            stored[SettingKey.refreshTokenTTL.rawValue].flatMap(Double.init) ?? refreshTokenTTL
+        )
+    }
 
     // MARK: Bootstrap
 
@@ -113,18 +133,35 @@ struct AuthService: Sendable {
 
     /// Rotate a refresh token: validate it, issue a brand-new pair, invalidate
     /// the presented refresh token.
+    ///
+    /// **Reuse grace**: a token rotated away in the last ~minute idempotently returns
+    /// the pair that rotation issued instead of a 401 — see `RefreshGraceWindow`. This
+    /// keeps a concurrent refresh race or a lost rotation response from stranding the
+    /// session. Every rejection is logged with its reason (the client only ever sees
+    /// the same opaque 401).
     func refresh(refreshToken: String, deviceId: String) async throws -> TokenResponse {
         let presentedHash = Tokens.hash(refreshToken)
         let now = Date().timeIntervalSince1970
-        let accessTTL = accessTokenTTL, refreshTTL = refreshTokenTTL
+        let (accessTTL, refreshTTL) = await currentTTLs()
 
-        let result: TokenResponse? = try await db.writer.write { db in
-            guard var session = try SessionRecord.filter(Column("refreshTokenHash") == presentedHash).fetchOne(db),
-                  !session.revoked,
-                  session.refreshExpiresAt > now,
-                  let user = try UserRecord.filter(Column("id") == session.userId).fetchOne(db)
-            else {
-                return nil
+        enum Outcome {
+            case rotated(TokenResponse, sessionId: String)
+            case unknownToken                 // no session holds this hash — maybe just rotated (grace)
+            case rejected(reason: String)     // session found but unusable — log why, then 401
+        }
+
+        let outcome: Outcome = try await db.writer.write { db in
+            guard var session = try SessionRecord.filter(Column("refreshTokenHash") == presentedHash).fetchOne(db) else {
+                return .unknownToken
+            }
+            guard !session.revoked else {
+                return .rejected(reason: "session \(session.id) is revoked")
+            }
+            guard session.refreshExpiresAt > now else {
+                return .rejected(reason: "session \(session.id) refresh token expired \(Int(now - session.refreshExpiresAt))s ago")
+            }
+            guard let user = try UserRecord.filter(Column("id") == session.userId).fetchOne(db) else {
+                return .rejected(reason: "session \(session.id) user \(session.userId) no longer exists")
             }
 
             let access = Tokens.newToken()
@@ -137,11 +174,42 @@ struct AuthService: Sendable {
             session.updatedAt = now
             try session.update(db)
 
-            return TokenResponse(accessToken: access, refreshToken: newRefresh, expiresIn: accessTTL, refreshExpiresIn: refreshTTL, user: user.toProtocol())
+            let response = TokenResponse(accessToken: access, refreshToken: newRefresh, expiresIn: accessTTL, refreshExpiresIn: refreshTTL, user: user.toProtocol())
+            return .rotated(response, sessionId: session.id)
         }
 
-        guard let result else { throw SphynxError.unauthorized("Invalid or expired refresh token") }
-        return result
+        switch outcome {
+        case .rotated(let response, let sessionId):
+            await grace.recordRotation(previousHash: presentedHash, sessionId: sessionId, response: response, now: now)
+            return response
+
+        case .unknownToken:
+            // The hash matches no session — but if it was the session's refresh token
+            // until moments ago, hand the same pair back. Re-check the session in the
+            // database so a revocation (or a further rotation) closes the window.
+            if let entry = await grace.replay(previousHash: presentedHash, now: now) {
+                let currentHash = Tokens.hash(entry.response.refreshToken)
+                let stillCurrent = try await db.writer.read { db in
+                    guard let s = try SessionRecord.filter(Column("id") == entry.sessionId).fetchOne(db) else { return false }
+                    return !s.revoked && s.refreshExpiresAt > now && s.refreshTokenHash == currentHash
+                }
+                if stillCurrent {
+                    logger.info("Refresh replay within grace window — returning the current pair",
+                                metadata: ["session": "\(entry.sessionId)", "device": "\(deviceId)"])
+                    return entry.response
+                }
+                logger.notice("Refresh rejected: grace-window pair for session \(entry.sessionId) is no longer current (revoked, expired, or rotated again)",
+                              metadata: ["device": "\(deviceId)"])
+            } else {
+                logger.notice("Refresh rejected: unknown or already-rotated refresh token (no grace window open)",
+                              metadata: ["device": "\(deviceId)"])
+            }
+            throw SphynxError.unauthorized("Invalid or expired refresh token")
+
+        case .rejected(let reason):
+            logger.notice("Refresh rejected: \(reason)", metadata: ["device": "\(deviceId)"])
+            throw SphynxError.unauthorized("Invalid or expired refresh token")
+        }
     }
 
     /// Revoke the presented refresh token's session, or every session on its
@@ -407,6 +475,7 @@ struct AuthService: Sendable {
 
     private func issueSession(for user: UserRecord, deviceId: String) async throws -> TokenResponse {
         let now = Date().timeIntervalSince1970
+        let (accessTTL, refreshTTL) = await currentTTLs()
         let access = Tokens.newToken()
         let refresh = Tokens.newToken()
         let session = SessionRecord(
@@ -414,14 +483,14 @@ struct AuthService: Sendable {
             userId: user.id,
             deviceId: deviceId.isEmpty ? "default" : deviceId,
             accessTokenHash: Tokens.hash(access),
-            accessExpiresAt: now + accessTokenTTL,
+            accessExpiresAt: now + accessTTL,
             refreshTokenHash: Tokens.hash(refresh),
-            refreshExpiresAt: now + refreshTokenTTL,
+            refreshExpiresAt: now + refreshTTL,
             revoked: false,
             createdAt: now,
             updatedAt: now
         )
         try await db.writer.write { db in try session.insert(db) }
-        return TokenResponse(accessToken: access, refreshToken: refresh, expiresIn: accessTokenTTL, refreshExpiresIn: refreshTokenTTL, user: user.toProtocol())
+        return TokenResponse(accessToken: access, refreshToken: refresh, expiresIn: accessTTL, refreshExpiresIn: refreshTTL, user: user.toProtocol())
     }
 }

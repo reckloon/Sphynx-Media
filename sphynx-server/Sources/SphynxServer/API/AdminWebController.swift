@@ -602,7 +602,7 @@ enum AdminWebController {
         <p id="lang-reenrich-note" class="hint" style="display:none;color:var(--accent);"><strong>Heads up:</strong> you changed the language. Save, then use <strong>Reset enrichment</strong> (Libraries tab) to re-translate the titles already in your library.</p>
         <button id="save-btn">Save settings</button>
         <div id="save-msg" class="msg"></div>
-        <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
+        <p class="hint">The two sign-in session lengths apply immediately to the next sign-in or token refresh; other saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
       </section>
 
       <!-- ============ EXTENSIONS ============ -->

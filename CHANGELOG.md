@@ -10,6 +10,18 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Refresh-token rotation no longer strands sessions on a race or a lost response.**
+  `POST /v1/auth/refresh` now keeps a ~60s in-memory reuse grace window per rotation:
+  presenting the immediately-previous refresh token inside the window idempotently
+  returns the current pair instead of a 401. This fixes both failure modes of strict
+  rotation — two concurrent refreshes from the same client (the loser presented a
+  just-rotated token) and a rotation whose response never reached the client (timeout /
+  dropped connection), which previously left the session unrecoverable. Revocation
+  still wins: a replay for a revoked / expired / re-rotated session is refused, tokens
+  two generations back never resolve, and the database keeps storing hashes only.
+
 ### Changed
 
 - **Media probe now paces itself like the BlurHash backfill.** The default
@@ -20,6 +32,13 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
   **once per run**, and simply waits for the next scheduled pass. The rate
   limit — not retry suppression — is what protects the provider, and the
   adjustment box in the admin UI is unchanged.
+- **Sign-in TTL settings apply without a restart.** `accessTokenTTL` /
+  `refreshTokenTTL` are now read live per login/refresh, so a change in
+  **Settings → Signing in** governs the very next token minted. The settings page
+  hint now says so.
+- **Refresh rejections are logged with a reason** (revoked session, expired refresh
+  token, unknown/already-rotated token, closed grace window) — the client still only
+  ever sees the same opaque 401.
 
 ## [0.2.6] — 2026-06-29
 
