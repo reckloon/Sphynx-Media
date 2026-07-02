@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.9] — 2026-07-01
+
 ### Fixed
 
 - **Finishing playback now marks the item watched instead of leaving an
