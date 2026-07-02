@@ -1859,7 +1859,9 @@ background pass over the whole library is recommended when such a client is in u
   fractional allowed; `0`/absent ⇒ **manual-only**, the default). `maxPerMinute` caps
   how many per-item resolves the background pass issues a minute — each probed title
   costs one source request (a TorBox `requestdl` is one of 300/min, shared with
-  playback), so this keeps probing under budget (`0` ⇒ unlimited; default `120`).
+  playback), so this keeps probing under budget (`0` ⇒ unlimited; default `60`, far
+  below a provider's cap). A title that fails to resolve/probe is attempted at most
+  **once per run** — it waits for the next scheduled pass rather than being retried.
   `probing` carries background-pass progress (`{ "running", "total", "done",
   "lastCompletedAt"? }`, `total`/`done` counting items) when the extension is enabled.
 - **`PATCH /v1/admin/extensions/media-probe`** `{ "enabled"?, "ffprobePath"?, "intervalSeconds"?, "maxPerMinute"? }`

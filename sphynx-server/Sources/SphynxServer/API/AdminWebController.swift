@@ -652,8 +652,8 @@ enum AdminWebController {
           <label for="mp-interval">Background probe interval <span class="muted">(seconds; 0 = manual only; decimals allowed, e.g. 0.5)</span></label>
           <input id="mp-interval" type="number" min="0" step="any" placeholder="0">
           <label for="mp-rate">Max probes per minute <span class="muted">(rate limit; 0 = unlimited)</span></label>
-          <input id="mp-rate" type="number" min="0" step="any" placeholder="120">
-          <p class="hint" style="margin-top:4px;">Each probed title costs one source request (e.g. a TorBox <code>requestdl</code>, capped at 300/min and shared with playback). Keep this comfortably under your source's limit so probing never starves playback. Default 120.</p>
+          <input id="mp-rate" type="number" min="0" step="any" placeholder="60">
+          <p class="hint" style="margin-top:4px;">Each probed title costs one source request (e.g. a TorBox <code>requestdl</code>, capped at 300/min and shared with playback). The default of 60 stays far under that; a title that fails to probe simply waits for the next run rather than being retried.</p>
           <p class="hint" style="margin-top:4px;">When set above 0, Sphynx probes not-yet-probed titles in the background on this cadence. Leave at 0 to only probe on demand.</p>
           <button id="mp-save">Save</button>
           <button id="mp-run" class="secondary" title="Probe every not-yet-probed title once, now (caches audio/subtitle tracks so players start faster). Runs in the background; safe to leave the page.">Run probe pass now</button>

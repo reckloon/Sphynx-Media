@@ -10,7 +10,16 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+
+- **Media probe now paces itself like the BlurHash backfill.** The default
+  `maxPerMinute` drops from `120` to `60` — reasonably fast, but far under a
+  provider's request budget (TorBox: 300/min, shared with playback). The
+  per-item **24-hour failure cooldown** introduced in 0.2.6 is replaced with a
+  simpler rule: a title that fails to resolve or probe is attempted at most
+  **once per run**, and simply waits for the next scheduled pass. The rate
+  limit — not retry suppression — is what protects the provider, and the
+  adjustment box in the admin UI is unchanged.
 
 ## [0.2.6] — 2026-06-29
 

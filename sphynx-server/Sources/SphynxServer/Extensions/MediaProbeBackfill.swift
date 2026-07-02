@@ -18,8 +18,9 @@ import ServiceLifecycle
 struct MediaProbeBackfillService: Service, ScheduledBackfill {
     /// Default cap on per-item resolves a minute when the admin hasn't set one. Each
     /// probed item costs one source resolve (a TorBox `requestdl` is one of 300/min),
-    /// so this stays well under that and leaves headroom for live playback.
-    static let defaultMaxPerMinute = 120.0
+    /// so this stays far under that — ~20% of the budget — leaving ample headroom for
+    /// live playback even when every resolve in a pass fails and is retried next run.
+    static let defaultMaxPerMinute = 60.0
 
     let defaultInterval: Double
     let catalog: Catalog
@@ -34,14 +35,6 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     /// worker beyond this — the item is dropped to a future pass instead of freezing
     /// the whole backfill. Comfortably above a healthy resolve+probe.
     var perItemTimeout: Double = 90
-    /// After an item fails to resolve/probe, skip it for this long. Without it a
-    /// persistently-failing item (a source that keeps returning no URL) is re-attempted
-    /// every single pass, so a short interval hammers the provider with doomed resolves
-    /// and starves the items that *can* be probed. 24h ⇒ at most one retry a day.
-    var failureCooldown: Double = 86_400
-    /// Tracks recent per-item failures so cooled-down items are skipped. Reference type
-    /// shared across passes for the lifetime of the (long-lived) service.
-    let cooldown = ProbeCooldown()
 
     var task: (name: String, label: String) { ScheduledTask.mediaProbe }
     var intervalKey: String { "ext.mediaProbe.intervalSeconds" }
@@ -70,20 +63,11 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
             return
         }
         // Playable leaves only: containers (collection/series/season) carry an empty
-        // sourceKey. Probe each item at most once (until its tracks are cached), and
-        // skip items still in their post-failure cooldown so a doomed source isn't
-        // re-resolved every pass.
-        let now = Date().timeIntervalSince1970
-        let candidates = items.filter { !$0.sourceKey.isEmpty && $0.probedTracksJSON == nil }
-        var work: [ItemRecord] = []
-        for item in candidates where !(await cooldown.shouldSkip(item.id, now: now, window: failureCooldown)) {
-            work.append(item)
-        }
-        let cooling = candidates.count - work.count
-        guard !work.isEmpty else {
-            if cooling > 0 { logger.info("Media-probe backfill: \(cooling) item(s) cooling down after failure — nothing to probe") }
-            return
-        }
+        // sourceKey. Each run attempts an unprobed item exactly once — a failure waits
+        // for the next scheduled run, so the rate limit below (not retries) is the
+        // only pressure a doomed source ever sees.
+        let work = items.filter { !$0.sourceKey.isEmpty && $0.probedTracksJSON == nil }
+        guard !work.isEmpty else { return }
 
         // Rate-limit the per-item source resolves so the pass stays under the
         // provider's request budget (TorBox: 300/min, shared with playback). Read
@@ -92,8 +76,7 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
         let limiter = RateLimiter(perMinute: perMinute)
 
         await progress.beginPass(total: work.count)
-        let coolingNote = cooling > 0 ? " (\(cooling) cooling down)" : ""
-        logger.info("Media-probe backfill: probing \(work.count) item(s) at ≤\(Int(perMinute))/min\(coolingNote)")
+        logger.info("Media-probe backfill: probing \(work.count) item(s) at ≤\(Int(perMinute))/min")
 
         await withTaskGroup(of: Void.self) { group in
             var iterator = work.makeIterator()
@@ -140,37 +123,15 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
                     try await catalog.updateItem(updated)
                 }
             }
-            await cooldown.clearFailure(item.id)
         } catch is ProbeTimedOut {
             // Visible (not .debug): a slow/offline source is the usual reason a pass
             // doesn't reach 100%, so surface it rather than hide it.
-            await cooldown.recordFailure(item.id, now: Date().timeIntervalSince1970)
-            logger.info("Media-probe backfill: \(item.id) timed out after \(Int(perItemTimeout))s — cooling down for \(Int(failureCooldown / 3600))h")
+            logger.info("Media-probe backfill: \(item.id) timed out after \(Int(perItemTimeout))s — retrying on the next run")
         } catch {
-            await cooldown.recordFailure(item.id, now: Date().timeIntervalSince1970)
-            logger.info("Media-probe backfill: \(item.id) skipped: \(error) — cooling down for \(Int(failureCooldown / 3600))h")
+            logger.info("Media-probe backfill: \(item.id) skipped: \(error) — retrying on the next run")
         }
         await progress.advance()
     }
-}
-
-/// In-memory per-item failure cooldown for the media-probe backfill. An item that
-/// fails to resolve/probe is parked here so subsequent passes skip it until the window
-/// elapses — stopping a short interval from re-resolving a doomed item every pass (which
-/// floods the provider and starves probeable items). Cleared on a later success.
-actor ProbeCooldown {
-    private var failedAt: [String: Double] = [:]
-
-    /// True while `id` is within `window` seconds of its last failure. Expired entries
-    /// are pruned on read so the map doesn't grow once a source recovers.
-    func shouldSkip(_ id: String, now: Double, window: Double) -> Bool {
-        guard let at = failedAt[id] else { return false }
-        if now - at >= window { failedAt[id] = nil; return false }
-        return true
-    }
-
-    func recordFailure(_ id: String, now: Double) { failedAt[id] = now }
-    func clearFailure(_ id: String) { failedAt[id] = nil }
 }
 
 /// Raised when an operation overruns its deadline in `withTimeout`.
