@@ -195,6 +195,41 @@ struct MediaProbeTests {
         #expect(MediaProbeBackfillService.defaultMaxPerMinute <= 300 * 0.25)
     }
 
+    @Test("failure streak trips at the limit, resets on success, and stays tripped")
+    func failureStreakBreaker() async {
+        let streak = FailureStreak(limit: 3)
+        #expect(await streak.isTripped() == false)
+
+        // Two failures then a success: streak resets, no trip.
+        await streak.recordFailure()
+        await streak.recordFailure()
+        await streak.recordSuccess()
+        #expect(await streak.isTripped() == false)
+
+        // Three consecutive failures: tripped — and a later success doesn't untrip
+        // (the pass is already aborted; the next pass gets a fresh breaker).
+        await streak.recordFailure()
+        await streak.recordFailure()
+        await streak.recordFailure()
+        #expect(await streak.isTripped() == true)
+        await streak.recordSuccess()
+        #expect(await streak.isTripped() == true)
+    }
+
+    @Test("exhausted upstream retries surface as a retryable 429/502, not an opaque 500")
+    func exhaustedRetriesAreRetryable() {
+        let limited = URLSessionFetcher.exhaustedError(status: 429, retryAfter: 12)
+        #expect(limited.status == .tooManyRequests)
+        #expect(limited.retryable)
+        #expect(limited.retryAfter == 12)
+        // No upstream hint ⇒ a small default so clients still back off sensibly.
+        #expect(URLSessionFetcher.exhaustedError(status: 429, retryAfter: nil).retryAfter == 5)
+
+        let upstream = URLSessionFetcher.exhaustedError(status: 503, retryAfter: nil)
+        #expect(upstream.status == .badGateway)
+        #expect(upstream.retryable)
+    }
+
     private func adminToken(_ client: some TestClientProtocol) async throws -> String {
         try await client.execute(
             uri: "/v1/auth/login", method: .post, headers: jsonHeaders(),

@@ -12,6 +12,26 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 _Nothing yet._
 
+## [0.2.8] — 2026-07-01
+
+### Fixed
+
+- **Playback resolve can no longer stall until the client times out.** When TorBox
+  rate-limited a `requestdl`, the resolve rode the fetcher's full retry ladder — up to
+  ~90 seconds of backoff sleeps inside one request — so players saw a dead-air timeout
+  (Ocelot's `-1001`) instead of an answer. TorBox resolves now use a fast profile (one
+  quick retry, ≤3s backoff) and then return a **retryable `429`/`502` with a
+  `Retry-After` hint**, so a throttled resolve fails in seconds and the player can
+  retry — never a hang. Exhausted retries in general now surface as retryable
+  errors rather than opaque 500s.
+- **A refusing provider now aborts the probe pass instead of grinding through it.**
+  When a source starts rejecting probes outright (rate-limited resolves, CDN
+  refusals), every remaining item in the pass is doomed too — and burning hundreds of
+  requests sustained the very pressure that caused the refusals, competing with live
+  playback. The background probe pass now trips a **circuit breaker after 12
+  consecutive failures**: it logs why, stops the pass, and waits for the next
+  scheduled run. Any success resets the streak.
+
 ## [0.2.7] — 2026-07-01
 
 ### Fixed

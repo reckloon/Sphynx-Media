@@ -68,7 +68,13 @@ struct URLSessionFetcher: HTTPFetching {
             attempt += 1
             do {
                 return try await Self.send(request)
-            } catch let retry as RetryableHTTP where attempt < maxAttempts {
+            } catch let retry as RetryableHTTP {
+                // Attempts exhausted ⇒ surface a *retryable* API error (429 keeps its
+                // rate-limited shape + Retry-After hint) instead of leaking the private
+                // failure as an opaque 500 — the caller/client can retry sensibly.
+                guard attempt < maxAttempts else {
+                    throw Self.exhaustedError(status: retry.status, retryAfter: retry.retryAfter)
+                }
                 // Prefer the server's own backoff hint; else exponential with jitter.
                 let exponential = min(maxBackoff, baseBackoff * pow(2, Double(attempt - 1)))
                 let jitter = Double.random(in: 0...(exponential / 2))
@@ -78,6 +84,20 @@ struct URLSessionFetcher: HTTPFetching {
                 try await Task.sleep(for: .seconds(delay))
             }
         }
+    }
+
+    /// The error thrown once every retry attempt is spent: a 429 keeps its
+    /// rate-limited shape (and passes the upstream's `Retry-After` through, default
+    /// 5s), a 5xx becomes a retryable bad-gateway. Both tell the client "try again
+    /// shortly" rather than reading as a hard server fault.
+    static func exhaustedError(status: Int, retryAfter: Double?) -> SphynxError {
+        if status == 429 {
+            return .rateLimited("Upstream source is rate-limiting requests", retryAfter: retryAfter ?? 5)
+        }
+        return SphynxError(
+            status: .badGateway, code: .serverError,
+            message: "Upstream source failed (HTTP \(status))",
+            retryable: true, retryAfter: retryAfter)
     }
 
     /// One attempt. Throws `RetryableHTTP` on 429/5xx (so the caller backs off and

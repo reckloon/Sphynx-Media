@@ -980,6 +980,11 @@ handed the 1080p.
 
 **404** `not_found` (no such item) / `no_media_source` (item's source unavailable).
 
+**429** `rate_limited` / **502** `server_error` — the item's *upstream source* (e.g.
+TorBox) is throttling or failing. Both are `retryable: true` and carry a
+`Retry-After` header/field; the resolve fails **fast** (a few seconds, never a hang),
+so a player should back off briefly and retry rather than treat it as a dead server.
+
 #### Multi-version / editions
 
 When one title is backed by **more than one file** — 4K + 1080p, Director's Cut +

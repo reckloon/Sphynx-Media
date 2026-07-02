@@ -35,6 +35,12 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     /// worker beyond this — the item is dropped to a future pass instead of freezing
     /// the whole backfill. Comfortably above a healthy resolve+probe.
     var perItemTimeout: Double = 90
+    /// Abort the pass after this many *consecutive* failures. When a provider starts
+    /// refusing outright (rate-limited resolves, CDN rejections), every remaining item
+    /// is doomed too — burning the rest of the pass just sustains the pressure that
+    /// caused the refusals (and competes with live playback). One success resets the
+    /// streak; an aborted pass simply waits for the next scheduled run.
+    var failureStreakLimit = 12
 
     var task: (name: String, label: String) { ScheduledTask.mediaProbe }
     var intervalKey: String { "ext.mediaProbe.intervalSeconds" }
@@ -78,21 +84,29 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
         await progress.beginPass(total: work.count)
         logger.info("Media-probe backfill: probing \(work.count) item(s) at ≤\(Int(perMinute))/min")
 
+        let streak = FailureStreak(limit: failureStreakLimit)
         await withTaskGroup(of: Void.self) { group in
             var iterator = work.makeIterator()
             var active = 0
             for _ in 0 ..< maxConcurrentItems where !Task.isCancelled {
                 guard let next = iterator.next() else { break }
-                group.addTask { await self.probe(next, with: prober, limiter: limiter) }
+                group.addTask { await self.probe(next, with: prober, limiter: limiter, streak: streak) }
                 active += 1
             }
             while active > 0 {
                 _ = await group.next()
                 active -= 1
                 guard !Task.isCancelled, let next = iterator.next() else { continue }
-                group.addTask { await self.probe(next, with: prober, limiter: limiter) }
+                // Stop feeding new items once the breaker trips; in-flight probes
+                // drain naturally.
+                guard await !streak.isTripped() else { continue }
+                group.addTask { await self.probe(next, with: prober, limiter: limiter, streak: streak) }
                 active += 1
             }
+        }
+        if await streak.isTripped() {
+            logger.warning(
+                "Media-probe backfill: aborted pass after \(failureStreakLimit) consecutive failures — the source appears to be refusing requests; waiting for the next run")
         }
 
         await progress.endPass()
@@ -101,7 +115,7 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
     /// Resolve + probe one item and cache the result. Best-effort: a bad/offline
     /// location is logged and left for a future pass. Like the manual probe, this does
     /// not bump `updatedAt` (it adds cached detail, not a content change).
-    private func probe(_ item: ItemRecord, with prober: FFprobeProber, limiter: RateLimiter) async {
+    private func probe(_ item: ItemRecord, with prober: FFprobeProber, limiter: RateLimiter, streak: FailureStreak) async {
         guard !Task.isCancelled else { return }
         // Wait for a rate-limit slot before the resolve (a source request). Outside the
         // per-item timeout, so queue time isn't charged against the probe budget.
@@ -123,15 +137,37 @@ struct MediaProbeBackfillService: Service, ScheduledBackfill {
                     try await catalog.updateItem(updated)
                 }
             }
+            await streak.recordSuccess()
         } catch is ProbeTimedOut {
             // Visible (not .debug): a slow/offline source is the usual reason a pass
             // doesn't reach 100%, so surface it rather than hide it.
+            await streak.recordFailure()
             logger.info("Media-probe backfill: \(item.id) timed out after \(Int(perItemTimeout))s — retrying on the next run")
         } catch {
+            await streak.recordFailure()
             logger.info("Media-probe backfill: \(item.id) skipped: \(error) — retrying on the next run")
         }
         await progress.advance()
     }
+}
+
+/// Consecutive-failure circuit breaker for a probe pass. Trips once `limit` failures
+/// occur in a row across all workers; any success resets the streak. Once tripped it
+/// stays tripped for the rest of the pass (a fresh instance is made per pass).
+actor FailureStreak {
+    private let limit: Int
+    private var streak = 0
+    private var tripped = false
+
+    init(limit: Int) { self.limit = limit }
+
+    func recordFailure() {
+        streak += 1
+        if streak >= limit { tripped = true }
+    }
+
+    func recordSuccess() { streak = 0 }
+    func isTripped() -> Bool { tripped }
 }
 
 /// Raised when an operation overruns its deadline in `withTimeout`.

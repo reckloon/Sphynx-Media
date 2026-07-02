@@ -42,6 +42,12 @@ struct TorBoxDriver: SourceDriver {
     /// (1 h) keeps links comfortably fresh; lower it if you see expired links.
     let linkTTL: Double
     let fetcher: any HTTPFetching
+    /// Fetcher used for `resolve()` only. A playback resolve sits on the client's
+    /// critical path — a player typically gives up after ~30–60s — so it must fail
+    /// fast with a retryable error rather than ride the patient fetcher's full
+    /// backoff ladder (up to ~90s of sleeps), which reads as a dead server (`-1001`)
+    /// to the client. `nil` ⇒ use `fetcher` (tests inject one mock for both paths).
+    var resolveFetcher: (any HTTPFetching)? = nil
 
     static let defaultBaseURL = "https://api.torbox.app/v1/api"
     /// The buckets TorBox exposes, in `mylist`/`requestdl` order.
@@ -142,7 +148,7 @@ struct TorBoxDriver: SourceDriver {
             throw SphynxError.badRequest("Could not build TorBox requestdl URL for '\(request.key)'")
         }
 
-        let data = try await fetcher.getData(url: url, headers: [:])
+        let data = try await (resolveFetcher ?? fetcher).getData(url: url, headers: [:])
         let response: TorBoxLinkResponse
         do {
             response = try Self.decoder.decode(TorBoxLinkResponse.self, from: data)
@@ -241,13 +247,24 @@ struct TorBoxDriver: SourceDriver {
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { allCategories.contains($0) }
         let base = context.config["baseURL"].flatMap { $0.isEmpty ? nil : $0 } ?? defaultBaseURL
+        // Resolve is on the playback critical path: one quick retry, short backoff,
+        // then a retryable 429/502 to the client — never a ~90s stall. Only applies
+        // when the context carries the real network fetcher; a test mock stays the
+        // single fetcher for both paths.
+        let quick = (context.fetcher as? URLSessionFetcher).map { patient -> any HTTPFetching in
+            var q = patient
+            q.maxAttempts = 2
+            q.maxBackoff = 3
+            return q
+        }
         return TorBoxDriver(
             id: context.id,
             apiKey: apiKey,
             baseURL: base,
             categories: configured.isEmpty ? allCategories : configured,
             linkTTL: context.config["linkTTL"].flatMap(Double.init) ?? 3_600,
-            fetcher: context.fetcher)
+            fetcher: context.fetcher,
+            resolveFetcher: quick)
     }
 }
 
