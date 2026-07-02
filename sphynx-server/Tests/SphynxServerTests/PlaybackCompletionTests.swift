@@ -172,4 +172,37 @@ struct PlaybackCompletionTests {
         #expect(PlaystateController.completion(position: 50, runtime: nil) == .partial)   // unknown length
         #expect(PlaystateController.completion(position: 50, runtime: 0) == .partial)
     }
+
+    @Test("client-reported duration beats the nominal metadata runtime")
+    func reportedDurationWins() {
+        // The classic TV case: TMDB's nominal 25-minute slot, a 21.5-minute file.
+        // Finishing the file is 86% of the *nominal* runtime — against the player's
+        // real duration it's 100% and must mark watched.
+        #expect(PlaystateController.completion(position: 1_290, duration: 1_290, runtime: 1_500) == .completed)
+        #expect(PlaystateController.completion(position: 1_290, runtime: 1_500) == .partial)  // without it: the old bug
+        // Duration also rescues items with no metadata runtime at all.
+        #expect(PlaystateController.completion(position: 96, duration: 100, runtime: nil) == .completed)
+        #expect(PlaystateController.completion(position: 2, duration: 100, runtime: nil) == .abandoned)
+        // A bogus (zero/negative) duration falls back to the runtime, then partial.
+        #expect(PlaystateController.completion(position: 96, duration: 0, runtime: 100) == .completed)
+        #expect(PlaystateController.completion(position: 50, duration: 0, runtime: nil) == .partial)
+    }
+
+    @Test("stop with duration marks a nominal-runtime item watched end-to-end")
+    func stopWithDurationCompletes() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { c in
+            let t = try await login(c); let lib = try await library(c, t)
+            let id = try await movie(c, t, lib, runtime: 1_500)     // nominal 25 min
+            try await progress(c, t, id, to: 600)
+            // Finish the actual 21.5-minute file, reporting the player's duration.
+            try await c.execute(uri: "/v1/playstate/\(id)/stop", method: .post, headers: jsonHeaders(bearer: t),
+                body: try jsonBody(PlaystateStopBody(position: 1_290, duration: 1_290))) { #expect($0.status == .noContent) }
+
+            let it = try await item(c, t, id)
+            #expect(it.watched == true)                             // fully complete…
+            #expect(try await resume(c, t, id) == 0)                // …no end-of-file resume point
+            #expect(try await inContinue(c, t, id) == false)
+        }
+    }
 }

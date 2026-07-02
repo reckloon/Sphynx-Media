@@ -66,7 +66,7 @@ struct PlaystateController: Sendable {
         // its resume point and counts a play.
         let state: UserStateRecord
         let resumeAfter: Double
-        switch Self.completion(position: body.position, runtime: item.runtime) {
+        switch Self.completion(position: body.position, duration: body.duration, runtime: item.runtime) {
         case .completed:
             state = try await userState.recordPlay(userId: userId, itemId: itemId, watched: true)
             try await playstate.clear(userId: userId, itemId: itemId)
@@ -95,11 +95,16 @@ struct PlaystateController: Sendable {
     static let completedFraction = 0.95
     static let abandonedFraction = 0.05
 
-    /// Classify a stop position against the item's runtime. Unknown/zero runtime →
-    /// `.partial` (keep resume, count the play — the prior behavior).
-    static func completion(position: Double, runtime: Double?) -> Completion {
-        guard let runtime, runtime > 0 else { return .partial }
-        let fraction = position / runtime
+    /// Classify a stop position by the fraction watched. The **client-reported
+    /// duration wins** over the catalog's metadata runtime: the player knows the
+    /// file's true length, while metadata runtime is nominal (TMDB lists a TV
+    /// episode's broadcast slot — a "25-minute" episode is often a ~21-minute file,
+    /// so finishing it reads as 86% against the nominal figure and would never mark
+    /// watched). No usable length at all → `.partial` (keep resume, count the play).
+    static func completion(position: Double, duration: Double? = nil, runtime: Double?) -> Completion {
+        let length = [duration, runtime].compactMap { $0 }.first { $0 > 0 }
+        guard let length else { return .partial }
+        let fraction = position / length
         if fraction >= completedFraction { return .completed }
         if fraction <= abandonedFraction { return .abandoned }
         return .partial

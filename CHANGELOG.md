@@ -10,7 +10,17 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Finishing playback now marks the item watched instead of leaving an
+  end-of-file resume point.** The stop was classified against the item's metadata
+  `runtime`, which is *nominal* — TMDB lists a TV episode's broadcast slot, so a
+  "25-minute" episode that's really a ~21-minute file finished at "86%" and read as
+  a partial watch (resume saved at the very end, no watched mark). The protocol's
+  stop body now takes an optional **`duration`** — the player's own media length —
+  which wins over the nominal runtime when classifying; it also rescues items with
+  no metadata runtime at all. Clients SHOULD send it (Ocelot: include the player's
+  duration in the stop report).
 
 ## [0.2.8] — 2026-07-01
 

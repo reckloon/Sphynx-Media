@@ -1028,21 +1028,29 @@ auth.
 **Body** `{ "position": 1342.5, "paused": false }` → **204**.
 
 ### `POST /v1/playstate/{itemId}/stop`
-**Body** `{ "position": 1500.0, "failed": false }` → **204**.
+**Body** `{ "position": 1290.0, "duration": 1290.0, "failed": false }` → **204**.
 On `failed: true` the server **does not overwrite** the stored resume point — a
 misfire (the playhead never advanced past startup) can't clobber a good position —
 and nothing below applies.
 
-A **non-failed** stop is resolved against the item's `runtime` (per user):
+`duration` *(optional but **SHOULD** be sent)* — the playing media's full length in
+seconds, **as known by the player**. It takes precedence over the item's metadata
+`runtime` when classifying the stop, because metadata runtime is *nominal* — TMDB
+lists a TV episode's broadcast slot, so a "25-minute" episode is often a ~21-minute
+file. Without `duration`, finishing that file reads as 86% of the nominal runtime
+and never marks watched (the item is left with a resume point at the very end).
+
+A **non-failed** stop is resolved against `duration` (falling back to the item's
+`runtime`), per user:
 
 | Where it stopped | Effect |
 |---|---|
-| **last 5%** (`position ≥ 95%` of runtime) | marked **watched**, resume **cleared** (drops out of Continue Watching), play **counted** — the "scrobble at the end" behavior (Jellyfin PlayedItems / Plex). |
+| **last 5%** (`position ≥ 95%` of the length) | marked **watched**, resume **cleared** (drops out of Continue Watching), play **counted** — the "scrobble at the end" behavior (Jellyfin PlayedItems / Plex). |
 | **first 5%** (`position ≤ 5%`) | marked **unwatched**, resume **cleared**, **not** counted as a play — a false start is discarded. |
 | in between | resume point **stored**, play **counted** (the ordinary partial-watch case). |
 
-If the item has no known `runtime`, every non-failed stop is treated as a partial
-watch (store resume, count the play).
+If no usable length is known (no `duration` sent and no metadata `runtime`), every
+non-failed stop is treated as a partial watch (store resume, count the play).
 
 ### `GET /v1/playstate/{itemId}`
 **200** → `{ "position": 1342.5, "updatedAt": "2026-06-27T16:35:30Z" }`.

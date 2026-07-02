@@ -41,13 +41,23 @@ public struct PlaystateProgressBody: Codable, Hashable, Sendable {
 ///
 /// On `failed: true` the server must **not** overwrite a good resume point with a
 /// bogus position.
+///
+/// `duration` is the **player's own media duration** (seconds), and clients SHOULD
+/// send it: the server classifies the stop as completed/abandoned/partial by the
+/// fraction watched, and the player's real duration beats the catalog's nominal
+/// metadata runtime (a "25-minute" TV episode is often a ~21-minute file — without
+/// the true duration, finishing the file reads as 86% and never marks watched).
 public struct PlaystateStopBody: Codable, Hashable, Sendable {
     public var position: Double
     public var failed: Bool
+    /// The playing media's full duration in seconds, as known by the player.
+    /// Optional for compatibility; omit only when the player truly doesn't know.
+    public var duration: Double?
 
-    public init(position: Double, failed: Bool = false) {
+    public init(position: Double, failed: Bool = false, duration: Double? = nil) {
         self.position = position
         self.failed = failed
+        self.duration = duration
     }
 }
 
