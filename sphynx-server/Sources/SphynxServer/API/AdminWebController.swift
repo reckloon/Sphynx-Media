@@ -588,7 +588,7 @@ enum AdminWebController {
         <p class="hint">Titles, overviews, and episode names are normalised to this language during enrichment — so a foreign-named release (e.g. <code>Бэтмен</code>) shows in your language regardless of how the file was named. Manually-edited titles 🔒 are never overwritten. Applies on the next scan/refresh.</p>
         <button id="save-btn">Save settings</button>
         <div id="save-msg" class="msg"></div>
-        <p class="hint">Saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
+        <p class="hint">The two sign-in session lengths apply immediately to the next sign-in or token refresh; other saved settings take effect the next time the server restarts. (Network address, database location, and the admin login are set when starting the server.)</p>
       </section>
 
       <!-- ============ EXTENSIONS ============ -->

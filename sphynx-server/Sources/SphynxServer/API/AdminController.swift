@@ -176,7 +176,8 @@ struct AdminController: Sendable {
     }
 
     /// Update runtime settings. Only the provided keys change; values are
-    /// persisted and take effect on the next restart.
+    /// persisted. The sign-in TTLs apply to the next token issued/refreshed;
+    /// the rest take effect on the next restart.
     @Sendable
     func updateSettings(_ request: Request, context: SphynxRequestContext) async throws -> SettingsResponse {
         try requireAdmin(context)

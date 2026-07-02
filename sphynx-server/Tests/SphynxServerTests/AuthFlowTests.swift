@@ -67,7 +67,7 @@ struct AuthFlowTests {
         }
     }
 
-    @Test("refresh rotates tokens and invalidates the old refresh token")
+    @Test("refresh rotates tokens; the old token replays idempotently within the grace window")
     func refreshRotates() async throws {
         let app = try await buildApplication(configuration: testConfiguration())
         try await app.test(.router) { client in
@@ -90,7 +90,32 @@ struct AuthFlowTests {
             #expect(first.refreshExpiresIn == 86_400)
             #expect(second.refreshExpiresIn == 86_400)
 
-            // The old refresh token must no longer work.
+            // Replaying the just-rotated-away token inside the grace window is
+            // idempotent: same current pair, not a 401 (concurrent race / lost
+            // response — the client never got `second`).
+            let replayed: TokenResponse = try await client.execute(
+                uri: "/v1/auth/refresh", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(RefreshRequest(refreshToken: first.refreshToken))
+            ) { response in
+                #expect(response.status == .ok)
+                return try response.decoded()
+            }
+            #expect(replayed.accessToken == second.accessToken)
+            #expect(replayed.refreshToken == second.refreshToken)
+
+            // The replayed pair really is the live one.
+            let third: TokenResponse = try await client.execute(
+                uri: "/v1/auth/refresh", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(RefreshRequest(refreshToken: replayed.refreshToken))
+            ) { response in
+                #expect(response.status == .ok)
+                return try response.decoded()
+            }
+
+            // A token two generations back is dead — the newer rotation closed
+            // its grace window.
             try await client.execute(
                 uri: "/v1/auth/refresh", method: .post,
                 headers: jsonHeaders(),
@@ -98,6 +123,76 @@ struct AuthFlowTests {
             ) { response in
                 #expect(response.status == .unauthorized)
             }
+            _ = third
+        }
+    }
+
+    @Test("grace replay is refused once the session is revoked")
+    func graceReplayRefusedAfterLogout() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let first: TokenResponse = try await client.execute(
+                uri: "/v1/auth/login", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(LoginRequest(username: "admin", password: "test-password"))
+            ) { try $0.decoded() }
+
+            let second: TokenResponse = try await client.execute(
+                uri: "/v1/auth/refresh", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(RefreshRequest(refreshToken: first.refreshToken))
+            ) { try $0.decoded() }
+
+            // Sign the session out, then replay the pre-rotation token while its
+            // grace window is still open — revocation must win over grace.
+            try await client.execute(
+                uri: "/v1/auth/logout", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(LogoutRequest(refreshToken: second.refreshToken, allDevices: nil))
+            ) { response in
+                #expect(response.status == .noContent || response.status == .ok)
+            }
+            try await client.execute(
+                uri: "/v1/auth/refresh", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(RefreshRequest(refreshToken: first.refreshToken))
+            ) { response in
+                #expect(response.status == .unauthorized)
+            }
+        }
+    }
+
+    @Test("token TTL settings apply to the next refresh without a restart")
+    func ttlSettingsApplyLive() async throws {
+        let app = try await buildApplication(configuration: testConfiguration())
+        try await app.test(.router) { client in
+            let tokens: TokenResponse = try await client.execute(
+                uri: "/v1/auth/login", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(LoginRequest(username: "admin", password: "test-password"))
+            ) { try $0.decoded() }
+            #expect(tokens.expiresIn == 3600)
+
+            // Change the TTLs through the runtime settings API…
+            try await client.execute(
+                uri: "/v1/admin/settings", method: .patch,
+                headers: jsonHeaders(bearer: tokens.accessToken),
+                body: try jsonBody(["accessTokenTTL": 120.0, "refreshTokenTTL": 7200.0])
+            ) { response in
+                #expect(response.status == .ok)
+            }
+
+            // …and the very next refresh mints tokens with the new lifetimes.
+            let refreshed: TokenResponse = try await client.execute(
+                uri: "/v1/auth/refresh", method: .post,
+                headers: jsonHeaders(),
+                body: try jsonBody(RefreshRequest(refreshToken: tokens.refreshToken))
+            ) { response in
+                #expect(response.status == .ok)
+                return try response.decoded()
+            }
+            #expect(refreshed.expiresIn == 120)
+            #expect(refreshed.refreshExpiresIn == 7200)
         }
     }
 
