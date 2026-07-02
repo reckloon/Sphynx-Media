@@ -170,9 +170,18 @@ directory is disabled or the user has no avatar.
 **Body** `{ "refreshToken": "..." }`
 
 Returns a **new** token pair; the presented refresh token is **rotated** (the old
-one is immediately invalidated). Same response shape as login.
+one is invalidated). Same response shape as login.
 
-**401** `unauthorized` — invalid, expired, or already-rotated refresh token.
+Rotation keeps a **~60-second reuse grace window**: presenting the
+immediately-previous refresh token inside the window idempotently returns the
+*current* pair instead of failing. This makes refresh safe against two concurrent
+refreshes from the same client (the loser presented a just-rotated token) and a
+rotation whose response never arrived (timeout / dropped connection) — clients don't
+need to serialize refreshes. Revocation still wins (a replay for a revoked/expired
+session is refused), and a token **two or more rotations back never resolves**.
+
+**401** `unauthorized` — invalid, expired, or already-rotated refresh token (outside
+the grace window).
 
 ### `POST /v1/auth/logout`
 

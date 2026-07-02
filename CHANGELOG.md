@@ -10,6 +10,10 @@ multi-arch server image to `ghcr.io/reckloon/sphynx-server` (see the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.7] — 2026-07-01
+
 ### Fixed
 
 - **Refresh-token rotation no longer strands sessions on a race or a lost response.**
